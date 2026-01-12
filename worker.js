@@ -625,11 +625,11 @@ const NEUTRAL_CSS = `
   .rules-table th { text-align: left; border-bottom: 2px solid #E2E8F0; padding: 6px; color: var(--primary); }
   .rules-table td { border-bottom: 1px solid #F1F5F9; padding: 6px; }
   .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-  .shop-item { background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 15px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; overflow: hidden; }
-  .shop-item:hover { border-color: var(--primary); transform: translateY(-3px); }
+  .shop-item { background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px 15px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: space-between; min-height: 140px; }
+  .shop-item:hover { border-color: var(--primary); transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); }
   .shop-item i { font-size: 2rem; margin-bottom: 10px; color: var(--primary); }
-  .shop-item.disabled { opacity: 0.6; filter: grayscale(1); cursor: not-allowed; border-color: #E2E8F0 !important; transform: none !important; }
-  .price-tag { background: #FEF3C7; color: #D97706; padding: 4px 8px; border-radius: 6px; font-weight:bold; font-size:0.85rem; margin-top:8px; display:inline-block; }
+  .shop-item.disabled { opacity: 0.6; filter: grayscale(1); cursor: not-allowed; border-color: #E2E8F0 !important; transform: none !important; box-shadow: none !important; }
+  .price-tag { background: linear-gradient(135deg, #FEF3C7, #FDE68A); color: #D97706; padding: 6px 10px; border-radius: 8px; font-weight:bold; font-size:0.9rem; margin-top:10px; display:inline-block; box-shadow: 0 2px 4px rgba(217,119,6,0.2); border: 1px solid #FBBF24; }
   .shop-item.can-craft { border: 2px solid var(--secondary); background-color: #ECFDF5; box-shadow: 0 0 10px rgba(16, 185, 129, 0.3); animation: pulse 2s infinite; }
   @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
   .shop-cost { font-size: 0.8rem; color: var(--text-light); margin-top: 5px; }
@@ -958,13 +958,13 @@ function getHtmlPage() {
   <div id="shopModal" class="modal">
     <div class="modal-content">
       <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h3 style="margin:0;" data-i18n="shop_title">Token Shop</h3>
-        <div style="font-size:0.9rem; font-weight:bold; color:#F59E0B;">
+      <div style="text-align:center; margin-bottom:15px;">
+        <h3 style="margin:0 0 10px 0;" data-i18n="shop_title">Token Shop</h3>
+        <div style="font-size:1.1rem; font-weight:bold; color:#F59E0B; background:#FEF3C7; padding:8px 16px; border-radius:10px; display:inline-flex; align-items:center; gap:8px; box-shadow:0 3px 6px rgba(245,158,11,0.3);">
            <i class="fas fa-coins"></i> <span id="shopBalance">0</span>
         </div>
       </div>
-      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px;" data-i18n="shop_desc">Spend points.</p>
+      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px; text-align:center;" data-i18n="shop_desc">Spend points.</p>
       <div class="shop-grid" id="shopContent"></div>
     </div>
   </div>
