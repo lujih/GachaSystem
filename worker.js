@@ -79,7 +79,7 @@ export default {
       'GET /library': () => handleLibrary(request, env, url),
       // User Info
       'GET /user/info': () => userService.handleInfo(userId, ctx, gachaService),
-      'POST /user/update-profile': () => userService.handleUpdateProfile(userId, request), // Only nickname/pass update
+      'POST /user/update-profile': () => userService.handleUpdateProfile(userId, request),
 
       // System
       'GET /changelog': () => handleChangelog(env),
@@ -119,69 +119,58 @@ class UserService {
     this.env = env;
   }
 
-  // 获取用户数据 key: u:{username}
   async get(username) {
     if (!username) return null;
     return safeJsonParse(await this.env.USER_RECORDS.get(`u:${username}`));
   }
 
-  // 保存用户数据
   async save(username, data) {
     if (data.bufferQueue) delete data.bufferQueue;
     data.lastUpdated = Date.now();
     await this.env.USER_RECORDS.put(`u:${username}`, JSON.stringify(data), { expirationTtl: CONFIG.TTL.USER });
   }
 
-  // [新增] 注册处理
   async handleRegister(request) {
     const { username, nickname, password } = await request.json();
     
-    // 1. 基础校验
     if (!username || !nickname || !password) return jsonResponse({ error: 'Missing fields' }, 400);
     
-    // 2. 格式校验：账号名只能是英文或数字
     const userRegex = /^[a-zA-Z0-9]+$/;
-    if (!userRegex.test(username)) return jsonResponse({ error: 'Username must be alphanumeric (A-Z, 0-9)' }, 400);
-    if (username.length < 3 || username.length > 16) return jsonResponse({ error: 'Username length 3-16' }, 400);
-    if (nickname.length > 12) return jsonResponse({ error: 'Nickname max 12 chars' }, 400);
+    if (!userRegex.test(username)) return jsonResponse({ error: 'Invalid Username Format' }, 400);
+    if (username.length < 3 || username.length > 16) return jsonResponse({ error: 'Invalid Username Length' }, 400);
+    if (nickname.length > 12) return jsonResponse({ error: 'Nickname Too Long' }, 400);
 
-    // 3. 唯一性校验
-    // 检查 Username 是否存在
     const existingUser = await this.env.USER_RECORDS.get(`u:${username}`);
-    if (existingUser) return jsonResponse({ error: 'Username already exists' }, 409);
+    if (existingUser) return jsonResponse({ error: 'Username Taken' }, 409);
 
-    // 检查 Nickname 是否存在 (使用 n:{nickname} 索引)
     const existingNick = await this.env.USER_RECORDS.get(`n:${nickname}`);
-    if (existingNick) return jsonResponse({ error: 'Nickname already taken' }, 409);
+    if (existingNick) return jsonResponse({ error: 'Nickname Taken' }, 409);
 
-    // 4. 创建用户
     const newUser = {
-      username: username, // 账号ID
-      nickname: nickname, // 显示名称
-      password: password, // 实际应用应加盐哈希，此处明文存储以便演示
+      username: username,
+      nickname: nickname,
+      password: password,
       createdAt: Date.now(),
       drawCount: 0,
       coins: 0,
       inventory: {}
     };
 
-    // 5. 保存数据和索引
     await this.save(username, newUser);
-    await this.env.USER_RECORDS.put(`n:${nickname}`, username); // 建立昵称索引
+    await this.env.USER_RECORDS.put(`n:${nickname}`, username); 
 
     return jsonResponse({ success: true, username: username, nickname: nickname });
   }
 
-  // [新增] 登录处理
   async handleLogin(request) {
     const { username, password } = await request.json();
-    if (!username || !password) return jsonResponse({ error: 'Missing credentials' }, 400);
+    if (!username || !password) return jsonResponse({ error: 'Missing fields' }, 400);
 
     const user = await this.get(username);
-    if (!user) return jsonResponse({ error: 'User not found' }, 404);
+    if (!user) return jsonResponse({ error: 'User Not Found' }, 404);
 
     if (user.password !== password) {
-      return jsonResponse({ error: 'Invalid password' }, 403);
+      return jsonResponse({ error: 'Invalid Password' }, 403);
     }
 
     return jsonResponse({ success: true, user: { username: user.username, nickname: user.nickname, coins: user.coins } });
@@ -197,15 +186,13 @@ class UserService {
       }
       const titles = CONFIG.GAME.TITLES.filter(t => t.check(record));
       record.title = titles.length > 0 ? titles[titles.length - 1] : null;
-      // 隐去密码
       const safeRecord = { ...record };
       delete safeRecord.password;
       return jsonResponse(safeRecord);
     }
-    return jsonResponse(null); // 未找到返回 null 让前端处理登录
+    return jsonResponse(null); 
   }
 
-  // 修改昵称等信息
   async handleUpdateProfile(userId, request) {
     if (!userId) return jsonResponse({ error: 'Not Logged In' }, 403);
     const { nickname, password } = await request.json();
@@ -213,16 +200,12 @@ class UserService {
     let user = await this.get(userId);
     if (!user) return jsonResponse({ error: 'User Not Found' }, 404);
 
-    // 如果修改昵称
     if (nickname && nickname !== user.nickname) {
-       if (nickname.length > 12) return jsonResponse({ error: 'Nickname too long' }, 400);
-       // 检查新昵称是否被占用
+       if (nickname.length > 12) return jsonResponse({ error: 'Nickname Too Long' }, 400);
        const existingNick = await this.env.USER_RECORDS.get(`n:${nickname}`);
        if (existingNick && existingNick !== userId) return jsonResponse({ error: 'Nickname Taken' }, 409);
        
-       // 删除旧索引
        await this.env.USER_RECORDS.delete(`n:${user.nickname}`);
-       // 建立新索引
        await this.env.USER_RECORDS.put(`n:${nickname}`, userId);
        user.nickname = nickname;
     }
@@ -241,7 +224,7 @@ class UserService {
     const users = await Promise.all(list.keys.map(async key => {
       const record = await safeJsonParse(await env.USER_RECORDS.get(key.name));
       return record ? {
-        id: record.username, // 现在 ID 就是 username
+        id: record.username,
         username: record.username,
         nickname: record.nickname,
         drawCount: record.drawCount || 0, 
@@ -253,7 +236,7 @@ class UserService {
   }
 
   async handleAdminDeleteUser(request, env) {
-    const { password, targetId } = await request.json(); // targetId is username
+    const { password, targetId } = await request.json(); 
     if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
     
     const user = await this.get(targetId);
@@ -263,7 +246,7 @@ class UserService {
         await env.USER_RECORDS.delete(`buffer:${targetId}`);
         return jsonResponse({ success: true });
     }
-    return jsonResponse({ error: 'User not found' }, 404);
+    return jsonResponse({ error: 'User Not Found' }, 404);
   }
 
   async handleAdminUpdatePoints(request, env) {
@@ -293,7 +276,7 @@ class GachaService {
       this.env.USER_RECORDS.get(this.getBufferKey(userId))
     ]);
 
-    if (!user) return jsonResponse({ error: 'USER_NOT_FOUND' }, 403);
+    if (!user) return jsonResponse({ error: 'User Not Found' }, 403);
 
     let assetData = safeJsonParse(bufferData);
 
@@ -422,27 +405,14 @@ class GachaService {
         if (imgRes.ok) {
             const buffer = await imgRes.arrayBuffer();
             const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
-            
             const timestamp = Date.now();
-            // 使用 username 生成文件名
             const base64Name = btoa(encodeURIComponent(username)).replace(/[/+=]/g, '_');
             const randomStr = Math.random().toString(36).slice(2, 6);
             const filename = `images/${base64Name}___${timestamp}___${randomStr}.jpg`;
-            
-            await this.env.R2_BUCKET.put(filename, buffer, {
-                httpMetadata: { contentType: contentType }
-            });
-
-            return {
-                success: true,
-                imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`,
-                rarity: source.rarity,
-                sourceName: source.name,
-                timestamp: timestamp
-            };
+            await this.env.R2_BUCKET.put(filename, buffer, { httpMetadata: { contentType: contentType } });
+            return { success: true, imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`, rarity: source.rarity, sourceName: source.name, timestamp: timestamp };
         }
     } catch (e) { console.error('Fetch Asset Error', e); }
-
     return { success: false, rarity: 'N' };
   }
 
@@ -453,11 +423,8 @@ class GachaService {
 
     if (assetData.success) {
       finalImageUrl = assetData.imageUrl;
-      
       user.drawCount = (user.drawCount || 0) + 1;
-      if (!skipPoints) {
-        user.coins = (user.coins || 0) + pointsEarned;
-      }
+      if (!skipPoints) user.coins = (user.coins || 0) + pointsEarned;
       user.inventory = user.inventory || {};
       user.inventory[assetData.rarity] = (user.inventory[assetData.rarity] || 0) + 1;
       user.lastImageUrl = finalImageUrl;
@@ -465,7 +432,7 @@ class GachaService {
       const updates = [
         this.userService.save(userId, user),
         updateLeaderboard(this.env, {
-          username: user.nickname || user.username, // 榜单显示昵称
+          username: user.nickname || user.username,
           imageUrl: finalImageUrl, sourceName: assetData.sourceName,
           timestamp: timestamp, timeText: new Date(timestamp).toLocaleString('zh-CN', { hour12: false }),
           success: true, rarity: assetData.rarity
@@ -486,12 +453,6 @@ class GachaService {
     });
   }
 }
-
-/**
- * =========================================
- * 3. 辅助函数 & 视图 (Helpers & Views)
- * =========================================
- */
 
 async function handleHome() {
   return new Response(getHtmlPage(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
@@ -528,19 +489,14 @@ async function handleLibrary(request, env, url) {
   const page = parseInt(url.searchParams.get('page') || '1');
   const pageSize = 20;
   let galleryItems = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.GALLERY_INDEX));
-  
   if (!galleryItems || galleryItems.length === 0) {
     galleryItems = await rebuildGalleryIndexFromR2(env, CONFIG.KEYS.GALLERY_INDEX);
   }
-  
   const totalItems = galleryItems ? galleryItems.length : 0;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const currentPage = Math.max(1, Math.min(page, totalPages));
   const pageItems = galleryItems ? galleryItems.slice((currentPage - 1) * pageSize, currentPage * pageSize) : [];
-  
-  return new Response(getLibraryHtml(pageItems, { currentPage, totalPages, totalItems }), {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
-  });
+  return new Response(getLibraryHtml(pageItems, { currentPage, totalPages, totalItems }), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
 async function handleAdminVerify(request, env) {
@@ -585,7 +541,6 @@ async function rebuildGalleryIndexFromR2(env, indexKey) {
             limitCount++;
         }
     } catch(e) { return []; }
-    
     const items = allObjects.map(obj => {
         const parts = obj.key.replace('images/', '').split('___');
         let username = 'Unknown', ts = obj.uploaded.getTime();
@@ -595,7 +550,6 @@ async function rebuildGalleryIndexFromR2(env, indexKey) {
         }
         return { url: `${CONFIG.R2_DOMAIN}/${obj.key}`, username, ts };
     }).sort((a, b) => b.ts - a.ts);
-    
     await env.RECENT_REQUESTS.put(indexKey, JSON.stringify(items), { expirationTtl: CONFIG.TTL.GALLERY_CACHE });
     return items;
 }
@@ -727,7 +681,7 @@ const I18N_TEXT = {
     logout: "Logout", close: "Close", guest: "Guest",
     retry: "RETRY", again: "AGAIN", name_req: "Missing fields",
     net_err: "Network Error", reg_ok: "Registered! Please Login.", success: "Gacha Success",
-    fail: "Connection Failed", clear_confirm: "Log out?",
+    fail: "Connection Failed", clear_confirm: "Are you sure you want to log out?",
     btn_lang: "En", back: "Back", page: "Page", admin_panel: "Admin Panel",
     admin_auth: "Admin Access", pass_tip: "Enter admin password", edit_log: "Visual Changelog Editor",
     save: "Save Changes", verify_fail: "Incorrect Password", save_ok: "Saved!", save_err: "Save Failed",
@@ -744,9 +698,26 @@ const I18N_TEXT = {
     rule_action: "Action", rule_points: "Points", points_label: "Coins:",
     dice_title: "Guess Size", dice_desc: "Small (1-3) or Big (4-6). Pays 1:1.",
     bet_ph: "Bet Amount (10-1000)", small: "SMALL (1-3)", big: "BIG (4-6)",
-    win: "YOU WIN!", lose: "YOU LOSE", points_col: "Coins", edit_points: "Mod", edit_points_prompt: "Enter points:",
+    win: "YOU WIN!", lose: "YOU LOSE", points_col: "Coins", edit_points: "Mod", edit_points_prompt: "Enter points to add/sub:",
     pool_std: "Standard", pool_ltd: "Limited", ltd_cost: "Cost:", start_ltd: "SUMMON",
-    login_tab: "Login", reg_tab: "Register", username_ph: "Username (a-z, 0-9)", nick_ph: "Nickname (Display)", pass_ph: "Password"
+    login_tab: "Login", reg_tab: "Register", username_ph: "Username (a-z, 0-9)", nick_ph: "Nickname (Display)", pass_ph: "Password",
+    craft_confirm: "Consume 5 cards to craft 1 {target}?",
+    buy_confirm: "Spend {price} points?",
+    min_bet: "Minimum bet is 10",
+    server_err_no_money: "Not enough points!",
+    server_err_taken: "Username/Nickname already taken",
+    server_err_user_missing: "User not found",
+    server_err_pass: "Invalid Password",
+    server_err_auth: "Auth Failed",
+    img_load_err: "Image Load Error",
+    ann_title_def: "Notification",
+    ann_enabled: "Enabled",
+    ann_disabled: "Disabled",
+    ann_preview: "Preview",
+    ann_publish: "Publish",
+    ann_title: "Title",
+    ann_status: "Status",
+    low_pts: "Low Pts"
   },
   zh: {
     ready: "准备召唤", start: "召唤", showcase: "精选图库", loading: "加载中...",
@@ -773,9 +744,26 @@ const I18N_TEXT = {
     rule_action: "行为", rule_points: "获得积分", points_label: "当前积分：",
     dice_title: "猜大小", dice_desc: "小(1-3) 或 大(4-6)，赔率1:1。",
     bet_ph: "下注金额 (10-1000)", small: "押小 (1-3)", big: "押大 (4-6)",
-    win: "你赢了！", lose: "你输了", points_col: "积分", edit_points: "改", edit_points_prompt: "输入要增加的积分:",
+    win: "你赢了！", lose: "你输了", points_col: "积分", edit_points: "改", edit_points_prompt: "输入要增加或减少的积分:",
     pool_std: "常驻池", pool_ltd: "限定池", ltd_cost: "消耗:", start_ltd: "召唤",
-    login_tab: "登录", reg_tab: "注册", username_ph: "账号 (英文/数字)", nick_ph: "昵称 (显示名)", pass_ph: "密码"
+    login_tab: "登录", reg_tab: "注册", username_ph: "账号 (英文/数字)", nick_ph: "昵称 (显示名)", pass_ph: "密码",
+    craft_confirm: "确定消耗5张低阶卡合成1张 {target} 吗？",
+    buy_confirm: "确定花费 {price} 积分吗？",
+    min_bet: "最小下注为 10",
+    server_err_no_money: "积分不足！",
+    server_err_taken: "用户名或昵称已被占用",
+    server_err_user_missing: "用户不存在",
+    server_err_pass: "密码错误",
+    server_err_auth: "认证失败",
+    img_load_err: "图片加载失败",
+    ann_title_def: "公告",
+    ann_enabled: "已启用",
+    ann_disabled: "已禁用",
+    ann_preview: "预览",
+    ann_publish: "发布 / 保存",
+    ann_title: "标题",
+    ann_status: "状态",
+    low_pts: "积分不足"
   }
 };
 
@@ -915,7 +903,6 @@ function getHtmlPage() {
       </div>
       
       <div id="authForm">
-        <!-- Login Form -->
         <div class="input-group">
             <input type="text" id="authUsername" placeholder="Username (a-z, 0-9)" data-i18n="username_ph">
         </div>
@@ -1029,7 +1016,7 @@ function getHtmlPage() {
         <div class="admin-tabs">
             <div class="admin-tab active" onclick="App.switchAdminTab('log')" id="tab-log" data-i18n="log_tab">Changelog</div>
             <div class="admin-tab" onclick="App.switchAdminTab('users')" id="tab-users" data-i18n="users_tab">Users</div>
-            <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann">Announcement</div>
+            <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann" data-i18n="ann_title_def">Announcement</div>
         </div>
         <div id="view-log">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -1052,24 +1039,23 @@ function getHtmlPage() {
         </div>
         <div id="view-ann" style="display:none;">
             <div style="margin-bottom: 15px;">
-                <label style="font-weight:bold; font-size:0.9rem;">Title</label>
-                <input type="text" id="adminAnnTitle" class="admin-input" placeholder="Announcement Title">
+                <label style="font-weight:bold; font-size:0.9rem;" data-i18n="ann_title">Title</label>
+                <input type="text" id="adminAnnTitle" class="admin-input" placeholder="Title">
             </div>
             <div class="toggle-wrapper">
-                <span style="font-weight:bold; font-size:0.9rem;">Status:</span>
+                <span style="font-weight:bold; font-size:0.9rem;" data-i18n="ann_status">Status:</span>
                 <select id="adminAnnEnable" class="admin-input" style="width:auto;">
-                    <option value="true">Enabled (Show Popup)</option>
-                    <option value="false">Disabled</option>
+                    <option value="true" data-i18n="ann_enabled">Enabled</option>
+                    <option value="false" data-i18n="ann_disabled">Disabled</option>
                 </select>
-                <span style="font-size:0.8rem; color:var(--text-light);">(Disabling hides it for everyone)</span>
             </div>
             <div style="margin-bottom: 10px;">
-                <label style="font-weight:bold; font-size:0.9rem;">Content (Markdown)</label>
-                <textarea id="adminAnnContent" class="admin-textarea" placeholder="## Hello World\n- List item..."></textarea>
+                <label style="font-weight:bold; font-size:0.9rem;" data-i18n="content">Content (Markdown)</label>
+                <textarea id="adminAnnContent" class="admin-textarea" placeholder="## Hello World..."></textarea>
             </div>
             <div style="display:flex; gap:10px;">
-                <button class="btn" style="flex:1" onclick="App.saveAnnouncement()" data-i18n="save">Publish / Save</button>
-                <button class="btn secondary" style="flex:1" onclick="App.previewAnnouncement()">Preview</button>
+                <button class="btn" style="flex:1" onclick="App.saveAnnouncement()" data-i18n="ann_publish">Publish / Save</button>
+                <button class="btn secondary" style="flex:1" onclick="App.previewAnnouncement()" data-i18n="ann_preview">Preview</button>
             </div>
         </div>
       </div>
@@ -1102,7 +1088,7 @@ function getHtmlPage() {
       lang: localStorage.getItem('moe_lang') || 'en',
       nickname: null, loading: false, adminPwd: null, logsData: [], currentAdminTab: 'log', inventory: {},
       currentPool: 'std',
-      authMode: 'login', // 'login' or 'register'
+      authMode: 'login', 
       
       async init() {
         this.applyLang();
@@ -1143,7 +1129,11 @@ function getHtmlPage() {
         document.getElementById('langBtn').innerText = t.btn_lang;
         document.querySelectorAll('[data-i18n]').forEach(el => {
           const key = el.getAttribute('data-i18n');
-          if(t[key]) { if(el.tagName === 'INPUT') el.placeholder = t[key]; else el.innerText = t[key]; }
+          if(t[key]) { 
+              if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = t[key]; 
+              else if(el.tagName === 'OPTION') el.text = t[key];
+              else el.innerText = t[key]; 
+          }
         });
         if(!this.username) document.getElementById('navNickname').innerText = t.guest;
         if(document.getElementById('adminPanel').style.display === 'block') { this.renderAdminTable(); if(this.currentAdminTab === 'users') this.loadAdminUsers(); }
@@ -1158,7 +1148,6 @@ function getHtmlPage() {
               this.nickname = data.nickname;
               this.updateUI(data); 
           } else { 
-              // Invalid session or deleted user
               localStorage.removeItem('moe_username');
               this.username = null;
               document.getElementById('authModal').classList.add('show'); 
@@ -1183,6 +1172,19 @@ function getHtmlPage() {
          document.getElementById('invSR').innerText = inv.SR || 0; document.getElementById('craft-item-SSR').classList.toggle('can-craft', (inv.SR || 0) >= 5);
          document.getElementById('invSSR').innerText = inv.SSR || 0; document.getElementById('craft-item-UR').classList.toggle('can-craft', (inv.SSR || 0) >= 5);
       },
+      mapError(err) {
+        const t = TEXT[this.lang];
+        const map = {
+            'Not Enough Points': 'server_err_no_money',
+            'Username Taken': 'server_err_taken',
+            'Nickname Taken': 'server_err_taken',
+            'User Not Found': 'server_err_user_missing',
+            'Invalid Password': 'server_err_pass',
+            'Auth Failed': 'server_err_auth'
+        };
+        if(map[err] && t[map[err]]) return t[map[err]];
+        return err;
+      },
       async doAuth() {
         const u = document.getElementById('authUsername').value.trim();
         const p = document.getElementById('authPassword').value;
@@ -1191,7 +1193,6 @@ function getHtmlPage() {
         
         if (this.authMode === 'register') {
              if (!u || !p || !n) return this.toast(t.name_req, 'warn');
-             // Register
              try {
                 const res = await fetch('/auth/register', { 
                     method: 'POST', 
@@ -1202,12 +1203,11 @@ function getHtmlPage() {
                     this.toast(t.reg_ok, 'ok'); 
                     this.switchAuth('login');
                 } else { 
-                    this.toast(d.error, 'warn'); 
+                    this.toast(this.mapError(d.error), 'warn'); 
                 }
              } catch(e) { this.toast(t.net_err, 'warn'); }
         } else {
              if (!u || !p) return this.toast(t.name_req, 'warn');
-             // Login
              try {
                 const res = await fetch('/auth/login', { 
                     method: 'POST', 
@@ -1220,7 +1220,7 @@ function getHtmlPage() {
                     this.updateUI(d.user);
                     document.getElementById('authModal').classList.remove('show');
                 } else { 
-                    this.toast(d.error || t.fail, 'warn'); 
+                    this.toast(this.mapError(d.error || t.fail), 'warn'); 
                 }
              } catch(e) { this.toast(t.net_err, 'warn'); }
         }
@@ -1229,7 +1229,6 @@ function getHtmlPage() {
         try {
           const res = await fetch('/announcement');
           const data = await res.json();
-      
           if (data.enabled) {
             const lastReadId = localStorage.getItem('moe_ann_read');
             if (lastReadId !== String(data.id)) {
@@ -1237,10 +1236,11 @@ function getHtmlPage() {
               this.currentAnnId = data.id; 
             }
           }
-        } catch(e) { console.error(e); }
+        } catch(e) {}
       },
       showAnnouncementModal(data) {
-        document.getElementById('annTitle').innerText = data.title || 'Notification';
+        const t = TEXT[this.lang];
+        document.getElementById('annTitle').innerText = data.title || t.ann_title_def;
         document.getElementById('annContent').innerHTML = marked.parse(data.content || '');
         document.getElementById('announcementModal').classList.add('show');
       },
@@ -1269,23 +1269,15 @@ function getHtmlPage() {
         const content = document.getElementById('adminAnnContent').value;
         const enabled = document.getElementById('adminAnnEnable').value === 'true';
         const t = TEXT[this.lang];
-    
-        if(!title || !content) return this.toast('Title & Content required', 'warn');
-
+        if(!title || !content) return this.toast(t.name_req, 'warn');
         try {
             const res = await fetch('/admin/save-announcement', { 
                 method: 'POST', 
-                body: JSON.stringify({
-                    password: this.adminPwd,
-                    announcement: { title, content, enabled }
-                }) 
+                body: JSON.stringify({ password: this.adminPwd, announcement: { title, content, enabled } }) 
             });
             const d = await res.json();
-            if(d.success) { 
-                this.toast(t.save_ok, 'ok'); 
-            } else { 
-                this.toast(d.error || t.save_err, 'warn'); 
-            }
+            if(d.success) this.toast(t.save_ok, 'ok'); 
+            else this.toast(this.mapError(d.error) || t.save_err, 'warn'); 
         } catch(e) { this.toast(t.net_err, 'warn'); }
       },
       async loadChangelog() {
@@ -1314,18 +1306,18 @@ function getHtmlPage() {
       async draw() {
         if(this.loading) return;
         if(!this.username) { document.getElementById('authModal').classList.add('show'); return; }
+        const t = TEXT[this.lang];
         
         if (this.currentPool === 'ltd') {
              const currentCoins = parseInt(document.getElementById('profileCoins').innerText) || 0;
              const cost = ${CONFIG.LIMITED.COST};
-             if (currentCoins < cost) return this.toast(TEXT[this.lang].no_money || 'Not enough points!', 'warn');
+             if (currentCoins < cost) return this.toast(t.no_money, 'warn');
         }
 
         this.loading = true;
         const btn = document.getElementById('drawBtn'); 
         const img = document.getElementById('resultImg'); 
         const tag = document.getElementById('rarityTag'); 
-        const t = TEXT[this.lang];
         
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; 
         img.classList.remove('show'); 
@@ -1339,21 +1331,16 @@ function getHtmlPage() {
               method = 'POST';
           }
 
-          const res = await fetch(url, { 
-              method: method,
-              headers: { 'X-User-ID': this.username } 
-          });
+          const res = await fetch(url, { method: method, headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           
           if(data.error) {
-              if (data.error === 'Not Enough Points') {
-                   throw new Error(t.no_money || 'Need Points');
-              }
+              if (data.error === 'Not Enough Points') throw new Error(t.server_err_no_money);
               if (data.error === 'USER_NOT_FOUND') {
                    document.getElementById('authModal').classList.add('show');
-                   throw new Error("Please Login");
+                   throw new Error(t.reg_tip);
               }
-              throw data.error;
+              throw this.mapError(data.error);
           }
           this.handleDrawResult(data, img, tag, btn, t);
         } catch(e) { 
@@ -1365,16 +1352,19 @@ function getHtmlPage() {
       async doCraft(target) {
         if(this.loading) return;
         if(!this.username) { document.getElementById('authModal').classList.add('show'); return; }
+        const t = TEXT[this.lang];
         const costMap = { 'R': 'N', 'SR': 'R', 'SSR': 'SR', 'UR': 'SSR' };
         if ((this.inventory[costMap[target]] || 0) < 5) return this.toast('Need 5 ' + costMap[target], 'warn');
-        if(!confirm('Consume 5 cards to craft 1 ' + target + '?')) return;
+        
+        if(!confirm(t.craft_confirm.replace('{target}', target))) return;
+        
         this.loading = true; this.closeModals();
-        const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag'); const t = TEXT[this.lang];
+        const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag'); 
         btn.innerHTML = '<i class="fas fa-flask fa-spin"></i>'; img.classList.remove('show'); tag.classList.remove('show');
         try {
           const res = await fetch('/user/craft', { method: 'POST', body: JSON.stringify({ targetRarity: target }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
-          if(data.error) throw new Error(data.error);
+          if(data.error) throw new Error(this.mapError(data.error));
           this.handleDrawResult(data, img, tag, btn, t, true);
         } catch(e) { this.loading = false; btn.innerHTML = t.start; this.toast(e.message, 'warn'); this.fetchUserInfo(); }
       },
@@ -1408,7 +1398,7 @@ function getHtmlPage() {
               img.onerror = () => { 
                   this.loading = false; 
                   this.switchPool(this.currentPool); 
-                  this.toast('Image Load Error', 'warn'); 
+                  this.toast(t.img_load_err, 'warn'); 
               }; 
           }
       },
@@ -1425,43 +1415,43 @@ function getHtmlPage() {
         if(container) {
             container.innerHTML = packs.map(p => {
                 const can = balance >= p.price;
-                return \`<div class="shop-item \${can?'':'disabled'}" \${can? \`onclick="App.buyPack('\${p.id}', \${p.price})"\` : ''}><div style="font-weight:900; font-size:1.5rem; color:\${p.color}">\${p.id}</div><div class="price-tag"><i class="fas fa-coins"></i> \${p.price}</div><div style="font-size:0.8rem; margin-top:5px; color:#94A3B8;">\${can?t.buy:'Low Pts'}</div></div>\`;
+                return \`<div class="shop-item \${can?'':'disabled'}" \${can? \`onclick="App.buyPack('\${p.id}', \${p.price})"\` : ''}><div style="font-weight:900; font-size:1.5rem; color:\${p.color}">\${p.id}</div><div class="price-tag"><i class="fas fa-coins"></i> \${p.price}</div><div style="font-size:0.8rem; margin-top:5px; color:#94A3B8;">\${can?t.buy:t.low_pts}</div></div>\`;
             }).join('');
         }
         document.getElementById('shopModal').classList.add('show');
       },
       async buyPack(rarity, price) {
         if(this.loading) return; const t = TEXT[this.lang];
-        if(!confirm(\`Spend \${price} points?\`)) return;
+        if(!confirm(t.buy_confirm.replace('{price}', price))) return;
         this.loading = true; this.closeModals();
         const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag');
         btn.innerHTML = '<i class="fas fa-shopping-cart fa-spin"></i>'; img.classList.remove('show'); tag.classList.remove('show');
         try {
           const res = await fetch('/shop/buy', { method: 'POST', body: JSON.stringify({ targetRarity: rarity }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
-          if(data.error) throw new Error(data.error);
+          if(data.error) throw new Error(this.mapError(data.error));
           this.handleDrawResult(data, img, tag, btn, t, true);
         } catch(e) { this.loading = false; btn.innerHTML = t.start; this.toast(e.message, 'warn'); }
       },
       openDice() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('diceModal').classList.add('show'); document.getElementById('diceIcon').className = 'fas fa-dice-d6'; document.getElementById('diceMsg').innerText = ''; },
       async playDice(prediction) {
-        if(this.loading) return; const bet = parseInt(document.getElementById('betInput').value); if(!bet || bet < 10) return this.toast('Min bet 10', 'warn');
-        this.loading = true; const icon = document.getElementById('diceIcon'); const msg = document.getElementById('diceMsg'); const t = TEXT[this.lang];
+        if(this.loading) return; const t = TEXT[this.lang]; const bet = parseInt(document.getElementById('betInput').value); if(!bet || bet < 10) return this.toast(t.min_bet, 'warn');
+        this.loading = true; const icon = document.getElementById('diceIcon'); const msg = document.getElementById('diceMsg'); 
         icon.classList.add('dice-result-anim'); msg.innerText = t.loading;
         try {
           const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           setTimeout(() => {
              this.loading = false; icon.classList.remove('dice-result-anim');
-             if(data.error) { msg.innerText = data.error; return; }
+             if(data.error) { msg.innerText = this.mapError(data.error); return; }
              const diceIcons = ['one', 'two', 'three', 'four', 'five', 'six']; icon.className = \`fas fa-dice-\${diceIcons[data.roll - 1]}\`;
-             if(data.isWin) { msg.innerText = \`\${t.win} (+\${data.winAmount})\`; msg.style.color = '#10B981'; this.toast('Win!', 'ok'); } else { msg.innerText = t.lose; msg.style.color = '#EF4444'; }
+             if(data.isWin) { msg.innerText = \`\${t.win} (+\${data.winAmount})\`; msg.style.color = '#10B981'; this.toast(t.win, 'ok'); } else { msg.innerText = t.lose; msg.style.color = '#EF4444'; }
              document.getElementById('profileCoins').innerText = data.newBalance;
           }, 600);
-        } catch(e) { this.loading = false; icon.classList.remove('dice-result-anim'); this.toast('Error', 'warn'); }
+        } catch(e) { this.loading = false; icon.classList.remove('dice-result-anim'); this.toast(t.net_err, 'warn'); }
       },
       async loadShowcase() {
-        const grid = document.getElementById('showcaseGrid');
+        const grid = document.getElementById('showcaseGrid'); const t = TEXT[this.lang];
         try { const res = await fetch('/showcase'); const data = await res.json(); if(data.length) { grid.innerHTML = data.map(item => \`<div class="grid-item" onclick="App.preview('\${item.imageUrl}')"><img src="\${item.imageUrl}" loading="lazy"></div>\`).join(''); } } catch(e) {}
       },
       openAdmin() { this.closeModals(); document.getElementById('adminModal').classList.add('show'); },
@@ -1474,7 +1464,7 @@ function getHtmlPage() {
       },
       switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'ann') this.loadAdminAnnouncement();},
       async loadAdminUsers() {
-        const tbody = document.getElementById('userTbody'); tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>'; const t = TEXT[this.lang];
+        const tbody = document.getElementById('userTbody'); const t = TEXT[this.lang]; tbody.innerHTML = \`<tr><td colspan="4" style="text-align:center;">\${t.loading}</td></tr>\`; 
         try { const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); const data = await res.json(); if(data.success && data.users.length) { tbody.innerHTML = data.users.map(u => \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">\${t.edit_points}</button></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">\${t.del}</button></td></tr>\`).join(''); } else { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Empty</td></tr>'; } } catch(e) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Err</td></tr>'; }
       },
       async adminEditPoints(userId) { const t = TEXT[this.lang]; const val = prompt(t.edit_points_prompt); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast(t.save_ok, 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('Net Error', 'warn'); } },
