@@ -12,13 +12,10 @@ const CONFIG = {
     { name: 'Stockings', url: 'https://api.anosu.top/img?sort=setu', rarity: 'SSR' },
     { name: 'Absolute Territory', url: 'https://moe.jitsu.top/api?sort=r18', rarity: 'UR' }
   ],
-  // [新增] 限定卡池配置
-  // 待用pixiv图源：https://pixiv.yuki.sh/api/recommend
   LIMITED: {
-    COST: 500, // 单抽消耗积分
-    NAME: "Limited Festival", // 卡池名称
+    COST: 500,
+    NAME: "Limited Festival",
     SOURCES: [
-      // 限定池只出有特定的图源
       { name: 'Genshin Impact', url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
     ]
   },
@@ -27,7 +24,7 @@ const CONFIG = {
     CRAFT_COST: 5,
     SHOP: { 'R': 100, 'SR': 500, 'SSR': 2000, 'UR': 8000 },
     DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2 },
-    PRELOAD: { ENABLED: true }, // 新机制下只需要开关，不需要 MaxSize，因为改为单槽缓冲
+    PRELOAD: { ENABLED: true },
     TITLES: [
       { id: 'newbie', name: '萌新', color: '#94A3B8', check: u => (u.drawCount || 0) < 10 },
       { id: 'veteran', name: '老司机', color: '#10B981', check: u => (u.drawCount || 0) >= 50 },
@@ -44,11 +41,10 @@ const CONFIG = {
   KEYS: { GALLERY_INDEX: 'SYSTEM_GALLERY_INDEX_V1', CHANGELOG: 'SYSTEM_CHANGELOG', LEADERBOARD: 'recent', ANNOUNCEMENT: 'SYSTEM_ANNOUNCEMENT' }
 };
 
-// 默认更新日志（支持标签系统）
 const DEFAULT_CHANGELOG = [
+  { date: '2026-01-12', ver: 'v6.1.0', content: 'System Upgrade: Added strict Account/Password registration system.', tag: 'feature' },
   { date: 'Future', ver: 'To-Do', content: '1. Global Trade System (玩家交易系统)\n2. Guild Wars (公会战模式)', tag: 'todo' },
-  { date: '2026-01-08', ver: 'v6.0.0', content: 'Refactor: New High-Performance Preload System (Independent KV Buffer).', tag: 'optimization' },
-  { date: '2026-01-02', ver: 'v5.4.0', content: 'Feature: Dice Game added! Balanced economy system.', tag: 'feature' }
+  { date: '2026-01-08', ver: 'v6.0.0', content: 'Refactor: New High-Performance Preload System.', tag: 'optimization' }
 ];
 
 export default {
@@ -63,21 +59,29 @@ export default {
       });
     }
 
-    const userId = request.headers.get('X-User-ID');
+    const userId = request.headers.get('X-User-ID'); // 这里的 userId 现在对应 username
     const userService = new UserService(env);
     const gachaService = new GachaService(env, ctx, userService);
 
     const routes = {
       'GET /': () => handleHome(),
-      'GET /draw': () => gachaService.handleDraw(userId), // 常驻池 (GET)
-      'POST /draw/limited': () => gachaService.handleLimitedDraw(userId), // [新增] 限定池 (POST)
+      // Auth Routes
+      'POST /auth/register': () => userService.handleRegister(request),
+      'POST /auth/login': () => userService.handleLogin(request),
+      
+      // Game Routes
+      'GET /draw': () => gachaService.handleDraw(userId),
+      'POST /draw/limited': () => gachaService.handleLimitedDraw(userId),
       'POST /user/craft': () => gachaService.handleCraft(userId, request),
       'POST /shop/buy': () => gachaService.handleShopBuy(userId, request),
       'POST /game/dice': () => gachaService.handleDice(userId, request),
       'GET /showcase': () => handleShowcase(env),
       'GET /library': () => handleLibrary(request, env, url),
-      'POST /user/update': () => userService.handleUpdate(userId, request),
-      'GET /user/info': () => userService.handleInfo(userId, ctx, gachaService), // 注入 gachaService 以触发预加载
+      // User Info
+      'GET /user/info': () => userService.handleInfo(userId, ctx, gachaService),
+      'POST /user/update-profile': () => userService.handleUpdateProfile(userId, request), // Only nickname/pass update
+
+      // System
       'GET /changelog': () => handleChangelog(env),
       'GET /announcement': () => handleGetAnnouncement(env),
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
@@ -115,15 +119,72 @@ class UserService {
     this.env = env;
   }
 
-  async get(userId) {
-    if (!userId) return null;
-    return safeJsonParse(await this.env.USER_RECORDS.get(userId));
+  // 获取用户数据 key: u:{username}
+  async get(username) {
+    if (!username) return null;
+    return safeJsonParse(await this.env.USER_RECORDS.get(`u:${username}`));
   }
 
-  async save(userId, data) {
+  // 保存用户数据
+  async save(username, data) {
     if (data.bufferQueue) delete data.bufferQueue;
     data.lastUpdated = Date.now();
-    await this.env.USER_RECORDS.put(userId, JSON.stringify(data), { expirationTtl: CONFIG.TTL.USER });
+    await this.env.USER_RECORDS.put(`u:${username}`, JSON.stringify(data), { expirationTtl: CONFIG.TTL.USER });
+  }
+
+  // [新增] 注册处理
+  async handleRegister(request) {
+    const { username, nickname, password } = await request.json();
+    
+    // 1. 基础校验
+    if (!username || !nickname || !password) return jsonResponse({ error: 'Missing fields' }, 400);
+    
+    // 2. 格式校验：账号名只能是英文或数字
+    const userRegex = /^[a-zA-Z0-9]+$/;
+    if (!userRegex.test(username)) return jsonResponse({ error: 'Username must be alphanumeric (A-Z, 0-9)' }, 400);
+    if (username.length < 3 || username.length > 16) return jsonResponse({ error: 'Username length 3-16' }, 400);
+    if (nickname.length > 12) return jsonResponse({ error: 'Nickname max 12 chars' }, 400);
+
+    // 3. 唯一性校验
+    // 检查 Username 是否存在
+    const existingUser = await this.env.USER_RECORDS.get(`u:${username}`);
+    if (existingUser) return jsonResponse({ error: 'Username already exists' }, 409);
+
+    // 检查 Nickname 是否存在 (使用 n:{nickname} 索引)
+    const existingNick = await this.env.USER_RECORDS.get(`n:${nickname}`);
+    if (existingNick) return jsonResponse({ error: 'Nickname already taken' }, 409);
+
+    // 4. 创建用户
+    const newUser = {
+      username: username, // 账号ID
+      nickname: nickname, // 显示名称
+      password: password, // 实际应用应加盐哈希，此处明文存储以便演示
+      createdAt: Date.now(),
+      drawCount: 0,
+      coins: 0,
+      inventory: {}
+    };
+
+    // 5. 保存数据和索引
+    await this.save(username, newUser);
+    await this.env.USER_RECORDS.put(`n:${nickname}`, username); // 建立昵称索引
+
+    return jsonResponse({ success: true, username: username, nickname: nickname });
+  }
+
+  // [新增] 登录处理
+  async handleLogin(request) {
+    const { username, password } = await request.json();
+    if (!username || !password) return jsonResponse({ error: 'Missing credentials' }, 400);
+
+    const user = await this.get(username);
+    if (!user) return jsonResponse({ error: 'User not found' }, 404);
+
+    if (user.password !== password) {
+      return jsonResponse({ error: 'Invalid password' }, 403);
+    }
+
+    return jsonResponse({ success: true, user: { username: user.username, nickname: user.nickname, coins: user.coins } });
   }
 
   async handleInfo(userId, ctx, gachaService) {
@@ -136,55 +197,73 @@ class UserService {
       }
       const titles = CONFIG.GAME.TITLES.filter(t => t.check(record));
       record.title = titles.length > 0 ? titles[titles.length - 1] : null;
-      return jsonResponse(record);
+      // 隐去密码
+      const safeRecord = { ...record };
+      delete safeRecord.password;
+      return jsonResponse(safeRecord);
     }
-    return jsonResponse(record);
+    return jsonResponse(null); // 未找到返回 null 让前端处理登录
   }
 
-  async handleUpdate(userId, request) {
-    if (!userId) return jsonResponse({ error: 'Invalid ID' }, 400);
-    const body = await request.json().catch(() => ({}));
-    const username = (body.username || '').trim();
-    if (!username || username.length > 12) return jsonResponse({ error: 'Name length 1-12' }, 400);
+  // 修改昵称等信息
+  async handleUpdateProfile(userId, request) {
+    if (!userId) return jsonResponse({ error: 'Not Logged In' }, 403);
+    const { nickname, password } = await request.json();
     
-    let record = await this.get(userId) || { createdAt: Date.now(), drawCount: 0 };
-    const oldName = record.username;
-    
-    if (username !== oldName) {
-      const nameKey = 'name:' + username;
-      const existingId = await this.env.USER_RECORDS.get(nameKey);
-      if (existingId && existingId !== userId) return jsonResponse({ error: 'Name Taken' }, 409);
-      await this.env.USER_RECORDS.put(nameKey, userId);
-      if (oldName) await this.env.USER_RECORDS.delete('name:' + oldName);
+    let user = await this.get(userId);
+    if (!user) return jsonResponse({ error: 'User Not Found' }, 404);
+
+    // 如果修改昵称
+    if (nickname && nickname !== user.nickname) {
+       if (nickname.length > 12) return jsonResponse({ error: 'Nickname too long' }, 400);
+       // 检查新昵称是否被占用
+       const existingNick = await this.env.USER_RECORDS.get(`n:${nickname}`);
+       if (existingNick && existingNick !== userId) return jsonResponse({ error: 'Nickname Taken' }, 409);
+       
+       // 删除旧索引
+       await this.env.USER_RECORDS.delete(`n:${user.nickname}`);
+       // 建立新索引
+       await this.env.USER_RECORDS.put(`n:${nickname}`, userId);
+       user.nickname = nickname;
     }
-    
-    record.username = username;
-    await this.save(userId, record);
-    return jsonResponse({ success: true, user: record });
+
+    if (password) user.password = password;
+
+    await this.save(userId, user);
+    return jsonResponse({ success: true, user: { nickname: user.nickname } });
   }
 
   async handleAdminGetUsers(request, env) {
     const { password } = await request.json();
     if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
-    const list = await env.USER_RECORDS.list({ limit: 100 });
+    
+    const list = await env.USER_RECORDS.list({ prefix: 'u:', limit: 100 });
     const users = await Promise.all(list.keys.map(async key => {
-      if (key.name.startsWith('name:') || key.name.startsWith('buffer:')) return null;
       const record = await safeJsonParse(await env.USER_RECORDS.get(key.name));
       return record ? {
-        id: key.name, username: record.username,
-        drawCount: record.drawCount || 0, coins: record.coins || 0
+        id: record.username, // 现在 ID 就是 username
+        username: record.username,
+        nickname: record.nickname,
+        drawCount: record.drawCount || 0, 
+        coins: record.coins || 0
       } : null;
     }));
+    
     return jsonResponse({ success: true, users: users.filter(u => u !== null).sort((a, b) => b.drawCount - a.drawCount).slice(0, 50) });
   }
 
   async handleAdminDeleteUser(request, env) {
-    const { password, targetId } = await request.json();
+    const { password, targetId } = await request.json(); // targetId is username
     if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
-    const record = await this.get(targetId);
-    if (record && record.username) await env.USER_RECORDS.delete('name:' + record.username);
-    await env.USER_RECORDS.delete(targetId);
-    return jsonResponse({ success: true });
+    
+    const user = await this.get(targetId);
+    if (user) {
+        if (user.nickname) await env.USER_RECORDS.delete(`n:${user.nickname}`);
+        await env.USER_RECORDS.delete(`u:${targetId}`);
+        await env.USER_RECORDS.delete(`buffer:${targetId}`);
+        return jsonResponse({ success: true });
+    }
+    return jsonResponse({ error: 'User not found' }, 404);
   }
 
   async handleAdminUpdatePoints(request, env) {
@@ -214,7 +293,7 @@ class GachaService {
       this.env.USER_RECORDS.get(this.getBufferKey(userId))
     ]);
 
-    if (!user || !user.username) return jsonResponse({ error: 'USERNAME_REQUIRED' }, 403);
+    if (!user) return jsonResponse({ error: 'USER_NOT_FOUND' }, 403);
 
     let assetData = safeJsonParse(bufferData);
 
@@ -233,7 +312,6 @@ class GachaService {
   async handleLimitedDraw(userId) {
     let user = await this.userService.get(userId);
     if (!user) return jsonResponse({ error: 'User Not Found' }, 404);
-    if (!user.username) return jsonResponse({ error: 'USERNAME_REQUIRED' }, 403);
 
     const cost = CONFIG.LIMITED.COST;
     if ((user.coins || 0) < cost) {
@@ -346,6 +424,7 @@ class GachaService {
             const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
             
             const timestamp = Date.now();
+            // 使用 username 生成文件名
             const base64Name = btoa(encodeURIComponent(username)).replace(/[/+=]/g, '_');
             const randomStr = Math.random().toString(36).slice(2, 6);
             const filename = `images/${base64Name}___${timestamp}___${randomStr}.jpg`;
@@ -386,7 +465,8 @@ class GachaService {
       const updates = [
         this.userService.save(userId, user),
         updateLeaderboard(this.env, {
-          username: user.username, imageUrl: finalImageUrl, sourceName: assetData.sourceName,
+          username: user.nickname || user.username, // 榜单显示昵称
+          imageUrl: finalImageUrl, sourceName: assetData.sourceName,
           timestamp: timestamp, timeText: new Date(timestamp).toLocaleString('zh-CN', { hour12: false }),
           success: true, rarity: assetData.rarity
         }),
@@ -423,25 +503,16 @@ async function handleChangelog(env) {
   return jsonResponse(logs || DEFAULT_CHANGELOG);
 }
 
-// [新增] 获取公告
 async function handleGetAnnouncement(env) {
   if (!env.RECENT_REQUESTS) return jsonResponse({ enabled: false });
-  // 从 KV 获取公告数据
   const data = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
   return jsonResponse(data || { enabled: false, title: "", content: "", id: 0 });
 }
 
-// [新增] 管理员保存公告
 async function handleAdminSaveAnnouncement(request, env) {
   const { password, announcement } = await request.json();
   if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
-  
-  // 生成一个新的 ID (时间戳)，这样用户浏览器就知道这是新公告
-  const dataToSave = {
-    ...announcement,
-    id: Date.now() // 每次保存都更新 ID，强制用户重新看
-  };
-  
+  const dataToSave = { ...announcement, id: Date.now() };
   await env.RECENT_REQUESTS.put(CONFIG.KEYS.ANNOUNCEMENT, JSON.stringify(dataToSave));
   return jsonResponse({ success: true });
 }
@@ -641,6 +712,9 @@ const NEUTRAL_CSS = `
   .btn.limited-btn {background: linear-gradient(45deg, #EF4444, #F59E0B);box-shadow: 0 4px 0 #B91C1C;border: none;}
   .btn.limited-btn:active {box-shadow: 0 0 0 #B91C1C;}
   .pool-info-tag {font-size: 0.7rem;background: rgba(0,0,0,0.05);padding: 2px 6px;border-radius: 4px;margin-left: 4px;vertical-align: middle;}
+  .auth-tabs { display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid #E2E8F0; padding-bottom:10px; }
+  .auth-tab { flex:1; padding:8px; cursor:pointer; font-weight:bold; color:var(--text-light); border-radius:8px; transition:0.2s; }
+  .auth-tab.active { background:var(--bg-color); color:var(--primary); }
 </style>
 `;
 
@@ -648,47 +722,48 @@ const I18N_TEXT = {
   en: {
     ready: "READY TO DRAW", start: "START", showcase: "Showcase", loading: "Loading...",
     changelog: "Changelog", more: "Show More", less: "Show Less",
-    id_check: "Identity Check", reg_tip: "Register a codename to continue.",
-    confirm: "Confirm", profile: "User Profile", name: "Name:", draws: "Total Draws:",
+    id_check: "Authentication", reg_tip: "Sign up or Login to play.",
+    confirm: "Submit", profile: "User Profile", name: "Nickname:", draws: "Total Draws:",
     logout: "Logout", close: "Close", guest: "Guest",
-    retry: "RETRY", again: "AGAIN", name_req: "Name Required",
-    net_err: "Network Error", reg_ok: "Registered", success: "Gacha Success",
-    fail: "Connection Failed (Fallback)", clear_confirm: "Clear local data?",
+    retry: "RETRY", again: "AGAIN", name_req: "Missing fields",
+    net_err: "Network Error", reg_ok: "Registered! Please Login.", success: "Gacha Success",
+    fail: "Connection Failed", clear_confirm: "Log out?",
     btn_lang: "En", back: "Back", page: "Page", admin_panel: "Admin Panel",
     admin_auth: "Admin Access", pass_tip: "Enter admin password", edit_log: "Visual Changelog Editor",
     save: "Save Changes", verify_fail: "Incorrect Password", save_ok: "Saved!", save_err: "Save Failed",
     add_row: "+ Add Row", del: "Del", date: "Date", ver: "Ver", content: "Content",
     users_title: "Registered Users", users_tab: "Users", log_tab: "Changelog",
-    user_col: "User", draws_col: "Draws", last_active_col: "Last Active", action_col: "Action",
-    delete_confirm: "Delete this user? This cannot be undone.", name_taken: "Name already taken",
+    user_col: "Username", draws_col: "Draws", last_active_col: "Last Active", action_col: "Action",
+    delete_confirm: "Delete this user?", name_taken: "Name taken",
     delete_ok: "User Deleted",
-    craft_title: "Card Synthesis", craft_desc: "Burn 5 low-rarity cards to get 1 higher rarity draw.",
-    shop_title: "Token Shop", shop_desc: "Spend points to buy guaranteed rarity packs.",
+    craft_title: "Card Synthesis", craft_desc: "Burn 5 low-rarity cards.",
+    shop_title: "Token Shop", shop_desc: "Spend points.",
     buy: "Buy", points_short: "pts", buy_ok: "Purchase Successful!", no_money: "Not enough points!",
     owned: "Owned", cost: "Cost", craft_ok: "Craft Success!",
     rules_title: "Point Rules", rules_desc: "Points can be used in the Shop.",
-    rule_action: "Action", rule_points: "Points", points_label: "Current Points:",
+    rule_action: "Action", rule_points: "Points", points_label: "Coins:",
     dice_title: "Guess Size", dice_desc: "Small (1-3) or Big (4-6). Pays 1:1.",
     bet_ph: "Bet Amount (10-1000)", small: "SMALL (1-3)", big: "BIG (4-6)",
     win: "YOU WIN!", lose: "YOU LOSE", points_col: "Coins", edit_points: "Mod", edit_points_prompt: "Enter points:",
-    pool_std: "Standard", pool_ltd: "Limited", ltd_cost: "Cost:", start_ltd: "SUMMON"
+    pool_std: "Standard", pool_ltd: "Limited", ltd_cost: "Cost:", start_ltd: "SUMMON",
+    login_tab: "Login", reg_tab: "Register", username_ph: "Username (a-z, 0-9)", nick_ph: "Nickname (Display)", pass_ph: "Password"
   },
   zh: {
     ready: "准备召唤", start: "召唤", showcase: "精选图库", loading: "加载中...",
     changelog: "更新履历", more: "展开更多", less: "收起列表",
-    id_check: "身份验证", reg_tip: "请输入代号以继续访问。",
-    confirm: "确认注册", profile: "个人档案", name: "代号：", draws: "召唤次数：",
+    id_check: "身份验证", reg_tip: "请登录或注册以继续。",
+    confirm: "提交", profile: "个人档案", name: "昵称：", draws: "召唤次数：",
     logout: "注销", close: "关闭", guest: "未登录",
-    retry: "重试", again: "再召唤", name_req: "请输入代号",
-    net_err: "网络错误", reg_ok: "注册成功", success: "召唤成功",
-    fail: "连接中断，显示保底影像", clear_confirm: "确定清除本地数据吗？",
+    retry: "重试", again: "再召唤", name_req: "请填写完整信息",
+    net_err: "网络错误", reg_ok: "注册成功，请登录", success: "召唤成功",
+    fail: "连接中断", clear_confirm: "确定要注销吗？",
     btn_lang: "汉", back: "返回", page: "第", admin_panel: "管理面板",
     admin_auth: "管理员认证", pass_tip: "请输入管理员密码", edit_log: "可视化日志编辑器",
     save: "保存更改", verify_fail: "密码错误", save_ok: "保存成功！", save_err: "保存失败",
     add_row: "+ 新增一行", del: "删", date: "日期", ver: "版本", content: "内容",
     users_title: "注册用户列表", users_tab: "用户管理", log_tab: "更新日志",
-    user_col: "用户", draws_col: "召唤数", last_active_col: "最近活跃", action_col: "操作",
-    delete_confirm: "确定删除该用户吗？此操作不可逆。", name_taken: "代号已被占用",
+    user_col: "账号/昵称", draws_col: "召唤数", last_active_col: "最近活跃", action_col: "操作",
+    delete_confirm: "确定删除该用户吗？此操作不可逆。", name_taken: "昵称或账号已被占用",
     delete_ok: "用户已删除",
     craft_title: "卡片合成", craft_desc: "消耗5张低阶卡片，进行一次高阶召唤。",
     shop_title: "积分商店", shop_desc: "消耗积分购买指定等级的卡包。",
@@ -699,7 +774,8 @@ const I18N_TEXT = {
     dice_title: "猜大小", dice_desc: "小(1-3) 或 大(4-6)，赔率1:1。",
     bet_ph: "下注金额 (10-1000)", small: "押小 (1-3)", big: "押大 (4-6)",
     win: "你赢了！", lose: "你输了", points_col: "积分", edit_points: "改", edit_points_prompt: "输入要增加的积分:",
-    pool_std: "常驻池", pool_ltd: "限定池", ltd_cost: "消耗:", start_ltd: "召唤"
+    pool_std: "常驻池", pool_ltd: "限定池", ltd_cost: "消耗:", start_ltd: "召唤",
+    login_tab: "登录", reg_tab: "注册", username_ph: "账号 (英文/数字)", nick_ph: "昵称 (显示名)", pass_ph: "密码"
   }
 };
 
@@ -765,7 +841,7 @@ function getHtmlPage() {
     <div class="logo"><i class="fas fa-cube"></i> Gacha<span>System</span></div>
     <div style="display:flex; gap:10px; align-items:center;">
        <div class="user-pill" onclick="App.openProfile()">
-         <i class="fas fa-user-astronaut"></i> <span id="navUsername">Guest</span>
+         <i class="fas fa-user-astronaut"></i> <span id="navNickname">Guest</span>
          <span id="navTitle"></span>
        </div>
        <div class="lang-btn" onclick="App.toggleLang()" id="langBtn">En</div>
@@ -832,12 +908,26 @@ function getHtmlPage() {
 
   <div id="authModal" class="modal">
     <div class="modal-content">
-      <h3 style="margin-top:0; color:var(--text-main)" data-i18n="id_check">Identity Check</h3>
-      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px;" data-i18n="reg_tip">Register a codename to continue.</p>
-      <div class="input-group">
-        <input type="text" id="usernameInput" placeholder="Codename..." maxlength="12">
+      <h3 style="margin-top:0; color:var(--text-main)" data-i18n="id_check">Authentication</h3>
+      <div class="auth-tabs">
+         <div class="auth-tab active" id="tab-login" onclick="App.switchAuth('login')" data-i18n="login_tab">Login</div>
+         <div class="auth-tab" id="tab-register" onclick="App.switchAuth('register')" data-i18n="reg_tab">Register</div>
       </div>
-      <button class="btn" style="width:100%;" onclick="App.updateProfile()" data-i18n="confirm">Confirm</button>
+      
+      <div id="authForm">
+        <!-- Login Form -->
+        <div class="input-group">
+            <input type="text" id="authUsername" placeholder="Username (a-z, 0-9)" data-i18n="username_ph">
+        </div>
+        <div class="input-group" id="nickGroup" style="display:none;">
+            <input type="text" id="authNickname" placeholder="Nickname (Display Name)" data-i18n="nick_ph">
+        </div>
+        <div class="input-group">
+            <input type="password" id="authPassword" placeholder="Password" data-i18n="pass_ph">
+        </div>
+      </div>
+      
+      <button class="btn" style="width:100%;" onclick="App.doAuth()" data-i18n="confirm">Confirm</button>
     </div>
   </div>
 
@@ -845,8 +935,8 @@ function getHtmlPage() {
     <div class="modal-content">
       <h3 style="margin-top:0;" data-i18n="profile">User Profile</h3>
       <div style="background:#F8FAFC; padding:16px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; text-align:left; border:1px solid #E2E8F0;">
-        <div style="margin-bottom:8px;"><strong data-i18n="name">Name:</strong> <span id="profileName"></span></div>
-        <div style="font-size:0.8rem; color:#94A3B8; word-break:break-all;"><strong>UUID:</strong> <span id="profileId"></span></div>
+        <div style="margin-bottom:8px;"><strong data-i18n="name">Nickname:</strong> <span id="profileNickname"></span></div>
+        <div style="font-size:0.8rem; color:#94A3B8; word-break:break-all;"><strong>ID:</strong> <span id="profileUsername"></span></div>
         <div style="margin-top:8px;"><strong data-i18n="draws">Total Draws:</strong> <span id="profileCount" style="color:var(--primary); font-weight:bold;">0</span></div>
         <div style="margin-top:8px; display:flex; align-items:center; gap:5px;">
            <strong data-i18n="points_label">Points:</strong> 
@@ -986,7 +1076,6 @@ function getHtmlPage() {
     </div>
   </div>
 
-  <!-- [新增] 公告弹窗 -->
   <div id="announcementModal" class="modal">
     <div class="modal-content" style="max-width: 600px;">
       <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
@@ -995,7 +1084,6 @@ function getHtmlPage() {
         <h3 id="annTitle" style="margin: 10px 0 0 0;">Announcement</h3>
       </div>
       <div id="annContent" class="md-content">
-        <!-- Markdown 内容将渲染在这里 -->
       </div>
       <div style="margin-top: 20px;">
         <button class="btn" style="width: 100%;" onclick="App.closeAnnouncement()">OK</button>
@@ -1010,12 +1098,13 @@ function getHtmlPage() {
   <script>
     const TEXT = ${JSON.stringify(I18N_TEXT)};
     const App = {
-      userId: localStorage.getItem('moe_uuid') || crypto.randomUUID(),
+      username: localStorage.getItem('moe_username'),
       lang: localStorage.getItem('moe_lang') || 'en',
-      username: null, loading: false, adminPwd: null, logsData: [], currentAdminTab: 'log', inventory: {},
+      nickname: null, loading: false, adminPwd: null, logsData: [], currentAdminTab: 'log', inventory: {},
       currentPool: 'std',
+      authMode: 'login', // 'login' or 'register'
+      
       async init() {
-        localStorage.setItem('moe_uuid', this.userId);
         this.applyLang();
         await this.fetchUserInfo();
         this.loadShowcase();
@@ -1043,6 +1132,12 @@ function getHtmlPage() {
             btn.innerHTML = \`<i class="fas fa-bolt"></i> \${t.start || 'START'}\`;
         }
       },
+      switchAuth(mode) {
+        this.authMode = mode;
+        document.getElementById('tab-login').classList.toggle('active', mode === 'login');
+        document.getElementById('tab-register').classList.toggle('active', mode === 'register');
+        document.getElementById('nickGroup').style.display = mode === 'register' ? 'block' : 'none';
+      },
       applyLang() {
         const t = TEXT[this.lang];
         document.getElementById('langBtn').innerText = t.btn_lang;
@@ -1050,20 +1145,30 @@ function getHtmlPage() {
           const key = el.getAttribute('data-i18n');
           if(t[key]) { if(el.tagName === 'INPUT') el.placeholder = t[key]; else el.innerText = t[key]; }
         });
-        if(!this.username) document.getElementById('navUsername').innerText = t.guest;
+        if(!this.username) document.getElementById('navNickname').innerText = t.guest;
         if(document.getElementById('adminPanel').style.display === 'block') { this.renderAdminTable(); if(this.currentAdminTab === 'users') this.loadAdminUsers(); }
       },
       async fetchUserInfo() {
+        if (!this.username) { document.getElementById('authModal').classList.add('show'); return; }
         try {
-          const res = await fetch('/user/info', { headers: { 'X-User-ID': this.userId } });
+          const res = await fetch('/user/info', { headers: { 'X-User-ID': this.username } });
           const data = await res.json();
-          if (data && data.username) { this.username = data.username; this.updateUI(data); } else { document.getElementById('authModal').classList.add('show'); }
+          if (data && data.username) { 
+              this.username = data.username; 
+              this.nickname = data.nickname;
+              this.updateUI(data); 
+          } else { 
+              // Invalid session or deleted user
+              localStorage.removeItem('moe_username');
+              this.username = null;
+              document.getElementById('authModal').classList.add('show'); 
+          }
         } catch(e) {}
       },
       updateUI(user) {
-        document.getElementById('navUsername').innerText = user.username;
-        document.getElementById('profileName').innerText = user.username;
-        document.getElementById('profileId').innerText = this.userId;
+        document.getElementById('navNickname').innerText = user.nickname || user.username;
+        document.getElementById('profileNickname').innerText = user.nickname;
+        document.getElementById('profileUsername').innerText = user.username;
         document.getElementById('profileCount').innerText = user.drawCount || 0;
         document.getElementById('profileCoins').innerText = user.coins || 0;
         const titleEl = document.getElementById('navTitle');
@@ -1078,15 +1183,47 @@ function getHtmlPage() {
          document.getElementById('invSR').innerText = inv.SR || 0; document.getElementById('craft-item-SSR').classList.toggle('can-craft', (inv.SR || 0) >= 5);
          document.getElementById('invSSR').innerText = inv.SSR || 0; document.getElementById('craft-item-UR').classList.toggle('can-craft', (inv.SSR || 0) >= 5);
       },
-      async updateProfile() {
-        const name = document.getElementById('usernameInput').value.trim();
+      async doAuth() {
+        const u = document.getElementById('authUsername').value.trim();
+        const p = document.getElementById('authPassword').value;
+        const n = document.getElementById('authNickname').value.trim();
         const t = TEXT[this.lang];
-        if(!name) return this.toast(t.name_req, 'warn');
-        try {
-          const res = await fetch('/user/update', { method: 'POST', body: JSON.stringify({ username: name }), headers: { 'X-User-ID': this.userId, 'Content-Type': 'application/json' } });
-          const d = await res.json();
-          if(d.success) { this.username = d.user.username; this.updateUI(d.user); document.getElementById('authModal').classList.remove('show'); this.toast(t.reg_ok, 'ok'); } else { const err = d.error === 'Name Taken' ? t.name_taken : d.error; this.toast(err, 'warn'); }
-        } catch(e) { this.toast(t.net_err, 'warn'); }
+        
+        if (this.authMode === 'register') {
+             if (!u || !p || !n) return this.toast(t.name_req, 'warn');
+             // Register
+             try {
+                const res = await fetch('/auth/register', { 
+                    method: 'POST', 
+                    body: JSON.stringify({ username: u, nickname: n, password: p }) 
+                });
+                const d = await res.json();
+                if(d.success) { 
+                    this.toast(t.reg_ok, 'ok'); 
+                    this.switchAuth('login');
+                } else { 
+                    this.toast(d.error, 'warn'); 
+                }
+             } catch(e) { this.toast(t.net_err, 'warn'); }
+        } else {
+             if (!u || !p) return this.toast(t.name_req, 'warn');
+             // Login
+             try {
+                const res = await fetch('/auth/login', { 
+                    method: 'POST', 
+                    body: JSON.stringify({ username: u, password: p }) 
+                });
+                const d = await res.json();
+                if(d.success) { 
+                    this.username = d.user.username;
+                    localStorage.setItem('moe_username', d.user.username);
+                    this.updateUI(d.user);
+                    document.getElementById('authModal').classList.remove('show');
+                } else { 
+                    this.toast(d.error || t.fail, 'warn'); 
+                }
+             } catch(e) { this.toast(t.net_err, 'warn'); }
+        }
       },
       async checkAnnouncement() {
         try {
@@ -1095,10 +1232,8 @@ function getHtmlPage() {
       
           if (data.enabled) {
             const lastReadId = localStorage.getItem('moe_ann_read');
-            // 如果 ID 不同，说明是新公告，或者是用户从未读过
             if (lastReadId !== String(data.id)) {
               this.showAnnouncementModal(data);
-              // 记录当前 ID，防止刷新后重复弹窗 (逻辑放在关闭时执行也可以，这里放在显示时)
               this.currentAnnId = data.id; 
             }
           }
@@ -1106,7 +1241,6 @@ function getHtmlPage() {
       },
       showAnnouncementModal(data) {
         document.getElementById('annTitle').innerText = data.title || 'Notification';
-        // 使用 marked 解析 Markdown
         document.getElementById('annContent').innerHTML = marked.parse(data.content || '');
         document.getElementById('announcementModal').classList.add('show');
       },
@@ -1207,7 +1341,7 @@ function getHtmlPage() {
 
           const res = await fetch(url, { 
               method: method,
-              headers: { 'X-User-ID': this.userId } 
+              headers: { 'X-User-ID': this.username } 
           });
           const data = await res.json();
           
@@ -1215,14 +1349,17 @@ function getHtmlPage() {
               if (data.error === 'Not Enough Points') {
                    throw new Error(t.no_money || 'Need Points');
               }
+              if (data.error === 'USER_NOT_FOUND') {
+                   document.getElementById('authModal').classList.add('show');
+                   throw new Error("Please Login");
+              }
               throw data.error;
           }
           this.handleDrawResult(data, img, tag, btn, t);
         } catch(e) { 
           this.loading = false; 
           this.switchPool(this.currentPool);
-          if(e.message === 'USERNAME_REQUIRED') document.getElementById('authModal').classList.add('show'); 
-          else this.toast(e.message || e.toString(), 'warn'); 
+          this.toast(e.message || e.toString(), 'warn'); 
         }
       },
       async doCraft(target) {
@@ -1235,7 +1372,7 @@ function getHtmlPage() {
         const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag'); const t = TEXT[this.lang];
         btn.innerHTML = '<i class="fas fa-flask fa-spin"></i>'; img.classList.remove('show'); tag.classList.remove('show');
         try {
-          const res = await fetch('/user/craft', { method: 'POST', body: JSON.stringify({ targetRarity: target }), headers: { 'X-User-ID': this.userId } });
+          const res = await fetch('/user/craft', { method: 'POST', body: JSON.stringify({ targetRarity: target }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           if(data.error) throw new Error(data.error);
           this.handleDrawResult(data, img, tag, btn, t, true);
@@ -1300,7 +1437,7 @@ function getHtmlPage() {
         const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag');
         btn.innerHTML = '<i class="fas fa-shopping-cart fa-spin"></i>'; img.classList.remove('show'); tag.classList.remove('show');
         try {
-          const res = await fetch('/shop/buy', { method: 'POST', body: JSON.stringify({ targetRarity: rarity }), headers: { 'X-User-ID': this.userId } });
+          const res = await fetch('/shop/buy', { method: 'POST', body: JSON.stringify({ targetRarity: rarity }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           if(data.error) throw new Error(data.error);
           this.handleDrawResult(data, img, tag, btn, t, true);
@@ -1312,7 +1449,7 @@ function getHtmlPage() {
         this.loading = true; const icon = document.getElementById('diceIcon'); const msg = document.getElementById('diceMsg'); const t = TEXT[this.lang];
         icon.classList.add('dice-result-anim'); msg.innerText = t.loading;
         try {
-          const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-User-ID': this.userId } });
+          const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           setTimeout(() => {
              this.loading = false; icon.classList.remove('dice-result-anim');
@@ -1338,7 +1475,7 @@ function getHtmlPage() {
       switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'ann') this.loadAdminAnnouncement();},
       async loadAdminUsers() {
         const tbody = document.getElementById('userTbody'); tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>'; const t = TEXT[this.lang];
-        try { const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); const data = await res.json(); if(data.success && data.users.length) { tbody.innerHTML = data.users.map(u => \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.id.slice(0,8)}...</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.id}')">\${t.edit_points}</button></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.id}')">\${t.del}</button></td></tr>\`).join(''); } else { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Empty</td></tr>'; } } catch(e) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Err</td></tr>'; }
+        try { const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); const data = await res.json(); if(data.success && data.users.length) { tbody.innerHTML = data.users.map(u => \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">\${t.edit_points}</button></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">\${t.del}</button></td></tr>\`).join(''); } else { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Empty</td></tr>'; } } catch(e) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Err</td></tr>'; }
       },
       async adminEditPoints(userId) { const t = TEXT[this.lang]; const val = prompt(t.edit_points_prompt); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast(t.save_ok, 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('Net Error', 'warn'); } },
       async deleteUser(id) { const t = TEXT[this.lang]; if(!confirm(t.delete_confirm)) return; try { const res = await fetch('/admin/delete-user', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: id }) }); const d = await res.json(); if(d.success) { this.toast(t.delete_ok, 'ok'); this.loadAdminUsers(); } else { this.toast('Error', 'warn'); } } catch(e) { this.toast(t.net_err, 'warn'); } },
@@ -1346,7 +1483,8 @@ function getHtmlPage() {
       updateLog(idx, field, val) { this.logsData[idx][field] = val; }, addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
       async saveAdminLog() { const t = TEXT[this.lang]; try { const res = await fetch('/admin/save-changelog', { method: 'POST', body: JSON.stringify({password: this.adminPwd, logs: this.logsData}) }); const d = await res.json(); if(d.success) { this.toast(t.save_ok, 'ok'); this.loadChangelog(); } else { this.toast(t.save_err, 'warn'); } } catch(e) { this.toast(t.save_err, 'warn'); } },
       openProfile() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('profileModal').classList.add('show'); },
-      closeModals() { document.querySelectorAll('.modal').forEach(m => m.classList.remove('show')); }, logout() { if(confirm(TEXT[this.lang].clear_confirm)) { localStorage.removeItem('moe_uuid'); location.reload(); } },
+      closeModals() { document.querySelectorAll('.modal').forEach(m => m.classList.remove('show')); }, 
+      logout() { if(confirm(TEXT[this.lang].clear_confirm)) { localStorage.removeItem('moe_username'); location.reload(); } },
       preview(src) { document.getElementById('bigImg').src=src; document.getElementById('imgModal').classList.add('show'); },
       toast(msg, type) { const div = document.createElement('div'); div.className = 'toast'; div.innerHTML = \`<span>\${type==='ok'?'✅':'⚠️'}</span> \${msg}\`; document.body.appendChild(div); setTimeout(() => div.remove(), 2500); }
     };
