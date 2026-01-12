@@ -90,13 +90,57 @@
    npx wrangler deploy
    ```
 
+### 网页界面部署（Cloudflare Dashboard）
+
+如果你不想使用命令行工具，可以通过 Cloudflare Dashboard 网页界面快速部署本系统。
+
+1. **登录 Cloudflare Dashboard**
+   - 访问 [Cloudflare Dashboard](https://dash.cloudflare.com) 并登录你的账户。
+   - 在左侧导航栏中选择 “Workers & Pages”。
+
+2. **创建 Worker**
+   - 点击 “Create application” → “Create Worker”。
+   - 给 Worker 起一个名字（例如 `gacha-system`），选择适合的区域。
+   - 在代码编辑器中，清空默认代码，将本项目的 `worker.js` 文件内容全部粘贴进去。
+
+3. **配置 KV 命名空间绑定**
+   - 在 Worker 编辑页面，点击 “Settings” 标签页，然后选择 “Variables”。
+   - 在 “KV Namespace Bindings” 部分，点击 “Add binding”。
+   - 添加两个绑定：
+     - **Binding name**: `USER_RECORDS` → 点击 “Create new namespace”，输入名称（例如 `USER_RECORDS`）并保存。
+     - **Binding name**: `RECENT_REQUESTS` → 同样创建新的命名空间或使用已有的。
+   - 确保两个绑定的名称与代码中的 `env.USER_RECORDS` 和 `env.RECENT_REQUESTS` 一致。
+
+4. **配置 R2 存储桶绑定**
+   - 仍在 “Variables” 页面，找到 “R2 Bucket Bindings”，点击 “Add binding”。
+   - **Binding name**: `R2_BUCKET` → 点击 “Create new bucket”，输入存储桶名称（例如 `gacha-images`）并保存。
+
+5. **设置环境变量**
+   - 在 “Environment Variables” 部分，点击 “Add variable”。
+   - **Variable name**: `admin`
+   - **Value**: 设置一个管理员密码（例如 `my-secret-password`）。
+   - 点击 “Save”。
+
+6. **部署 Worker**
+   - 返回编辑页面，点击右上角的 “Deploy” 按钮。
+   - 部署完成后，你会看到 Worker 的访问地址（例如 `https://gacha-system.<your-subdomain>.workers.dev`）。
+
+7. **测试部署**
+   - 访问 Worker 地址，你应该能看到抽卡系统的界面。
+   - 首次访问时，系统会提示你注册账号。注册后即可开始使用。
+
+**注意**：网页界面部署不会自动创建 `wrangler.toml` 文件，因此如果你后续需要切换到 CLI 部署，需要手动创建相应的配置文件。
+
 ## 📖 使用说明
 
 ### 用户功能
 
 1. **注册登录**
-   - 首次访问需要设置用户名（1-12个字符）
-   - 系统会自动生成 UUID 并存储在本地
+   - 系统采用账号/密码注册登录机制，需通过前端界面进行认证。
+   - **账号规则**：3-16位英文字母或数字（不允许特殊字符）。
+   - **昵称规则**：最长12个字符，用于显示。
+   - **密码**：注册时设置，登录时验证。
+   - 注册成功后，系统会将用户名存储在本地，后续请求通过 `X-User-ID` 头传递。
 
 2. **抽卡系统**
    - **常驻池**：免费抽卡，获得随机稀有度卡片
@@ -133,8 +177,10 @@
 ## 🔧 API 接口
 
 ### 用户相关
+- `POST /auth/register` - 注册新用户（需用户名、昵称、密码）
+- `POST /auth/login` - 用户登录
 - `GET /user/info` - 获取用户信息
-- `POST /user/update` - 更新用户名
+- `POST /user/update-profile` - 更新用户昵称或密码
 - `POST /user/craft` - 卡片合成
 
 ### 抽卡相关
