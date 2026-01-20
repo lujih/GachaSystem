@@ -1,6 +1,3 @@
-
----
-
 # 🎲 Serverless Anime Gacha System
 
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
