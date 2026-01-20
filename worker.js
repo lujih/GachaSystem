@@ -228,11 +228,25 @@ class GachaService {
     // 1. 获取图片 (优先 KV 缓存，无缓存则现场抓取)
     let assetData = await this.getOrFetchAsset(currentUser.username, CONFIG.SOURCES);
 
-    // 2. 准备数据
+    // 2. 检查是否为默认图片（无效抽卡）
+    if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
+      // 抽到默认图片，视为无效抽卡
+      // 不加金币、不加背包、不更新排行榜和图库
+      // 只返回失败信息给前端
+      return jsonResponse({
+        success: false,
+        rarity: assetData.rarity,
+        imageUrl: assetData.imageUrl,
+        pointsEarned: 0,
+        message: '抽卡失败，获得默认图片'
+      });
+    }
+
+    // 3. 准备数据（有效抽卡）
     const points = CONFIG.GAME.POINTS[assetData.rarity] || 5;
     const timestamp = Date.now();
 
-    // 3. [D1 Batch] 事务执行
+    // 4. [D1 Batch] 事务执行
     // 使用 UPSERT 语法处理背包 (SQLite: ON CONFLICT DO UPDATE)
     const batch = [
         // A. 加金币 & 增加抽卡数
@@ -252,12 +266,19 @@ class GachaService {
 
     await this.env.DB.batch(batch);
 
-    // 4. [KV] 异步预加载下一张图
+    // 5. [KV] 异步预加载下一张图
     this.ctx.waitUntil(this.refillBuffer(currentUser.username));
 
-    // 5. [KV] 异步更新排行榜 (非关键路径，保持在 KV 以降低 D1 读压力)
+    // 6. [KV] 异步更新排行榜 (非关键路径，保持在 KV 以降低 D1 读压力)
     this.ctx.waitUntil(updateLeaderboard(this.env, {
         username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp
+    }));
+
+    // 7. [KV] 异步更新图库索引
+    this.ctx.waitUntil(updateGalleryIndex(this.env, {
+        url: assetData.imageUrl,
+        username: currentUser.username,
+        ts: timestamp
     }));
 
     // 获取最新余额返回前端 (可选，为了 UI 即时更新)
@@ -289,7 +310,23 @@ class GachaService {
     // 2. 扣款成功，获取资源
     let assetData = await this.getOrFetchAsset(currentUser.username, CONFIG.LIMITED.SOURCES);
 
-    // 3. [D1 Batch] 发货 & 日志
+    // 3. 检查是否为默认图片（无效抽卡）
+    if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
+      // 抽到默认图片，视为无效抽卡
+      // 退还积分给用户，不增加背包，不更新图库索引
+      await this.env.DB.prepare(
+          'UPDATE users SET coins = coins + ? WHERE id = ?'
+      ).bind(cost, currentUser.id).run();
+      
+      return jsonResponse({
+        success: false,
+        rarity: assetData.rarity,
+        imageUrl: assetData.imageUrl,
+        message: '限定池抽卡失败，获得默认图片，积分已退还'
+      });
+    }
+
+    // 4. [D1 Batch] 发货 & 日志（有效抽卡）
     await this.env.DB.batch([
         this.env.DB.prepare(`
             INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
@@ -298,6 +335,13 @@ class GachaService {
         this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)')
             .bind(currentUser.id, currentUser.username, 'draw_limited', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
+
+    // [KV] 异步更新图库索引
+    this.ctx.waitUntil(updateGalleryIndex(this.env, {
+        url: assetData.imageUrl,
+        username: currentUser.username,
+        ts: Date.now()
+    }));
     
     return jsonResponse({ success: true, rarity: assetData.rarity, imageUrl: assetData.imageUrl });
   }
@@ -325,9 +369,25 @@ class GachaService {
     // 2. 扣除成功，获取目标稀有度的图片并入库
     // 强制获取指定稀有度的图源
     const targetSource = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
-    const assetData = await this.fetchAndUpload(currentUser.username, targetSource); 
+    const assetData = await this.fetchAndUpload(currentUser.username, targetSource);
 
-    // 3. [D1] 发放高阶卡
+    // 3. 检查是否为默认图片（无效合成）
+    if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
+      // 合成获得默认图片，视为无效合成
+      // 返还消耗的5张低阶卡片，不增加背包，不更新图库索引
+      await this.env.DB.prepare(
+          'UPDATE inventory SET count = count + 5 WHERE user_id = ? AND rarity = ?'
+      ).bind(currentUser.id, costRarity).run();
+      
+      return jsonResponse({
+        success: false,
+        rarity: assetData.rarity,
+        imageUrl: assetData.imageUrl,
+        message: '卡片合成失败，获得默认图片，消耗的卡片已返还'
+      });
+    }
+
+    // 4. [D1] 发放高阶卡（有效合成）
     await this.env.DB.batch([
         this.env.DB.prepare(`
             INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
@@ -336,6 +396,13 @@ class GachaService {
         this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)')
             .bind(currentUser.id, currentUser.username, 'craft', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
+
+    // [KV] 异步更新图库索引
+    this.ctx.waitUntil(updateGalleryIndex(this.env, {
+        url: assetData.imageUrl,
+        username: currentUser.username,
+        ts: Date.now()
+    }));
 
     // 返回最新背包以便前端更新
     return this.userService.getInfo(currentUser);
@@ -359,12 +426,36 @@ class GachaService {
     const source = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
     const assetData = await this.fetchAndUpload(currentUser.username, source);
 
+    // 3. 检查是否为默认图片（无效购买）
+    if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
+      // 购买获得默认图片，视为无效购买
+      // 退还积分给用户，不增加背包，不更新图库索引
+      await this.env.DB.prepare(
+          'UPDATE users SET coins = coins + ? WHERE id = ?'
+      ).bind(price, currentUser.id).run();
+      
+      return jsonResponse({
+        success: false,
+        rarity: assetData.rarity,
+        imageUrl: assetData.imageUrl,
+        message: '商店购买失败，获得默认图片，积分已退还'
+      });
+    }
+
+    // 4. 有效购买，发放卡片
     await this.env.DB.batch([
          this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`)
              .bind(currentUser.id, assetData.rarity),
          this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)')
              .bind(currentUser.id, currentUser.username, 'shop_buy', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
+
+    // [KV] 异步更新图库索引
+    this.ctx.waitUntil(updateGalleryIndex(this.env, {
+        url: assetData.imageUrl,
+        username: currentUser.username,
+        ts: Date.now()
+    }));
 
     return jsonResponse({ success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity });
   }
