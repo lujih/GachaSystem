@@ -1,49 +1,49 @@
-# 🎲 无服务器动漫抽卡系统
+# 🎲 动漫抽卡系统
 
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
-![Cloudflare D1](https://img.shields.io/badge/Database-D1_(SQLite)-blue)
-![Cloudflare KV](https://img.shields.io/badge/Storage-KV-orange)
-![Cloudflare R2](https://img.shields.io/badge/Assets-R2-green)
-![License](https://img.shields.io/badge/license-MIT-green)
+![Cloudflare D1](https://img.shields.io/badge/数据库-D1_(SQLite)-blue)
+![Cloudflare KV](https://img.shields.io/badge/存储-KV-orange)
+![Cloudflare R2](https://img.shields.io/badge/资源-R2-green)
+![许可证](https://img.shields.io/badge/许可证-MIT-green)
 
-一个全栈、轻量级、支持事务的抽卡（召唤）游戏引擎，完全运行在 **Cloudflare Workers** 上。采用无服务器架构，使用 **D1** 存储用户数据，**KV** 进行高速缓存，**R2** 存储资产。
+一个完全跑在 **Cloudflare Workers** 上的全栈、轻量、支持事务的抽卡游戏引擎。采用无服务器架构，用 **D1** 存数据保证一致性，**KV** 做高速缓存，**R2** 存放各种资源。
 
-## ✨ 功能特性
+## ✨ 核心功能
 
-*   **用户系统**：安全的注册与登录，支持会话管理（KV 缓存认证）。
-*   **抽卡机制**：
-    *   **常驻池**：常规召唤，按稀有度概率抽取。
-    *   **限定池**：特殊活动，消耗更高，包含专属逻辑。
-    *   **资产管理**：自动从外部 API 获取动漫图片，并持久化存储在 **Cloudflare R2** 中。
-*   **经济系统**：
-    *   **积分**：通过抽卡或赢得小游戏获得积分。
-    *   **商店**：购买特定稀有度的卡包。
-    *   **合成**：合成系统（消耗 5 张低阶卡获得 1 张高阶卡）。
-*   **小游戏**："猜大小"骰子赌博，赢取额外积分。
-*   **数据完整性**：使用 **D1 事务（批量）** 确保积分和库存始终保持同步。
-*   **社交与管理**：
-    *   **图库**：浏览已收集的卡片（支持懒加载）。
-    *   **排行榜**：实时显示最新抽卡记录。
-    *   **管理面板**：管理用户、编辑更新日志、发布公告。
-*   **国际化**：内置支持 **英文** 和 **简体中文**。
+*   **用户系统**：安全注册登录，带会话管理（认证信息放 KV 缓存）
+*   **抽卡玩法**：
+    *   **常驻池**：普通抽卡，按概率出不同稀有度卡牌
+    *   **限定池**：活动专属，消耗更高且有特殊规则
+    *   **资源管理**：自动从外部 API 抓动漫图，永久存到 **Cloudflare R2**
+*   **经济体系**：
+    *   **货币**：抽卡或玩小游戏都能赚金币
+    *   **商店**：直接购买特定稀有度的卡包
+    *   **合成**：5 张低阶卡可以合成 1 张高阶卡（分解重练）
+*   **小游戏**：“猜大小”骰子玩法，赚点外快
+*   **数据安全**：用 **D1 事务（批量操作）** 确保金币和背包数据永不乱套
+*   **社交管理**：
+    *   **图鉴**：翻看已收集的卡牌（懒加载优化）
+    *   **排行榜**：实时显示最新抽卡记录
+    *   **管理后台**：管理用户、编辑更新日志、发全服公告
+*   **多语言**：内置 **英文** 和 **简体中文**
 
-## 🛠 技术栈
+## 🛠️ 技术栈
 
-*   **运行时**：Cloudflare Workers
-*   **数据库**：Cloudflare D1 (SQLite) - *存储用户、库存、日志*
-*   **缓存/会话**：Cloudflare KV - *存储会话、预加载缓冲区、排行榜*
-*   **对象存储**：Cloudflare R2 - *存储卡片图片*
-*   **前端**：原生 HTML/CSS/JS（嵌入在 Worker 中，单文件）
+*   **运行环境**：Cloudflare Workers
+*   **数据库**：Cloudflare D1 (SQLite) - *存用户、背包、日志*
+*   **缓存/会话**：Cloudflare KV - *存会话、预加载数据、排行榜*
+*   **文件存储**：Cloudflare R2 - *存卡牌图片*
+*   **前端界面**：原生 HTML/CSS/JS（直接嵌在 Worker 里，单文件搞定）
 
-## 🚀 部署指南
+## 🚀 快速部署
 
-### 前提条件
+### 准备一下
 
-1.  一个 Cloudflare 账户。
-2.  已安装 Node.js 和 npm。
-3.  已安装 [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) (`npm install -g wrangler`)。
+1.  有个 Cloudflare 账号
+2.  电脑装好 Node.js 和 npm
+3.  安装 [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) (`npm install -g wrangler`)
 
-### 1. 克隆与设置
+### 1. 拉代码 & 装依赖
 
 ```bash
 git clone https://github.com/your-username/your-repo.git
@@ -53,16 +53,16 @@ npm install
 
 ### 2. 创建 Cloudflare 资源
 
-运行以下命令在您的 Cloudflare 账户中创建必要的资源：
+在 Cloudflare 账号里创建需要的资源：
 
 ```bash
-# 登录到 Cloudflare
+# 登录 Cloudflare
 wrangler login
 
 # 创建 D1 数据库
-wrangler d1 create gacha-db
+wrangler d1 create chouka
 
-# 创建 KV 命名空间
+# 创建 KV 存储空间
 wrangler kv:namespace create "KV_CACHE"
 wrangler kv:namespace create "RECENT_REQUESTS"
 
@@ -72,20 +72,20 @@ wrangler r2 bucket create gacha-images
 
 ### 3. 配置 `wrangler.toml`
 
-在根目录创建或编辑 `wrangler.toml`。**将 ID 替换为第 2 步生成的 ID。**
+在项目根目录创建或修改 `wrangler.toml` 文件。**记得把第二步生成的 ID 填进去**
 
 ```toml
-name = "gacha-worker"
-main = "src/worker.js"
-compatibility_date = "2023-12-01"
+name = "chouka"
+main = "worker.js"
+compatibility_date = "2026-01-16"
 
-# D1 数据库
+# D1 数据库配置
 [[d1_databases]]
 binding = "DB"
-database_name = "gacha-db"
+database_name = "chouka"
 database_id = "YOUR_D1_DATABASE_ID_HERE"
 
-# KV 命名空间
+# KV 配置
 [[kv_namespaces]]
 binding = "KV_CACHE"
 id = "YOUR_KV_CACHE_ID_HERE"
@@ -94,28 +94,25 @@ id = "YOUR_KV_CACHE_ID_HERE"
 binding = "RECENT_REQUESTS"
 id = "YOUR_RECENT_REQUESTS_ID_HERE"
 
-# R2 存储桶
+# R2 配置
 [[r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "gacha-images"
 
-# 管理员密码
+# 管理员密码（自己设个安全的）
 [vars]
 admin = "your_secure_admin_password"
 ```
 
-### 4. 初始化数据库架构
+### 4. 初始化数据库
 
-执行 SQL 架构以在 D1 中创建所需的表。
+创建数据库表结构：
 
-创建名为 `schema.sql` 的文件：
+新建 `schema.sql` 文件：
 
 ```sql
-DROP TABLE IF EXISTS users;
-DROP TABLE IF EXISTS inventory;
-DROP TABLE IF EXISTS logs;
-
-CREATE TABLE users (
+-- 用户表
+CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     nickname TEXT,
@@ -126,14 +123,16 @@ CREATE TABLE users (
     created_at INTEGER
 );
 
-CREATE TABLE inventory (
+-- 背包表 (使用联合主键防止重复)
+CREATE TABLE IF NOT EXISTS inventory (
     user_id INTEGER NOT NULL,
     rarity TEXT NOT NULL,
     count INTEGER DEFAULT 0,
     PRIMARY KEY (user_id, rarity)
 );
 
-CREATE TABLE logs (
+-- 日志表 (可选，用于后台查询)
+CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     username TEXT,
@@ -143,26 +142,27 @@ CREATE TABLE logs (
     created_at INTEGER
 );
 
-CREATE INDEX idx_inv_user ON inventory(user_id);
-CREATE INDEX idx_logs_user ON logs(user_id);
+-- 索引 (优化查询速度)
+CREATE INDEX IF NOT EXISTS idx_inv_user ON inventory(user_id);
+CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id);
 ```
 
-将架构应用到您的 D1 数据库：
+执行建表：
 
 ```bash
-# 用于本地开发
+# 本地开发用
 wrangler d1 execute gacha-db --local --file=./schema.sql
 
-# 用于生产部署
+# 正式部署用
 wrangler d1 execute gacha-db --file=./schema.sql
 ```
 
-### 5. R2 域名设置
+### 5. 设置 R2 访问域名
 
-1.  前往 Cloudflare 控制台 > R2 > 选择您的存储桶 (`gacha-images`)。
-2.  进入 **设置** > **公共访问**。
-3.  连接一个自定义域名（例如 `assets.yourdomain.com`）或允许 R2.dev 子域名。
-4.  **重要**：在 `src/worker.js` 中更新 `R2_DOMAIN` 常量为该域名：
+1.  进 Cloudflare 控制台 > R2 > 选你的存储桶 (`gacha-images`)
+2.  点 **设置** > **公共访问**
+3.  绑定自定义域名（比如 `assets.yourdomain.com`）或者直接用 R2.dev 子域名
+4.  **重要**：在 `worker.js` 里更新 `R2_DOMAIN` 配置：
 
 ```javascript
 const CONFIG = {
@@ -172,36 +172,36 @@ const CONFIG = {
 };
 ```
 
-### 6. 部署
+### 6. 一键部署
 
 ```bash
 wrangler deploy
 ```
 
-您的抽卡游戏现已上线！🚀
+搞定！你的抽卡游戏已经上线啦！🚀
 
-## ⚙️ 配置
+## ⚙️ 自定义配置
 
-您可以在 `src/worker.js` 的 `CONFIG` 对象中自定义游戏平衡和资源：
+游戏的各种参数可以在 `worker.js` 的 `CONFIG` 对象里调整：
 
-*   **SOURCES**：添加/删除用于图片生成的 API 端点。
-*   **GAME.POINTS**：更改每个稀有度获得的积分。
-*   **GAME.SHOP**：调整商店价格。
-*   **GAME.DICE**：调整赌博限制。
+*   **SOURCES**：添加/删减图片生成的 API 来源
+*   **GAME.POINTS**：调整不同稀有度卡牌给的积分
+*   **GAME.SHOP**：修改商店价格
+*   **GAME.DICE**：设置猜大小游戏的上下限
 
-## 🕹️ 管理面板
+## 🕹️ 管理后台
 
-通过点击 **"用户档案"** -> **"管理面板"** 访问管理面板。
-输入您在 `wrangler.toml` 中设置的密码（在 `[vars] admin` 下）。
+点 **"用户资料"** -> **"管理面板"** 就能进后台。
+密码就是刚才在 `wrangler.toml` 里设的那个（`[vars] admin`）。
 
-*   **更新日志编辑器**：更新可见的更新日志。
-*   **用户管理器**：查看统计数据、修改积分或封禁用户。
-*   **公告**：推送全局通知。
+*   **更新日志**：编辑游戏更新公告
+*   **用户管理**：查看数据、调金币、封号
+*   **公告发布**：发全服通知
 
-## 🤝 贡献
+## 🤝 参与贡献
 
-欢迎提交 Pull Request。对于重大更改，请先开启一个 Issue 讨论您想要更改的内容。
+欢迎提 Pull Request！如果想做大改动，建议先开个 issue 讨论一下。
 
-## 📄 许可证
+## 📄 开源协议
 
 [MIT](LICENSE)

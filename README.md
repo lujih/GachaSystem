@@ -60,7 +60,7 @@ Run the following commands to create the necessary resources in your Cloudflare 
 wrangler login
 
 # Create D1 Database
-wrangler d1 create gacha-db
+wrangler d1 create chouka
 
 # Create KV Namespaces
 wrangler kv:namespace create "KV_CACHE"
@@ -75,17 +75,17 @@ wrangler r2 bucket create gacha-images
 Create or edit `wrangler.toml` in the root directory. **Replace the IDs with the ones generated in Step 2.**
 
 ```toml
-name = "gacha-worker"
-main = "src/worker.js"
-compatibility_date = "2023-12-01"
+name = "chouka"
+main = "worker.js"
+compatibility_date = "2026-01-16"
 
-# D1 Database
+# D1 数据库配置
 [[d1_databases]]
 binding = "DB"
-database_name = "gacha-db"
+database_name = "chouka"
 database_id = "YOUR_D1_DATABASE_ID_HERE"
 
-# KV Namespaces
+# KV 配置
 [[kv_namespaces]]
 binding = "KV_CACHE"
 id = "YOUR_KV_CACHE_ID_HERE"
@@ -94,12 +94,12 @@ id = "YOUR_KV_CACHE_ID_HERE"
 binding = "RECENT_REQUESTS"
 id = "YOUR_RECENT_REQUESTS_ID_HERE"
 
-# R2 Bucket
+# R2 配置
 [[r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "gacha-images"
 
-# Admin Password
+# 管理员密码（自己设个安全的）
 [vars]
 admin = "your_secure_admin_password"
 ```
@@ -111,11 +111,8 @@ Execute the SQL schema to create the required tables in D1.
 Create a file named `schema.sql`:
 
 ```sql
-DROP TABLE IF EXISTS users;
-DROP TABLE IF EXISTS inventory;
-DROP TABLE IF EXISTS logs;
-
-CREATE TABLE users (
+-- 用户表
+CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     nickname TEXT,
@@ -126,14 +123,16 @@ CREATE TABLE users (
     created_at INTEGER
 );
 
-CREATE TABLE inventory (
+-- 背包表 (使用联合主键防止重复)
+CREATE TABLE IF NOT EXISTS inventory (
     user_id INTEGER NOT NULL,
     rarity TEXT NOT NULL,
     count INTEGER DEFAULT 0,
     PRIMARY KEY (user_id, rarity)
 );
 
-CREATE TABLE logs (
+-- 日志表 (可选，用于后台查询)
+CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     username TEXT,
@@ -143,8 +142,9 @@ CREATE TABLE logs (
     created_at INTEGER
 );
 
-CREATE INDEX idx_inv_user ON inventory(user_id);
-CREATE INDEX idx_logs_user ON logs(user_id);
+-- 索引 (优化查询速度)
+CREATE INDEX IF NOT EXISTS idx_inv_user ON inventory(user_id);
+CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id);
 ```
 
 Apply the schema to your D1 database:
@@ -162,7 +162,7 @@ wrangler d1 execute gacha-db --file=./schema.sql
 1.  Go to the Cloudflare Dashboard > R2 > Select your bucket (`gacha-images`).
 2.  Go to **Settings** > **Public Access**.
 3.  Connect a Custom Domain (e.g., `assets.yourdomain.com`) OR allow R2.dev subdomain.
-4.  **Important**: Update the `R2_DOMAIN` constant in `src/worker.js` with this domain:
+4.  **Important**: Update the `R2_DOMAIN` constant in `worker.js` with this domain:
 
 ```javascript
 const CONFIG = {
@@ -182,7 +182,7 @@ Your Gacha game is now live! 🚀
 
 ## ⚙️ Configuration
 
-You can customize the game balance and sources in `src/worker.js` under the `CONFIG` object:
+You can customize the game balance and sources in `worker.js` under the `CONFIG` object:
 
 *   **SOURCES**: Add/Remove API endpoints for image generation.
 *   **GAME.POINTS**: Change points earned per rarity.
