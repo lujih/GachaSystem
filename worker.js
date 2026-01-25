@@ -1974,8 +1974,20 @@ function getHtmlPage() {
         } catch(e) { this.loading = false; icon.classList.remove('dice-result-anim'); this.toast(t.net_err, 'warn'); }
       },
       async loadShowcase() {
-        const grid = document.getElementById('showcaseGrid'); const t = TEXT[this.lang];
+        const grid = document.getElementById('showcaseGrid'); 
+        const btn = document.getElementById('refreshBtn'); // 1. 获取按钮
+        
+        // 2. 触发动画
+        if(btn) {
+            btn.classList.remove('refresh-spin');
+            void btn.offsetWidth; // 触发重绘
+            btn.classList.add('refresh-spin');
+        }
+
+        const t = TEXT[this.lang];
         try { const res = await fetch('/showcase'); const data = await res.json(); if(data.length) { grid.innerHTML = data.map(item => \`<div class="grid-item" onclick="App.preview('\${item.imageUrl}')"><img src="\${item.imageUrl}" loading="lazy"></div>\`).join(''); } } catch(e) {}
+        // 3. 清理动画类 (可选，配合CSS即可，这里设置超时移除以防连续点击)
+        if(btn) setTimeout(() => btn.classList.remove('refresh-spin'), 800);
       },
       openAdmin() { this.closeModals(); document.getElementById('adminModal').classList.add('show'); },
       async verifyAdmin() {
