@@ -1,23 +1,21 @@
 name = "chouka"
 main = "worker.js"
 compatibility_date = "2026-01-16"
+keep_vars = true
 
 [[kv_namespaces]]
 binding = "KV_CACHE"
-id = "#"
+id = ""
 
 [[kv_namespaces]]
 binding = "RECENT_REQUESTS"
-id = "#"
+id = ""
 
 [[d1_databases]]
 binding = "DB"
 database_name = "chouka"
-database_id = "#"
+database_id = ""
 
 [[r2_buckets]]
 binding = "R2_BUCKET"
-bucket_name = "#"
-
-[vars]
-admin = "#"
+bucket_name = ""
