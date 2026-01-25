@@ -921,98 +921,114 @@ const NEUTRAL_CSS = `
 `;
 
 const I18N_TEXT = {
-  en: {
-    ready: "READY TO DRAW", start: "START", showcase: "Showcase", loading: "Loading...",
-    changelog: "Changelog", more: "Show More", less: "Show Less",
-    id_check: "Authentication", reg_tip: "Sign up or Login to play.",
-    confirm: "Submit", profile: "User Profile", name: "Nickname:", draws: "Total Draws:",
-    logout: "Logout", close: "Close", guest: "Guest",
-    retry: "RETRY", again: "AGAIN", name_req: "Missing fields",
-    net_err: "Network Error", reg_ok: "Registered! Please Login.", success: "Gacha Success",
-    fail: "Connection Failed", clear_confirm: "Are you sure you want to log out?",
-    btn_lang: "En", back: "Back", page: "Page", admin_panel: "Admin Panel",
-    admin_auth: "Admin Access", pass_tip: "Enter admin password", edit_log: "Visual Changelog Editor",
-    save: "Save Changes", verify_fail: "Incorrect Password", save_ok: "Saved!", save_err: "Save Failed",
-    add_row: "+ Add Row", del: "Del", date: "Date", ver: "Ver", content: "Content",
-    users_title: "Registered Users", users_tab: "Users", log_tab: "Changelog",
-    user_col: "Username", draws_col: "Draws", last_active_col: "Last Active", action_col: "Action",
-    delete_confirm: "Delete this user?", name_taken: "Name taken",
-    delete_ok: "User Deleted",
-    craft_title: "Card Synthesis", craft_desc: "Burn 5 low-rarity cards.",
-    shop_title: "Token Shop", shop_desc: "Spend points.",
-    buy: "Buy", points_short: "pts", buy_ok: "Purchase Successful!", no_money: "Not enough points!",
-    owned: "Owned", cost: "Cost", craft_ok: "Craft Success!",
-    rules_title: "Point Rules", rules_desc: "Points can be used in the Shop.",
-    rule_action: "Action", rule_points: "Points", points_label: "Coins:",
-    dice_title: "Guess Size", dice_desc: "Small (1-3) or Big (4-6). Pays 1:1.",
-    bet_ph: "Bet Amount (10-1000)", small: "SMALL (1-3)", big: "BIG (4-6)",
-    win: "YOU WIN!", lose: "YOU LOSE", points_col: "Coins", edit_points: "Mod", edit_points_prompt: "Enter points to add/sub:",
-    pool_std: "Standard", pool_ltd: "Limited", ltd_cost: "Cost:", start_ltd: "SUMMON",
-    login_tab: "Login", reg_tab: "Register", username_ph: "Username (a-z, 0-9)", nick_ph: "Nickname (Display)", pass_ph: "Password",
-    craft_confirm: "Consume 5 cards to craft 1 {target}?",
-    buy_confirm: "Spend {price} points?",
-    min_bet: "Minimum bet is 10",
-    server_err_no_money: "Not enough points!",
-    server_err_taken: "Username/Nickname already taken",
-    server_err_user_missing: "User not found",
-    server_err_pass: "Invalid Password",
-    server_err_auth: "Auth Failed",
-    img_load_err: "Image Load Error",
-    ann_title_def: "Notification",
-    ann_enabled: "Enabled",
-    ann_disabled: "Disabled",
-    ann_preview: "Preview",
-    ann_publish: "Publish",
-    ann_title: "Title",
-    ann_status: "Status",
-    low_pts: "Low Pts"
-  },
-  zh: {
-    ready: "准备召唤", start: "召唤", showcase: "精选图库", loading: "加载中...",
-    changelog: "更新履历", more: "展开更多", less: "收起列表",
-    id_check: "身份验证", reg_tip: "请登录或注册以继续。",
-    confirm: "提交", profile: "个人档案", name: "昵称：", draws: "召唤次数：",
-    logout: "注销", close: "关闭", guest: "未登录",
-    retry: "重试", again: "再召唤", name_req: "请填写完整信息",
-    net_err: "网络错误", reg_ok: "注册成功，请登录", success: "召唤成功",
-    fail: "连接中断", clear_confirm: "确定要注销吗？",
-    btn_lang: "汉", back: "返回", page: "第", admin_panel: "管理面板",
-    admin_auth: "管理员认证", pass_tip: "请输入管理员密码", edit_log: "可视化日志编辑器",
-    save: "保存更改", verify_fail: "密码错误", save_ok: "保存成功！", save_err: "保存失败",
-    add_row: "+ 新增一行", del: "删", date: "日期", ver: "版本", content: "内容",
-    users_title: "注册用户列表", users_tab: "用户管理", log_tab: "更新日志",
-    user_col: "账号/昵称", draws_col: "召唤数", last_active_col: "最近活跃", action_col: "操作",
-    delete_confirm: "确定删除该用户吗？此操作不可逆。", name_taken: "昵称或账号已被占用",
-    delete_ok: "用户已删除",
-    craft_title: "卡片合成", craft_desc: "消耗5张低阶卡片，进行一次高阶召唤。",
-    shop_title: "积分商店", shop_desc: "消耗积分购买指定等级的卡包。",
-    buy: "购买", points_short: "分", buy_ok: "购买成功！", no_money: "积分不足！",
-    owned: "持有", cost: "消耗", craft_ok: "合成召唤成功！",
-    rules_title: "积分规则", rules_desc: "积分可用于在商店购买物品。",
-    rule_action: "行为", rule_points: "获得积分", points_label: "当前积分：",
-    dice_title: "猜大小", dice_desc: "小(1-3) 或 大(4-6)，赔率1:1。",
-    bet_ph: "下注金额 (10-1000)", small: "押小 (1-3)", big: "押大 (4-6)",
-    win: "你赢了！", lose: "你输了", points_col: "积分", edit_points: "改", edit_points_prompt: "输入要增加或减少的积分:",
-    pool_std: "常驻池", pool_ltd: "限定池", ltd_cost: "消耗:", start_ltd: "召唤",
-    login_tab: "登录", reg_tab: "注册", username_ph: "账号 (英文/数字)", nick_ph: "昵称 (显示名)", pass_ph: "密码",
-    craft_confirm: "确定消耗5张低阶卡合成1张 {target} 吗？",
-    buy_confirm: "确定花费 {price} 积分吗？",
-    min_bet: "最小下注为 10",
-    server_err_no_money: "积分不足！",
-    server_err_taken: "用户名或昵称已被占用",
-    server_err_user_missing: "用户不存在",
-    server_err_pass: "密码错误",
-    server_err_auth: "认证失败",
-    img_load_err: "图片加载失败",
-    ann_title_def: "公告",
-    ann_enabled: "已启用",
-    ann_disabled: "已禁用",
-    ann_preview: "预览",
-    ann_publish: "发布 / 保存",
-    ann_title: "标题",
-    ann_status: "状态",
-    low_pts: "积分不足"
-  }
+en: {
+  ready: "READY TO DRAW", start: "START", showcase: "Showcase", loading: "Loading...",
+  changelog: "Changelog", more: "Show More", less: "Show Less",
+  id_check: "Authentication", reg_tip: "Sign up or Login to play.",
+  confirm: "Submit", profile: "User Profile", name: "Nickname:", draws: "Total Draws:",
+  logout: "Logout", close: "Close", guest: "Guest",
+  retry: "RETRY", again: "AGAIN", name_req: "Missing fields",
+  net_err: "Network Error", reg_ok: "Registered! Please Login.", success: "Gacha Success",
+  fail: "Connection Failed", clear_confirm: "Are you sure you want to log out?",
+  btn_lang: "En", back: "Back", page: "Page", admin_panel: "Admin Panel",
+  admin_auth: "Admin Access", pass_tip: "Enter admin password", edit_log: "Visual Changelog Editor",
+  save: "Save Changes", verify_fail: "Incorrect Password", save_ok: "Saved!", save_err: "Save Failed",
+  add_row: "+ Add Row", del: "Del", date: "Date", ver: "Ver", content: "Content",
+  users_title: "Registered Users", users_tab: "Users", log_tab: "Changelog",
+  user_col: "Username", draws_col: "Draws", last_active_col: "Last Active", action_col: "Action",
+  delete_confirm: "Delete this user?", name_taken: "Name taken",
+  delete_ok: "User Deleted",
+  craft_title: "Card Synthesis", craft_desc: "Burn 5 low-rarity cards.",
+  shop_title: "Token Shop", shop_desc: "Spend points.",
+  buy: "Buy", points_short: "pts", buy_ok: "Purchase Successful!", no_money: "Not enough points!",
+  owned: "Owned", cost: "Cost", craft_ok: "Craft Success!",
+  rules_title: "Point Rules", rules_desc: "Points can be used in the Shop.",
+  rule_action: "Action", rule_points: "Points", points_label: "Coins:",
+  dice_title: "Guess Size", dice_desc: "Small (1-3) or Big (4-6). Pays 1:1.",
+  bet_ph: "Bet Amount (10-1000)", small: "SMALL (1-3)", big: "BIG (4-6)",
+  win: "YOU WIN!", lose: "YOU LOSE", points_col: "Coins", edit_points: "Mod", edit_points_prompt: "Enter points to add/sub:",
+  pool_std: "Standard", pool_ltd: "Limited", ltd_cost: "Cost:", start_ltd: "SUMMON",
+  login_tab: "Login", reg_tab: "Register", username_ph: "Username (a-z, 0-9)", nick_ph: "Nickname (Display)", pass_ph: "Password",
+  craft_confirm: "Consume 5 cards to craft 1 {target}?",
+  buy_confirm: "Spend {price} points?",
+  min_bet: "Minimum bet is 10",
+  server_err_no_money: "Not enough points!",
+  server_err_taken: "Username/Nickname already taken",
+  server_err_user_missing: "User not found",
+  server_err_pass: "Invalid Password",
+  server_err_auth: "Auth Failed",
+  img_load_err: "Image Load Error",
+  ann_title_def: "Notification",
+  ann_enabled: "Enabled",
+  ann_disabled: "Disabled",
+  ann_preview: "Preview",
+  ann_publish: "Publish",
+  ann_title: "Title",
+  ann_status: "Status",
+  low_pts: "Low Pts",
+  edit_profile: "Edit",
+  share_profile: "Share",
+  more_stats: "More Stats",
+  theme: "Theme",
+  card_collection: "Card Collection",
+  level: "Level",
+  coins_label: "Coins",
+  total_cards: "Total: {count} cards"
+},
+zh: {
+  ready: "准备召唤", start: "召唤", showcase: "精选图库", loading: "加载中...",
+  changelog: "更新履历", more: "展开更多", less: "收起列表",
+  id_check: "身份验证", reg_tip: "请登录或注册以继续。",
+  confirm: "提交", profile: "个人档案", name: "昵称：", draws: "召唤次数：",
+  logout: "注销", close: "关闭", guest: "未登录",
+  retry: "重试", again: "再召唤", name_req: "请填写完整信息",
+  net_err: "网络错误", reg_ok: "注册成功，请登录", success: "召唤成功",
+  fail: "连接中断", clear_confirm: "确定要注销吗？",
+  btn_lang: "汉", back: "返回", page: "第", admin_panel: "管理面板",
+  admin_auth: "管理员认证", pass_tip: "请输入管理员密码", edit_log: "可视化日志编辑器",
+  save: "保存更改", verify_fail: "密码错误", save_ok: "保存成功！", save_err: "保存失败",
+  add_row: "+ 新增一行", del: "删", date: "日期", ver: "版本", content: "内容",
+  users_title: "注册用户列表", users_tab: "用户管理", log_tab: "更新日志",
+  user_col: "账号/昵称", draws_col: "召唤数", last_active_col: "最近活跃", action_col: "操作",
+  delete_confirm: "确定删除该用户吗？此操作不可逆。", name_taken: "昵称或账号已被占用",
+  delete_ok: "用户已删除",
+  craft_title: "卡片合成", craft_desc: "消耗5张低阶卡片，进行一次高阶召唤。",
+  shop_title: "积分商店", shop_desc: "消耗积分购买指定等级的卡包。",
+  buy: "购买", points_short: "分", buy_ok: "购买成功！", no_money: "积分不足！",
+  owned: "持有", cost: "消耗", craft_ok: "合成召唤成功！",
+  rules_title: "积分规则", rules_desc: "积分可用于在商店购买物品。",
+  rule_action: "行为", rule_points: "获得积分", points_label: "当前积分：",
+  dice_title: "猜大小", dice_desc: "小(1-3) 或 大(4-6)，赔率1:1。",
+  bet_ph: "下注金额 (10-1000)", small: "押小 (1-3)", big: "押大 (4-6)",
+  win: "你赢了！", lose: "你输了", points_col: "积分", edit_points: "改", edit_points_prompt: "输入要增加或减少的积分:",
+  pool_std: "常驻池", pool_ltd: "限定池", ltd_cost: "消耗:", start_ltd: "召唤",
+  login_tab: "登录", reg_tab: "注册", username_ph: "账号 (英文/数字)", nick_ph: "昵称 (显示名)", pass_ph: "密码",
+  craft_confirm: "确定消耗5张低阶卡合成1张 {target} 吗？",
+  buy_confirm: "确定花费 {price} 积分吗？",
+  min_bet: "最小下注为 10",
+  server_err_no_money: "积分不足！",
+  server_err_taken: "用户名或昵称已被占用",
+  server_err_user_missing: "用户不存在",
+  server_err_pass: "密码错误",
+  server_err_auth: "认证失败",
+  img_load_err: "图片加载失败",
+  ann_title_def: "公告",
+  ann_enabled: "已启用",
+  ann_disabled: "已禁用",
+  ann_preview: "预览",
+  ann_publish: "发布 / 保存",
+  ann_title: "标题",
+  ann_status: "状态",
+  low_pts: "积分不足",
+  edit_profile: "编辑",
+  share_profile: "分享",
+  more_stats: "更多统计",
+  theme: "主题",
+  card_collection: "卡片收集",
+  level: "等级",
+  coins_label: "金币",
+  total_cards: "总计: {count} 张卡片"
+}
 };
 
 function getHtmlPage() {
@@ -1200,14 +1216,14 @@ function getHtmlPage() {
               <div style="font-size:0.75rem; color:#B45309;">Coins</div>
             </div>
             <div style="flex:1; text-align:center;">
-              <div style="font-size:0.9rem; color:#94A3B8; margin-bottom:3px;">Level</div>
+              <div style="font-size:0.9rem; color:#94A3B8; margin-bottom:3px;" data-i18n="level">Level</div>
               <div style="font-weight:bold; color:var(--primary);" id="profileLevel">1</div>
             </div>
           </div>
         </div>
         
         <div style="background:white; padding:15px; border-radius:8px; border:1px solid #E2E8F0;">
-          <div style="font-weight:bold; color:var(--text-main); margin-bottom:10px;">Card Collection</div>
+          <div style="font-weight:bold; color:var(--text-main); margin-bottom:10px;" data-i18n="card_collection">Card Collection</div>
           <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:8px;">
             <div style="text-align:center; padding:8px; background:#F1F5F9; border-radius:6px;">
               <div style="font-size:0.7rem; color:#64748B;">N</div>
@@ -1230,17 +1246,17 @@ function getHtmlPage() {
               <div style="font-weight:bold; font-size:0.9rem;" id="invCountUR">0</div>
             </div>
           </div>
-          <div style="margin-top:10px; font-size:0.75rem; color:#94A3B8; text-align:center;">
+          <div style="margin-top:10px; font-size:0.75rem; color:#94A3B8; text-align:center;" id="totalCardsText">
             Total: <span id="totalCards">0</span> cards
           </div>
         </div>
       </div>
       
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
-        <button class="btn secondary" onclick="App.editProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#E0F2FE; border-color:#BAE6FD;">
+        <button class="btn secondary" onclick="App.editProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#E0F2FE; border-color:#BAE6FD;" data-i18n="edit_profile">
           <i class="fas fa-edit"></i> Edit
         </button>
-        <button class="btn secondary" onclick="App.shareProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#F0F9FF; border-color:#BAE6FD;">
+        <button class="btn secondary" onclick="App.shareProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#F0F9FF; border-color:#BAE6FD;" data-i18n="share_profile">
           <i class="fas fa-share-alt"></i> Share
         </button>
       </div>
@@ -1259,10 +1275,10 @@ function getHtmlPage() {
           <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.openAdmin()" data-i18n="admin_panel">
             <i class="fas fa-cog"></i> Admin Panel
           </div>
-          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.showMoreStats()">
+          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.showMoreStats()" data-i18n="more_stats">
             <i class="fas fa-chart-line"></i> More Stats
           </div>
-          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.toggleTheme()">
+          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.toggleTheme()" data-i18n="theme">
             <i class="fas fa-palette"></i> Theme
           </div>
         </div>
@@ -1508,6 +1524,11 @@ function getHtmlPage() {
         // Calculate total cards
         const totalCards = (inv.N || 0) + (inv.R || 0) + (inv.SR || 0) + (inv.SSR || 0) + (inv.UR || 0);
         document.getElementById('totalCards').innerText = totalCards;
+        
+        // Update total cards text with translation
+        const t = TEXT[this.lang];
+        const totalCardsText = t.total_cards.replace('{count}', totalCards);
+        document.getElementById('totalCardsText').innerHTML = totalCardsText;
         
         // Calculate user level based on total draws
         const drawCount = parseInt(document.getElementById('profileCount').innerText) || 0;
