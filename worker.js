@@ -1578,7 +1578,16 @@ function getHtmlPage() {
       },
       
       showStatsModal(title, content) {
-        const modalHtml = '<div class="modal show" id="statsModal" style="display:flex;">' +
+        // Remove existing stats modal if any
+        const existingModal = document.getElementById('statsModal');
+        if (existingModal) {
+          // 清理事件监听器
+          const newModal = existingModal.cloneNode(false);
+          existingModal.parentNode.replaceChild(newModal, existingModal);
+          existingModal.remove();
+        }
+        
+        const modalHtml = '<div class="modal show" id="statsModal" data-dynamic="true">' +
           '<div class="modal-content" style="max-width:500px;">' +
             '<button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>' +
             '<h3 style="margin-top:0;">' + title + '</h3>' +
@@ -1589,12 +1598,22 @@ function getHtmlPage() {
           '</div>' +
         '</div>';
         
-        // Remove existing stats modal if any
-        const existingModal = document.getElementById('statsModal');
-        if (existingModal) existingModal.remove();
-        
         // Add new modal to body
         document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Add click event to modal backdrop to close when clicking outside content
+        const modal = document.getElementById('statsModal');
+        if (modal) {
+          // 使用命名函数以便后续移除
+          const backdropClickHandler = function(e) {
+            if (e.target === this) {
+              App.closeModals();
+            }
+          };
+          modal.addEventListener('click', backdropClickHandler);
+          // 存储引用以便清理
+          modal._backdropClickHandler = backdropClickHandler;
+        }
       },
       
       editProfile() {
@@ -1977,7 +1996,36 @@ function getHtmlPage() {
       updateLog(idx, field, val) { this.logsData[idx][field] = val; }, addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
       async saveAdminLog() { const t = TEXT[this.lang]; try { const res = await fetch('/admin/save-changelog', { method: 'POST', body: JSON.stringify({password: this.adminPwd, logs: this.logsData}) }); const d = await res.json(); if(d.success) { this.toast(t.save_ok, 'ok'); this.loadChangelog(); } else { this.toast(t.save_err, 'warn'); } } catch(e) { this.toast(t.save_err, 'warn'); } },
       openProfile() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('profileModal').classList.add('show'); },
-      closeModals() { document.querySelectorAll('.modal').forEach(m => m.classList.remove('show')); }, 
+      closeModals() {
+        // 移除所有模态框的show类
+        document.querySelectorAll('.modal').forEach(m => {
+          m.classList.remove('show');
+          
+          // 清理动态弹窗的事件监听器
+          if (m.id === 'statsModal' || m.getAttribute('data-dynamic') === 'true') {
+            // 移除点击背景关闭的事件监听器
+            if (m._backdropClickHandler) {
+              m.removeEventListener('click', m._backdropClickHandler);
+              delete m._backdropClickHandler;
+            }
+            
+            // 延迟移除DOM元素，确保CSS过渡动画完成
+            setTimeout(() => {
+              if (m.parentNode && (m.id === 'statsModal' || m.getAttribute('data-dynamic') === 'true')) {
+                m.remove();
+              }
+            }, 300); // 等待CSS过渡动画完成（通常0.2s）
+          }
+        });
+        
+        // 确保statsModal被移除（备用清理）
+        setTimeout(() => {
+          const statsModal = document.getElementById('statsModal');
+          if (statsModal && statsModal.parentNode) {
+            statsModal.remove();
+          }
+        }, 350);
+      },
       logout() { if(confirm(TEXT[this.lang].clear_confirm)) { localStorage.removeItem('moe_username'); location.reload(); } },
       preview(src) { document.getElementById('bigImg').src=src; document.getElementById('imgModal').classList.add('show'); },
       toast(msg, type) { const div = document.createElement('div'); div.className = 'toast'; div.innerHTML = \`<span>\${type==='ok'?'✅':'⚠️'}</span> \${msg}\`; document.body.appendChild(div); setTimeout(() => div.remove(), 2500); }
