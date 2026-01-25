@@ -1,207 +1,103 @@
-# 🎲 Serverless Anime Gacha System
+# Chouka Gacha System
 
-![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
-![Cloudflare D1](https://img.shields.io/badge/Database-D1_(SQLite)-blue)
-![Cloudflare KV](https://img.shields.io/badge/Storage-KV-orange)
-![Cloudflare R2](https://img.shields.io/badge/Assets-R2-green)
-![License](https://img.shields.io/badge/license-MIT-green)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/你的GitHub用户名/你的仓库名)
 
-A full-stack, lightweight, and transactional Gacha (Summoning) Game engine running entirely on **Cloudflare Workers**. It features a serverless architecture using **D1** for consistent user data, **KV** for high-speed caching, and **R2** for asset storage.
+一个基于 Cloudflare Workers 全栈构建的轻量级二次元抽卡系统。集成了 D1 数据库、KV 缓存和 R2 对象存储，支持用户系统、卡池召唤、合成、商店、小游戏以及图鉴管理。
 
-## ✨ Features
+## ✨ 功能特性
 
-*   **User System**: Secure Registration & Login with session management (KV-cached authentication).
-*   **Gacha Mechanics**:
-    *   **Standard Pool**: Regular summoning with rarity probabilities.
-    *   **Limited Pool**: Special events with higher costs and exclusive logic.
-    *   **Asset Management**: Auto-fetches anime images from external APIs and stores them persistently in **Cloudflare R2**.
-*   **Economy System**:
-    *   **Currency**: Earn coins by drawing or winning mini-games.
-    *   **Shop**: Buy specific rarity card packs.
-    *   **Crafting**: Synthesis system (Burn 5 low-tier cards to get 1 high-tier card).
-*   **Mini-Game**: "Big or Small" dice gambling to earn extra coins.
-*   **Data Integrity**: Uses **D1 Transactions (Batch)** to ensure coins and inventory are always in sync.
-*   **Social & Admin**:
-    *   **Gallery**: Browse collected cards (lazy loading supported).
-    *   **Leaderboard**: Real-time latest draws.
-    *   **Admin Panel**: Manage users, edit changelogs, and publish announcements.
-*   **I18n**: Built-in support for **English** and **Chinese (Simplified)**.
+*   **⚡️ Serverless 架构**: 完全运行在 Cloudflare 生态（Workers + D1 + KV + R2）上，低成本高性能。
+*   **🎲 抽卡系统**: 包含常驻池和限定池（扣除积分），支持不同的概率配置。
+*   **🎒 背包与合成**: 抽到的卡片存入数据库，支持消耗 5 张低阶卡合成 1 张高阶卡。
+*   **💰 积分经济**: 内置签到（模拟）、商店购买、骰子猜大小（赚取积分）功能。
+*   **🖼️ 自动图库**: 抽到的图片会自动上传至 R2 存储桶，并生成全服共享的图鉴和排行榜。
+*   **🛡️ 用户系统**: 完整的注册、登录流程，使用 D1 存储数据，KV 缓存 Session。
+*   **🔧 管理后台**: 内置可视化的更新日志编辑器、公告管理和用户管理面板。
 
-## 🛠 Tech Stack
+## 🚀 快速部署 (一键部署)
 
-*   **Runtime**: Cloudflare Workers
-*   **Database**: Cloudflare D1 (SQLite) - *Stores Users, Inventory, Logs*
-*   **Cache/Session**: Cloudflare KV - *Stores Sessions, Preload Buffers, Leaderboards*
-*   **Object Storage**: Cloudflare R2 - *Stores Card Images*
-*   **Frontend**: Vanilla HTML/CSS/JS (Embedded in Worker, Single File)
+### 1. 点击部署按钮
+点击上方的 **"Deploy to Cloudflare Workers"** 按钮。Cloudflare 将会自动引导你完成以下步骤：
+1.  授权连接你的 GitHub 账号。
+2.  Cloudflare 会检测 `wrangler.toml` 配置。
+3.  **关键步骤**：在部署向导中，它会提示你需要创建对应的资源。请按照提示确认创建：
+    *   **KV Namespaces**: `KV_CACHE` 和 `RECENT_REQUESTS`
+    *   **D1 Database**: `DB`
+    *   **R2 Bucket**: `R2_BUCKET`
 
-## 🚀 Deployment Guide
+### 2. 配置环境变量
+部署完成后，进入 [Cloudflare Dashboard](https://dash.cloudflare.com/) -> **Workers & Pages** -> 选择刚部署的项目 -> **Settings** -> **Variables and Secrets**。
 
-### Prerequisites
+添加以下变量：
+*   `admin`: 设置一个字符串（例如 `123456`），这将作为管理后台的登录密码。
 
-1.  A Cloudflare Account.
-2.  Node.js and npm installed.
-3.  [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) installed (`npm install -g wrangler`).
+### 3. 初始化数据库 (重要)
+由于 D1 数据库创建后是空的，你需要手动执行 SQL 来创建表结构。
 
-### 1. Clone & Setup
+1.  在 Cloudflare Dashboard 中，进入 **Storage & Databases** -> **D1**。
+2.  点击你刚刚创建的数据库（通常名字包含 `chouka` 或 `DB`）。
+3.  点击 **Console** 标签页。
+4.  将仓库中 `schema.sql` 文件的内容复制粘贴进去，点击 **Execute**。
 
-```bash
-git clone https://github.com/your-username/your-repo.git
-cd your-repo
-npm install
-```
+### 4. 设置 R2 公开访问 (可选)
+为了让抽到的图片能在前端显示，你需要允许 R2 的公开访问，或者绑定自定义域名。
+1.  进入 **R2** -> 点击你的存储桶。
+2.  点击 **Settings** -> **Public Access**。
+3.  开启 **R2.dev subdomain** (允许测试使用) 或连接自定义域名。
+4.  **注意**：如果使用了 R2.dev 子域名或自定义域名，请修改代码配置中的 `R2_DOMAIN` 变量，或者在环境变量中添加 `R2_DOMAIN` 覆盖默认值。
 
-### 2. Create Cloudflare Resources
+---
 
-Run the following commands to create the necessary resources in your Cloudflare account:
+## 🛠️ 手动部署 (命令行)
 
-```bash
-# Login to Cloudflare
-wrangler login
+如果你更喜欢使用 CLI 工具：
 
-# Create D1 Database
-wrangler d1 create chouka
+1.  **Clone 仓库**
+    ```bash
+    git clone https://github.com/你的用户名/你的仓库名.git
+    cd 你的仓库名
+    ```
 
-# Create KV Namespaces
-wrangler kv:namespace create "KV_CACHE"
-wrangler kv:namespace create "RECENT_REQUESTS"
+2.  **安装依赖**
+    ```bash
+    npm install
+    ```
 
-# Create R2 Bucket
-wrangler r2 bucket create gacha-images
-```
+3.  **创建资源**
+    ```bash
+    # 创建 KV
+    npx wrangler kv:namespace create KV_CACHE
+    npx wrangler kv:namespace create RECENT_REQUESTS
+    
+    # 创建 D1
+    npx wrangler d1 create chouka
+    
+    # 创建 R2
+    npx wrangler r2 bucket create chouka-img
+    ```
 
-### 3. Configure `wrangler.toml`
+4.  **修改配置**
+    将上一步生成的 ID 填入 `wrangler.toml` 文件中对应的位置。
 
-Create or edit `wrangler.toml` in the root directory. **Replace the IDs with the ones generated in Step 2.**
+5.  **初始化数据库**
+    ```bash
+    npx wrangler d1 execute chouka --remote --file=./schema.sql
+    ```
 
-```toml
-name = "chouka"
-main = "worker.js"
-compatibility_date = "2026-01-16"
+6.  **部署**
+    ```bash
+    npx wrangler deploy
+    ```
 
-# D1 数据库配置
-[[d1_databases]]
-binding = "DB"
-database_name = "chouka"
-database_id = "YOUR_D1_DATABASE_ID_HERE"
+## 📝 环境变量说明
 
-# KV 配置
-[[kv_namespaces]]
-binding = "KV_CACHE"
-id = "YOUR_KV_CACHE_ID_HERE"
+| 变量名 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| `admin` | Secret | 管理员后台密码 |
+| `R2_DOMAIN` | Var | R2 存储桶的公开访问域名 (例如 `https://pub-xxx.r2.dev`) |
 
-[[kv_namespaces]]
-binding = "RECENT_REQUESTS"
-id = "YOUR_RECENT_REQUESTS_ID_HERE"
-
-# R2 配置
-[[r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "gacha-images"
-
-# 管理员密码（自己设个安全的）
-[vars]
-admin = "your_secure_admin_password"
-```
-
-### 4. Initialize Database Schema
-
-Execute the SQL schema to create the required tables in D1.
-
-Create a file named `schema.sql`:
-
-```sql
--- 用户表
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    nickname TEXT,
-    password TEXT NOT NULL,
-    coins INTEGER DEFAULT 1000,
-    draw_count INTEGER DEFAULT 0,
-    wins INTEGER DEFAULT 0,
-    created_at INTEGER
-);
-
--- 背包表 (使用联合主键防止重复)
-CREATE TABLE IF NOT EXISTS inventory (
-    user_id INTEGER NOT NULL,
-    rarity TEXT NOT NULL,
-    count INTEGER DEFAULT 0,
-    PRIMARY KEY (user_id, rarity)
-);
-
--- 日志表 (可选，用于后台查询)
-CREATE TABLE IF NOT EXISTS logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    username TEXT,
-    action TEXT,
-    detail TEXT,
-    rarity TEXT,
-    created_at INTEGER
-);
-
--- 索引 (优化查询速度)
-CREATE INDEX IF NOT EXISTS idx_inv_user ON inventory(user_id);
-CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id);
-```
-
-Apply the schema to your D1 database:
-
-```bash
-# For local development
-wrangler d1 execute gacha-db --local --file=./schema.sql
-
-# For production deployment
-wrangler d1 execute gacha-db --file=./schema.sql
-```
-
-### 5. R2 Domain Setup
-
-1.  Go to the Cloudflare Dashboard > R2 > Select your bucket (`gacha-images`).
-2.  Go to **Settings** > **Public Access**.
-3.  Connect a Custom Domain (e.g., `assets.yourdomain.com`) OR allow R2.dev subdomain.
-4.  **Important**: Update the `R2_DOMAIN` constant in `worker.js` with this domain:
-
-```javascript
-const CONFIG = {
-  // ...
-  R2_DOMAIN: "https://assets.yourdomain.com", 
-  // ...
-};
-```
-
-### 6. Deploy
-
-```bash
-wrangler deploy
-```
-
-Your Gacha game is now live! 🚀
-
-## ⚙️ Configuration
-
-You can customize the game balance and sources in `worker.js` under the `CONFIG` object:
-
-*   **SOURCES**: Add/Remove API endpoints for image generation.
-*   **GAME.POINTS**: Change points earned per rarity.
-*   **GAME.SHOP**: Adjust shop prices.
-*   **GAME.DICE**: Adjust gambling limits.
-
-## 🕹️ Admin Panel
-
-Access the admin panel by clicking **"User Profile"** -> **"Admin Panel"**.
-Enter the password you set in `wrangler.toml` (under `[vars] admin`).
-
-*   **Changelog Editor**: Update the visible changelog.
-*   **User Manager**: View stats, modify coins, or ban users.
-*   **Announcements**: Push global notifications.
-
-## 🤝 Contributing
-
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+## 🤝 贡献
+欢迎提交 Issue 和 Pull Request！
 
 ## 📄 License
-
-[MIT](LICENSE)
+MIT

@@ -2,27 +2,22 @@ name = "chouka"
 main = "worker.js"
 compatibility_date = "2026-01-16"
 
-# 1. KV: 用于缓存 Session、公告、预加载图片、排行榜快照
-#[[kv_namespaces]]
-#binding = "KV_CACHE"
-#id = ""
-#
-# 2. KV: 用于存储系统数据（更新日志、公告、排行榜、图库索引）
-#[[kv_namespaces]]
-#binding = "RECENT_REQUESTS"
-#id = ""
-#
-# 3. D1: 用于存储用户档案、积分、背包、日志 (强一致性)
-#[[d1_databases]]
-#binding = "DB"
-#database_name = "chouka"
-#database_id = ""
-#
-# 4. R2: 存储图片文件
-#[[r2_buckets]]
-#binding = "R2_BUCKET"
-#bucket_name = ""
-#
-#[vars]
-# 管理员密码（代码中使用 env.admin）
-#admin = "123456"
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = ""
+
+[[kv_namespaces]]
+binding = "RECENT_REQUESTS"
+id = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "chouka"
+database_id = ""
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = ""
+
+[vars]
+admin = ""
