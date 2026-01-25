@@ -1,6 +1,6 @@
 # Chouka Gacha System
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/你的GitHub用户名/你的仓库名)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lujih/GachaSystem)
 
 一个基于 Cloudflare Workers 全栈构建的轻量级二次元抽卡系统。集成了 D1 数据库、KV 缓存和 R2 对象存储，支持用户系统、卡池召唤、合成、商店、小游戏以及图鉴管理。
 
