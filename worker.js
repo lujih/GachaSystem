@@ -1660,11 +1660,45 @@ function getLibraryHtml(items, pager) {
   <style>
     body { padding-top: 70px; }
     .nav { position: fixed; top: 0; left: 0; right: 0; height: 60px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-bottom: 1px solid #E2E8F0; z-index: 100; padding: 0 20px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 15px; max-width: 1000px; margin: 0 auto; }
-    .item { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #F1F5F9; cursor: zoom-in; border: 1px solid #E2E8F0; transition: 0.2s; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      grid-auto-rows: 140px; /* 固定行高，与最小列宽一致 */
+      gap: 12px;
+      padding: 15px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .item {
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #F1F5F9;
+      cursor: zoom-in;
+      border: 1px solid #E2E8F0;
+      transition: 0.2s;
+      /* 确保项目填满网格单元格 */
+      height: 100%;
+      width: 100%;
+    }
     .item:hover { transform: translateY(-3px); border-color: var(--primary); }
-    .item img { width: 100%; height: 100%; object-fit: cover; }
-    .item-user { position: absolute; bottom: 0; width: 100%; padding: 15px 10px 4px; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); color: white; font-size: 0.75rem; text-align: center; }
+    .item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block; /* 移除图片底部间隙 */
+    }
+    .item-user {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      padding: 15px 10px 4px;
+      background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+      color: white;
+      font-size: 0.75rem;
+      text-align: center;
+      pointer-events: none; /* 防止干扰点击 */
+    }
     .pager { display: flex; justify-content: center; gap: 15px; padding: 30px; }
     .page-btn { width: 40px; height: 40px; border-radius: 8px; background: white; display: flex; align-items: center; justify-content: center; color: var(--text-main); font-weight: bold; text-decoration: none; border: 1px solid #E2E8F0; transition: 0.2s; }
     .page-btn:hover { border-color: var(--primary); color: var(--primary); }
