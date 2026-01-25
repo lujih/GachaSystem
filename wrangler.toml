@@ -1,21 +1,21 @@
 name = "chouka"
 main = "worker.js"
-compatibility_date = "2026-01-16"
+compatibility_date = "2026-01-25"
 keep_vars = true
 
 [[kv_namespaces]]
 binding = "KV_CACHE"
-id = ""
+id = "adb207beb6464667aa6d5bd6bb9aca18"
 
 [[kv_namespaces]]
 binding = "RECENT_REQUESTS"
-id = ""
+id = "adb207beb6464667aa6d5bd6bb9aca18"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "chouka"
-database_id = ""
+database_id = "9b7f6b2c-81ab-4658-8adf-ce524f3715da"
 
 [[r2_buckets]]
 binding = "R2_BUCKET"
-bucket_name = ""
+bucket_name = "cloudflare-t1"
