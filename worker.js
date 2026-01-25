@@ -829,7 +829,9 @@ const NEUTRAL_CSS = `
   .auth-tabs { display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid #E2E8F0; padding-bottom:10px; }
   .auth-tab { flex:1; padding:8px; cursor:pointer; font-weight:bold; color:var(--text-light); border-radius:8px; transition:0.2s; }
   .auth-tab.active { background:var(--bg-color); color:var(--primary); }
-  
+  .refresh-spin { animation: spin-once 0.8s ease-in-out; color: var(--primary) !important; }
+  @keyframes spin-once { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
   /* 响应式设计优化 */
   @media (max-width: 480px) {
     .modal-content {
@@ -1140,7 +1142,7 @@ function getHtmlPage() {
       <div class="showcase-box">
         <div class="box-header">
           <span><i class="fas fa-star" style="color:#F59E0B"></i> <span data-i18n="showcase">Showcase</span></span>
-          <i class="fas fa-rotate" style="cursor:pointer; font-size:0.9rem; color:#94A3B8" onclick="App.loadShowcase()"></i>
+          <i class="fas fa-rotate" id="refreshBtn" style="cursor:pointer; font-size:0.9rem; color:#94A3B8" onclick="App.loadShowcase()"></i>
         </div>
         <div class="grid" id="showcaseGrid">
           <div style="grid-column:1/-1; text-align:center; padding:20px; color:#94A3B8;" data-i18n="loading">Loading...</div>
