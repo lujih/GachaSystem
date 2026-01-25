@@ -646,7 +646,8 @@ async function handleShowcase(env) {
 async function handleLibrary(request, env, url) {
   if (!env.RECENT_REQUESTS) return new Response('Service Unavailable', { status: 503 });
   const page = parseInt(url.searchParams.get('page') || '1');
-  const pageSize = 20;
+  // 将pageSize改为24，这样在更多屏幕尺寸下都能对齐（24能被2、3、4、6、8整除）
+  const pageSize = 24;
   let galleryItems = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.GALLERY_INDEX));
   if (!galleryItems || galleryItems.length === 0) {
     galleryItems = await rebuildGalleryIndexFromR2(env, CONFIG.KEYS.GALLERY_INDEX);
@@ -1664,10 +1665,16 @@ function getLibraryHtml(items, pager) {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
       grid-auto-rows: 140px; /* 固定行高，与最小列宽一致 */
+      grid-auto-flow: dense; /* 密集填充模式，自动填充空白 */
       gap: 12px;
       padding: 15px;
       max-width: 1000px;
       margin: 0 auto;
+      /* 确保网格容器有最小高度，避免最后一排太突兀 */
+      min-height: calc(140px * 4); /* 至少显示4行 */
+      /* 更好的对齐控制 */
+      align-items: stretch;
+      justify-items: stretch;
     }
     .item {
       position: relative;
