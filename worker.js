@@ -33,7 +33,7 @@ const CONFIG = {
     LEADERBOARD: 'system:leaderboard',
     GALLERY_INDEX: 'system:gallery_index'
   },
-  TTL: { SESSION: 86400 * 7, BUFFER: 86400, CACHE: 60 * 5 }, // Session 7天，缓存 5分钟
+  TTL: { SESSION: 86400 * 7, BUFFER: 86400, CACHE: 60 * 5, LEADERBOARD: 86400 * 30, GALLERY_CACHE: 86400 * 7 }, // Session 7天，缓存 5分钟，排行榜30天，图库缓存7天
   R2_DOMAIN: "https://cft1.cszxorx.dpdns.org", 
   DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
 };
