@@ -829,6 +829,94 @@ const NEUTRAL_CSS = `
   .auth-tabs { display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid #E2E8F0; padding-bottom:10px; }
   .auth-tab { flex:1; padding:8px; cursor:pointer; font-weight:bold; color:var(--text-light); border-radius:8px; transition:0.2s; }
   .auth-tab.active { background:var(--bg-color); color:var(--primary); }
+  
+  /* 响应式设计优化 */
+  @media (max-width: 480px) {
+    .modal-content {
+      width: 95%;
+      padding: 16px;
+      max-width: none;
+    }
+    .shop-grid {
+      grid-template-columns: 1fr;
+    }
+    .grid {
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 8px;
+      padding: 10px;
+    }
+    .actions {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    #drawBtn {
+      grid-column: 1 / -1;
+    }
+    .main-grid {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    .header {
+      flex-direction: column;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .user-pill {
+      font-size: 0.8rem;
+      padding: 5px 10px;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .modal-content {
+      max-width: 90%;
+    }
+    .shop-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .grid {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+  }
+  
+  /* 个人档案页特定响应式样式 */
+  @media (max-width: 480px) {
+    #profileModal .modal-content {
+      padding: 12px;
+    }
+    #profileModal .modal-content > div:first-child {
+      margin-bottom: 15px;
+    }
+    #profileModal .modal-content > div:first-child > div:first-child {
+      width: 60px;
+      height: 60px;
+      font-size: 1.5rem;
+    }
+    #profileModal .modal-content h3 {
+      font-size: 1.2rem;
+    }
+    #profileModal .modal-content > div:nth-child(2) > div:first-child {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    #profileModal .modal-content > div:nth-child(2) > div:nth-child(2) > div:first-child {
+      flex-direction: column;
+      gap: 10px;
+    }
+    #profileModal .modal-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    #profileModal .modal-content > div:nth-child(3) {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+  }
+  
+  @media (max-width: 768px) and (min-width: 481px) {
+    #profileModal .modal-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
 </style>
 `;
 
@@ -1080,23 +1168,104 @@ function getHtmlPage() {
 
   <div id="profileModal" class="modal">
     <div class="modal-content">
-      <h3 style="margin-top:0;" data-i18n="profile">User Profile</h3>
-      <div style="background:#F8FAFC; padding:16px; border-radius:8px; margin-bottom:20px; font-size:0.9rem; text-align:left; border:1px solid #E2E8F0;">
-        <div style="margin-bottom:8px;"><strong data-i18n="name">Nickname:</strong> <span id="profileNickname"></span></div>
-        <div style="font-size:0.8rem; color:#94A3B8; word-break:break-all;"><strong>ID:</strong> <span id="profileUsername"></span></div>
-        <div style="margin-top:8px;"><strong data-i18n="draws">Total Draws:</strong> <span id="profileCount" style="color:var(--primary); font-weight:bold;">0</span></div>
-        <div style="margin-top:8px; display:flex; align-items:center; gap:5px;">
-           <strong data-i18n="points_label">Points:</strong> 
-           <span id="profileCoins" style="color:#F59E0B; font-weight:bold; font-size:1.1rem;">0</span>
-           <i class="fas fa-question-circle" style="color:#CBD5E1; cursor:pointer;" onclick="App.openRules()"></i>
+      <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
+      <div style="text-align:center; margin-bottom:20px;">
+        <div style="width:80px; height:80px; margin:0 auto 15px; background:linear-gradient(135deg, var(--primary), var(--secondary)); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2rem; color:white; box-shadow:0 8px 20px rgba(59,130,246,0.3);">
+          <i class="fas fa-user-astronaut"></i>
+        </div>
+        <h3 style="margin:0 0 5px 0;" data-i18n="profile">User Profile</h3>
+        <div style="font-size:0.85rem; color:#94A3B8; margin-bottom:20px;">@<span id="profileUsername"></span></div>
+      </div>
+      
+      <div style="background:linear-gradient(135deg, #F8FAFC, #F1F5F9); padding:20px; border-radius:12px; margin-bottom:20px; border:1px solid #E2E8F0; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
+          <div style="text-align:center; padding:12px; background:white; border-radius:8px; border:1px solid #E2E8F0;">
+            <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:5px;" data-i18n="name">Nickname</div>
+            <div style="font-weight:bold; font-size:1.1rem; color:var(--text-main);" id="profileNickname"></div>
+          </div>
+          <div style="text-align:center; padding:12px; background:white; border-radius:8px; border:1px solid #E2E8F0;">
+            <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:5px;" data-i18n="draws">Total Draws</div>
+            <div style="font-weight:bold; font-size:1.1rem; color:var(--primary);" id="profileCount">0</div>
+          </div>
+        </div>
+        
+        <div style="background:white; padding:15px; border-radius:8px; border:1px solid #E2E8F0; margin-bottom:15px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <div style="font-weight:bold; color:var(--text-main);" data-i18n="points_label">Points</div>
+            <i class="fas fa-question-circle" style="color:#CBD5E1; cursor:pointer;" onclick="App.openRules()"></i>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="background:linear-gradient(135deg, #FEF3C7, #FDE68A); padding:8px 15px; border-radius:8px; flex:1; text-align:center;">
+              <div style="font-size:1.5rem; font-weight:bold; color:#D97706;" id="profileCoins">0</div>
+              <div style="font-size:0.75rem; color:#B45309;">Coins</div>
+            </div>
+            <div style="flex:1; text-align:center;">
+              <div style="font-size:0.9rem; color:#94A3B8; margin-bottom:3px;">Level</div>
+              <div style="font-weight:bold; color:var(--primary);" id="profileLevel">1</div>
+            </div>
+          </div>
+        </div>
+        
+        <div style="background:white; padding:15px; border-radius:8px; border:1px solid #E2E8F0;">
+          <div style="font-weight:bold; color:var(--text-main); margin-bottom:10px;">Card Collection</div>
+          <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:8px;">
+            <div style="text-align:center; padding:8px; background:#F1F5F9; border-radius:6px;">
+              <div style="font-size:0.7rem; color:#64748B;">N</div>
+              <div style="font-weight:bold; font-size:0.9rem;" id="invCountN">0</div>
+            </div>
+            <div style="text-align:center; padding:8px; background:#DBEAFE; border-radius:6px;">
+              <div style="font-size:0.7rem; color:#1E40AF;">R</div>
+              <div style="font-weight:bold; font-size:0.9rem;" id="invCountR">0</div>
+            </div>
+            <div style="text-align:center; padding:8px; background:#EDE9FE; border-radius:6px;">
+              <div style="font-size:0.7rem; color:#5B21B6;">SR</div>
+              <div style="font-weight:bold; font-size:0.9rem;" id="invCountSR">0</div>
+            </div>
+            <div style="text-align:center; padding:8px; background:#FEF3C7; border-radius:6px;">
+              <div style="font-size:0.7rem; color:#92400E;">SSR</div>
+              <div style="font-weight:bold; font-size:0.9rem;" id="invCountSSR">0</div>
+            </div>
+            <div style="text-align:center; padding:8px; background:#FEE2E2; border-radius:6px;">
+              <div style="font-size:0.7rem; color:#991B1B;">UR</div>
+              <div style="font-weight:bold; font-size:0.9rem;" id="invCountUR">0</div>
+            </div>
+          </div>
+          <div style="margin-top:10px; font-size:0.75rem; color:#94A3B8; text-align:center;">
+            Total: <span id="totalCards">0</span> cards
+          </div>
         </div>
       </div>
-      <div style="display:flex; gap:10px;">
-        <button class="btn secondary" style="flex:1;" onclick="App.logout()" data-i18n="logout">Logout</button>
-        <button class="btn" style="flex:1;" onclick="App.closeModals()" data-i18n="close">Close</button>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
+        <button class="btn secondary" onclick="App.editProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#E0F2FE; border-color:#BAE6FD;">
+          <i class="fas fa-edit"></i> Edit
+        </button>
+        <button class="btn secondary" onclick="App.shareProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#F0F9FF; border-color:#BAE6FD;">
+          <i class="fas fa-share-alt"></i> Share
+        </button>
       </div>
-      <div style="margin-top:20px; border-top:1px dashed #E2E8F0; padding-top:10px;">
-         <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.openAdmin()" data-i18n="admin_panel">Admin Panel</div>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
+        <button class="btn secondary" onclick="App.logout()" style="display:flex; align-items:center; justify-content:center; gap:8px;" data-i18n="logout">
+          <i class="fas fa-sign-out-alt"></i> Logout
+        </button>
+        <button class="btn" onclick="App.closeModals()" style="display:flex; align-items:center; justify-content:center; gap:8px;" data-i18n="close">
+          <i class="fas fa-times"></i> Close
+        </button>
+      </div>
+      
+      <div style="border-top:1px dashed #E2E8F0; padding-top:15px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.openAdmin()" data-i18n="admin_panel">
+            <i class="fas fa-cog"></i> Admin Panel
+          </div>
+          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.showMoreStats()">
+            <i class="fas fa-chart-line"></i> More Stats
+          </div>
+          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.toggleTheme()">
+            <i class="fas fa-palette"></i> Theme
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1252,6 +1421,7 @@ function getHtmlPage() {
       
       async init() {
         this.applyLang();
+        this.initTheme();
         await this.fetchUserInfo();
         this.loadShowcase();
         this.loadChangelog();
@@ -1324,6 +1494,159 @@ function getHtmlPage() {
         if(user.title) { titleEl.innerHTML = user.title.name; titleEl.className = 'title-badge'; titleEl.style.backgroundColor = user.title.color; } else { titleEl.innerHTML = ''; }
         this.inventory = user.inventory || {};
         this.updateCraftStates();
+        this.updateProfileStats();
+      },
+      
+      updateProfileStats() {
+        const inv = this.inventory;
+        document.getElementById('invCountN').innerText = inv.N || 0;
+        document.getElementById('invCountR').innerText = inv.R || 0;
+        document.getElementById('invCountSR').innerText = inv.SR || 0;
+        document.getElementById('invCountSSR').innerText = inv.SSR || 0;
+        document.getElementById('invCountUR').innerText = inv.UR || 0;
+        
+        // Calculate total cards
+        const totalCards = (inv.N || 0) + (inv.R || 0) + (inv.SR || 0) + (inv.SSR || 0) + (inv.UR || 0);
+        document.getElementById('totalCards').innerText = totalCards;
+        
+        // Calculate user level based on total draws
+        const drawCount = parseInt(document.getElementById('profileCount').innerText) || 0;
+        const level = Math.floor(drawCount / 50) + 1;
+        document.getElementById('profileLevel').innerText = level;
+      },
+      
+      showMoreStats() {
+        const inv = this.inventory;
+        const totalCards = (inv.N || 0) + (inv.R || 0) + (inv.SR || 0) + (inv.SSR || 0) + (inv.UR || 0);
+        const drawCount = parseInt(document.getElementById('profileCount').innerText) || 0;
+        const coins = parseInt(document.getElementById('profileCoins').innerText) || 0;
+        
+        const successRate = drawCount > 0 ? '~' + Math.round((totalCards / drawCount) * 100) + '%' : 'N/A';
+        const avgCoins = drawCount > 0 ? Math.round(coins / drawCount) : 'N/A';
+        
+        const statsHtml = '<div style="text-align:left; font-size:0.9rem;">' +
+          '<div style="margin-bottom:10px;"><strong>Total Cards:</strong> ' + totalCards + '</div>' +
+          '<div style="margin-bottom:10px;"><strong>Card Distribution:</strong></div>' +
+          '<div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:5px; margin-bottom:15px;">' +
+            '<div style="text-align:center; padding:5px; background:#F1F5F9; border-radius:4px;">' +
+              '<div style="font-size:0.7rem; color:#64748B;">N</div>' +
+              '<div style="font-weight:bold;">' + (inv.N || 0) + '</div>' +
+            '</div>' +
+            '<div style="text-align:center; padding:5px; background:#DBEAFE; border-radius:4px;">' +
+              '<div style="font-size:0.7rem; color:#1E40AF;">R</div>' +
+              '<div style="font-weight:bold;">' + (inv.R || 0) + '</div>' +
+            '</div>' +
+            '<div style="text-align:center; padding:5px; background:#EDE9FE; border-radius:4px;">' +
+              '<div style="font-size:0.7rem; color:#5B21B6;">SR</div>' +
+              '<div style="font-weight:bold;">' + (inv.SR || 0) + '</div>' +
+            '</div>' +
+            '<div style="text-align:center; padding:5px; background:#FEF3C7; border-radius:4px;">' +
+              '<div style="font-size:0.7rem; color:#92400E;">SSR</div>' +
+              '<div style="font-weight:bold;">' + (inv.SSR || 0) + '</div>' +
+            '</div>' +
+            '<div style="text-align:center; padding:5px; background:#FEE2E2; border-radius:4px;">' +
+              '<div style="font-size:0.7rem; color:#991B1B;">UR</div>' +
+              '<div style="font-weight:bold;">' + (inv.UR || 0) + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="margin-bottom:10px;"><strong>Draw Success Rate:</strong> ' + successRate + '</div>' +
+          '<div style="margin-bottom:10px;"><strong>Average Coins per Draw:</strong> ' + avgCoins + '</div>' +
+        '</div>';
+        
+        this.showStatsModal('Detailed Statistics', statsHtml);
+      },
+      
+      showStatsModal(title, content) {
+        const modalHtml = '<div class="modal show" id="statsModal" style="display:flex;">' +
+          '<div class="modal-content" style="max-width:500px;">' +
+            '<button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>' +
+            '<h3 style="margin-top:0;">' + title + '</h3>' +
+            content +
+            '<div style="margin-top:20px; text-align:center;">' +
+              '<button class="btn" onclick="App.closeModals()" style="padding:8px 20px;">Close</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+        
+        // Remove existing stats modal if any
+        const existingModal = document.getElementById('statsModal');
+        if (existingModal) existingModal.remove();
+        
+        // Add new modal to body
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+      },
+      
+      editProfile() {
+        const currentNickname = document.getElementById('profileNickname').innerText;
+        const newNickname = prompt('Enter new nickname (max 20 characters):', currentNickname);
+        if (newNickname && newNickname !== currentNickname && newNickname.length <= 20) {
+          this.toast('Updating profile...', 'info');
+          // In a real implementation, this would call an API endpoint
+          // For now, we'll just update the UI
+          document.getElementById('profileNickname').innerText = newNickname;
+          document.getElementById('navNickname').innerText = newNickname;
+          this.toast('Profile updated!', 'ok');
+        } else if (newNickname && newNickname.length > 20) {
+          this.toast('Nickname too long (max 20 characters)', 'warn');
+        }
+      },
+      
+      shareProfile() {
+        const username = document.getElementById('profileUsername').innerText;
+        const nickname = document.getElementById('profileNickname').innerText;
+        const drawCount = document.getElementById('profileCount').innerText;
+        const coins = document.getElementById('profileCoins').innerText;
+        
+        const shareText = 'Check out ' + nickname + "'s Gacha profile! Draws: " + drawCount + ', Coins: ' + coins + '. Play at ' + window.location.origin;
+        
+        if (navigator.share) {
+          navigator.share({
+            title: nickname + "'s Gacha Profile",
+            text: shareText,
+            url: window.location.origin
+          }).catch(err => {
+            console.log('Error sharing:', err);
+            this.copyToClipboard(shareText);
+          });
+        } else {
+          this.copyToClipboard(shareText);
+        }
+      },
+      
+      copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+          this.toast('Profile link copied to clipboard!', 'ok');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          this.toast('Failed to copy to clipboard', 'warn');
+        });
+      },
+      
+      toggleTheme() {
+        const currentTheme = localStorage.getItem('moe_theme') || 'light';
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        localStorage.setItem('moe_theme', newTheme);
+        this.applyTheme(newTheme);
+        this.toast('Theme changed to ' + newTheme, 'ok');
+      },
+      
+      applyTheme(theme) {
+        if (theme === 'dark') {
+          document.documentElement.style.setProperty('--bg-color', '#0F172A');
+          document.documentElement.style.setProperty('--card-bg', 'rgba(30, 41, 59, 0.95)');
+          document.documentElement.style.setProperty('--text-main', '#F1F5F9');
+          document.documentElement.style.setProperty('--text-light', '#94A3B8');
+        } else {
+          document.documentElement.style.setProperty('--bg-color', '#F8FAFC');
+          document.documentElement.style.setProperty('--card-bg', 'rgba(255, 255, 255, 0.95)');
+          document.documentElement.style.setProperty('--text-main', '#334155');
+          document.documentElement.style.setProperty('--text-light', '#94A3B8');
+        }
+      },
+      
+      initTheme() {
+        const savedTheme = localStorage.getItem('moe_theme') || 'light';
+        this.applyTheme(savedTheme);
       },
       updateCraftStates() {
          const inv = this.inventory;
