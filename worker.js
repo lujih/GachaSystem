@@ -26,24 +26,22 @@ const CONFIG = {
     DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2 },
     PRELOAD: { ENABLED: true }
   },
-  // KV 键名配置 (补充部分)
   KEYS: {
     CHANGELOG: 'system:changelog',
     ANNOUNCEMENT: 'system:announcement',
     LEADERBOARD: 'system:leaderboard',
     GALLERY_INDEX: 'system:gallery_index'
   },
-  TTL: { SESSION: 86400 * 7, BUFFER: 86400, CACHE: 60 * 5, LEADERBOARD: 86400 * 30, GALLERY_CACHE: 86400 * 7 }, // Session 7天，缓存 5分钟，排行榜30天，图库缓存7天
+  TTL: { SESSION: 86400 * 7, BUFFER: 86400, CACHE: 60 * 5, LEADERBOARD: 86400 * 30, GALLERY_CACHE: 86400 * 7 },
   R2_DOMAIN: "https://cft1.cszxorx.dpdns.org", 
   DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
 };
 
-// 缺失的常量定义 (补充部分)
 const DEFAULT_CHANGELOG = [
   { 
     date: new Date().toISOString().split('T')[0], 
     ver: 'v1.0.0', 
-    content: 'System migration to D1 complete.\nInitial Release.', 
+    content: '系统迁移至 D1 数据库完成。\n初始版本发布。', 
     tag: 'feature' 
   }
 ];
@@ -53,7 +51,6 @@ export default {
     const url = new URL(request.url);
     const method = request.method;
 
-    // CORS 处理
     if (method === 'OPTIONS') {
       return new Response(null, {
         headers: { 
@@ -64,23 +61,15 @@ export default {
       });
     }
 
-    // 鉴权中间件：从 KV 获取 Session
-    // 前端在 Header 中传 X-Session-Token 或 X-User-ID (旧逻辑兼容)
-    // 建议前端统一逻辑，这里为了兼容旧代码示例逻辑做了适配
     const token = request.headers.get('X-Session-Token');
     let currentUser = null;
     if (token) {
       const userDataStr = await env.KV_CACHE.get(`session:${token}`);
       if (userDataStr) currentUser = JSON.parse(userDataStr);
     } 
-    // 兼容性：如果请求头没Token但有 X-User-ID (前端模拟环境)，且不在生产环境，可酌情处理
-    // 实际生产请强制使用 Token
     
-    // 如果没有 Token 但前端传了 X-User-ID (简单 Demo 模式)
-    // 我们可以尝试去 D1 查一下 ID 对应的基本信息 (不安全，仅限演示)
     if (!currentUser && request.headers.get('X-User-ID')) {
          const uidName = request.headers.get('X-User-ID');
-         // 为了性能，演示模式下我们只构造基本对象，实际操作会由 Service 再校验 DB
          const user = await env.DB.prepare('SELECT id, username, nickname FROM users WHERE username = ?').bind(uidName).first();
          if(user) currentUser = user;
     }
@@ -91,28 +80,23 @@ export default {
     const routes = {
       'GET /': () => handleHome(),
       
-      // Auth (D1 Write/Read + KV Write)
       'POST /auth/register': () => userService.register(request),
       'POST /auth/login': () => userService.login(request),
       'GET /user/info': () => userService.getInfo(currentUser),
       
-      // Game (D1 Transaction)
       'GET /draw': () => gachaService.draw(currentUser),
       'POST /draw/limited': () => gachaService.drawLimited(currentUser),
       'POST /user/craft': () => gachaService.craft(currentUser, request),
       'POST /shop/buy': () => gachaService.shopBuy(currentUser, request),
       'POST /game/dice': () => gachaService.playDice(currentUser, request),
       
-      // Public Data (KV Read or D1 Read)
       'GET /showcase': () => handleShowcase(env),
       'GET /changelog': () => handleChangelog(env),
       'GET /announcement': () => handleGetAnnouncement(env),
 
-      // Library
       'GET /library': () => handleLibrary(request, env, url),
       
-      // Admin (需要鉴权逻辑，略)
-      'POST /admin/users': async () => { /* 实现查询所有用户逻辑 */ return jsonResponse({success:false}); }, 
+      'POST /admin/users': async () => { /* 实际需实现用户列表查询 */ return jsonResponse({success:false}); }, 
       'POST /admin/verify': () => handleAdminVerify(request, env),
       'POST /admin/save-changelog': () => handleAdminSaveLog(request, env),
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
@@ -132,62 +116,51 @@ export default {
 
 /**
  * =========================================
- * 2. 服务层 (Service Layer) - D1 & KV 混合实现
+ * 2. 服务层 (Service Layer)
  * =========================================
  */
-
 class UserService {
   constructor(env, ctx) {
     this.env = env;
     this.ctx = ctx;
   }
 
-  // [D1] 注册：强一致性，防止用户名冲突
   async register(request) {
     const { username, nickname, password } = await request.json();
     if (!username || !password) return jsonResponse({ error: 'Missing fields' }, 400);
 
     try {
-      // 插入新用户，初始金币 1000
       await this.env.DB.prepare(
         'INSERT INTO users (username, nickname, password, coins, created_at) VALUES (?, ?, ?, ?, ?)'
       ).bind(username, nickname || username, password, 1000, Date.now()).run();
       
       return jsonResponse({ success: true });
     } catch (e) {
-      // 捕获 UNIQUE constraint failed 错误
       console.error(e);
       return jsonResponse({ error: 'Username Taken' }, 409);
     }
   }
 
-  // [D1 + KV] 登录：D1 验密，KV 存 Session (实现读写分离加速)
   async login(request) {
     const { username, password } = await request.json();
     
-    // 1. D1 查询用户 (强一致性)
     const user = await this.env.DB.prepare(
       'SELECT id, username, nickname FROM users WHERE username = ? AND password = ?'
     ).bind(username, password).first();
 
     if (!user) return jsonResponse({ error: 'Invalid Credentials' }, 403);
 
-    // 2. 生成 Token 并存入 KV
     const token = crypto.randomUUID();
     const sessionData = { id: user.id, username: user.username, nickname: user.nickname };
     
-    // [KV] 写入 Session，设置 TTL 自动过期 (7天)
-    // 这样在鉴权中间件(middleware)里只需读 KV，极快
     await this.env.KV_CACHE.put(`session:${token}`, JSON.stringify(sessionData), { expirationTtl: CONFIG.TTL.SESSION });
 
     return jsonResponse({ success: true, token, user: sessionData });
   }
 
-  // [D1] 获取用户信息：聚合查询 Users 和 Inventory
   async getInfo(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-    // 1. 并行查询：用户基础数据 + 背包数据
     const [userRes, invRes] = await Promise.all([
       this.env.DB.prepare('SELECT coins, draw_count, wins FROM users WHERE id = ?').bind(currentUser.id).first(),
       this.env.DB.prepare('SELECT rarity, count FROM inventory WHERE user_id = ?').bind(currentUser.id).all()
@@ -195,7 +168,6 @@ class UserService {
 
     if (!userRes) return jsonResponse({ error: 'User Not Found' }, 404);
 
-    // 2. 格式化背包数组 -> 对象 { "SSR": 5, "R": 10 }
     const inventory = {};
     if (invRes.results) {
       invRes.results.forEach(row => inventory[row.rarity] = row.count);
@@ -207,7 +179,7 @@ class UserService {
       coins: userRes.coins,
       drawCount: userRes.draw_count,
       wins: userRes.wins,
-      inventory // 返回 D1 中的真实数据
+      inventory
     });
   }
 }
@@ -221,18 +193,12 @@ class GachaService {
 
   getBufferKey(username) { return `buffer:${username}`; }
 
-  // [D1 事务] 普通抽卡：加分 + 发卡 + 记录
   async draw(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
     
-    // 1. 获取图片 (优先 KV 缓存，无缓存则现场抓取)
     let assetData = await this.getOrFetchAsset(currentUser.username, CONFIG.SOURCES);
 
-    // 2. 检查是否为默认图片（无效抽卡）
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
-      // 抽到默认图片，视为无效抽卡
-      // 不加金币、不加背包、不更新排行榜和图库
-      // 只返回失败信息给前端
       return jsonResponse({
         success: false,
         rarity: assetData.rarity,
@@ -242,48 +208,29 @@ class GachaService {
       });
     }
 
-    // 3. 准备数据（有效抽卡）
     const points = CONFIG.GAME.POINTS[assetData.rarity] || 5;
     const timestamp = Date.now();
 
-    // 4. [D1 Batch] 事务执行
-    // 使用 UPSERT 语法处理背包 (SQLite: ON CONFLICT DO UPDATE)
     const batch = [
-        // A. 加金币 & 增加抽卡数
         this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + 1 WHERE id = ?')
             .bind(points, currentUser.id),
-        
-        // B. 插入背包 (如果已存在则数量+1)
         this.env.DB.prepare(`
             INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
             ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1
         `).bind(currentUser.id, assetData.rarity),
-        
-        // C. 写日志
         this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)')
             .bind(currentUser.id, currentUser.username, 'draw', assetData.imageUrl, assetData.rarity, timestamp)
     ];
 
     await this.env.DB.batch(batch);
-
-    // 5. [KV] 异步预加载下一张图
     this.ctx.waitUntil(this.refillBuffer(currentUser.username));
-
-    // 6. [KV] 异步更新排行榜 (非关键路径，保持在 KV 以降低 D1 读压力)
     this.ctx.waitUntil(updateLeaderboard(this.env, {
         username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp
     }));
-
-    // 7. [KV] 异步更新图库索引
     this.ctx.waitUntil(updateGalleryIndex(this.env, {
-        url: assetData.imageUrl,
-        username: currentUser.username,
-        ts: timestamp
+        url: assetData.imageUrl, username: currentUser.username, ts: timestamp
     }));
 
-    // 获取最新余额返回前端 (可选，为了 UI 即时更新)
-    // 这里简单处理，直接返回前端计算后的值，或再查一次 DB
-    // 为了性能，前端通常自行 +points
     return jsonResponse({
         success: true,
         rarity: assetData.rarity,
@@ -292,13 +239,10 @@ class GachaService {
     });
   }
 
-  // [D1 事务] 限定池抽卡：先扣款，再发货
   async drawLimited(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
     const cost = CONFIG.LIMITED.COST;
 
-    // 1. [D1] 原子扣款 (Conditional Update)
-    // 如果余额不足，changes 将为 0
     const deductRes = await this.env.DB.prepare(
         'UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ? AND coins >= ?'
     ).bind(cost, currentUser.id, cost).run();
@@ -307,17 +251,10 @@ class GachaService {
         return jsonResponse({ error: 'Not Enough Points' }, 403);
     }
 
-    // 2. 扣款成功，获取资源
     let assetData = await this.getOrFetchAsset(currentUser.username, CONFIG.LIMITED.SOURCES);
 
-    // 3. 检查是否为默认图片（无效抽卡）
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
-      // 抽到默认图片，视为无效抽卡
-      // 退还积分给用户，不增加背包，不更新图库索引
-      await this.env.DB.prepare(
-          'UPDATE users SET coins = coins + ? WHERE id = ?'
-      ).bind(cost, currentUser.id).run();
-      
+      await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
       return jsonResponse({
         success: false,
         rarity: assetData.rarity,
@@ -326,7 +263,6 @@ class GachaService {
       });
     }
 
-    // 4. [D1 Batch] 发货 & 日志（有效抽卡）
     await this.env.DB.batch([
         this.env.DB.prepare(`
             INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
@@ -336,28 +272,21 @@ class GachaService {
             .bind(currentUser.id, currentUser.username, 'draw_limited', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
 
-    // [KV] 异步更新图库索引
     this.ctx.waitUntil(updateGalleryIndex(this.env, {
-        url: assetData.imageUrl,
-        username: currentUser.username,
-        ts: Date.now()
+        url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
     
     return jsonResponse({ success: true, rarity: assetData.rarity, imageUrl: assetData.imageUrl });
   }
 
-  // [D1] 合成卡片：原子扣除 5 张低阶 -> 增加 1 张高阶
   async craft(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
     const { targetRarity } = await request.json();
     
-    // 定义合成配方
     const recipe = { 'R': 'N', 'SR': 'R', 'SSR': 'SR', 'UR': 'SSR' };
     const costRarity = recipe[targetRarity];
     if (!costRarity) return jsonResponse({ error: 'Invalid Recipe' }, 400);
 
-    // 1. [D1] 原子扣除素材
-    // 检查是否有 5 张素材卡
     const deductRes = await this.env.DB.prepare(
         'UPDATE inventory SET count = count - 5 WHERE user_id = ? AND rarity = ? AND count >= 5'
     ).bind(currentUser.id, costRarity).run();
@@ -366,28 +295,19 @@ class GachaService {
         return jsonResponse({ error: `Not enough ${costRarity} cards (Need 5)` }, 403);
     }
 
-    // 2. 扣除成功，获取目标稀有度的图片并入库
-    // 强制获取指定稀有度的图源
     const targetSource = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
     const assetData = await this.fetchAndUpload(currentUser.username, targetSource);
 
-    // 3. 检查是否为默认图片（无效合成）
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
-      // 合成获得默认图片，视为无效合成
-      // 返还消耗的5张低阶卡片，不增加背包，不更新图库索引
-      await this.env.DB.prepare(
-          'UPDATE inventory SET count = count + 5 WHERE user_id = ? AND rarity = ?'
-      ).bind(currentUser.id, costRarity).run();
-      
+      await this.env.DB.prepare('UPDATE inventory SET count = count + 5 WHERE user_id = ? AND rarity = ?').bind(currentUser.id, costRarity).run();
       return jsonResponse({
         success: false,
         rarity: assetData.rarity,
         imageUrl: assetData.imageUrl,
-        message: '卡片合成失败，获得默认图片，消耗的卡片已返还'
+        message: '卡片合成失败，消耗的卡片已返还'
       });
     }
 
-    // 4. [D1] 发放高阶卡（有效合成）
     await this.env.DB.batch([
         this.env.DB.prepare(`
             INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
@@ -397,52 +317,38 @@ class GachaService {
             .bind(currentUser.id, currentUser.username, 'craft', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
 
-    // [KV] 异步更新图库索引
     this.ctx.waitUntil(updateGalleryIndex(this.env, {
-        url: assetData.imageUrl,
-        username: currentUser.username,
-        ts: Date.now()
+        url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
 
-    // 返回最新背包以便前端更新
     return this.userService.getInfo(currentUser);
   }
 
-  // [D1] 商店购买：积分换卡
   async shopBuy(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
     const { targetRarity } = await request.json();
     const price = CONFIG.GAME.SHOP[targetRarity];
     if (!price) return jsonResponse({ error: 'Invalid Pack' }, 400);
 
-    // 1. 原子扣分
     const deductRes = await this.env.DB.prepare(
         'UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?'
     ).bind(price, currentUser.id, price).run();
 
     if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
 
-    // 2. 发货
     const source = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
     const assetData = await this.fetchAndUpload(currentUser.username, source);
 
-    // 3. 检查是否为默认图片（无效购买）
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
-      // 购买获得默认图片，视为无效购买
-      // 退还积分给用户，不增加背包，不更新图库索引
-      await this.env.DB.prepare(
-          'UPDATE users SET coins = coins + ? WHERE id = ?'
-      ).bind(price, currentUser.id).run();
-      
+      await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(price, currentUser.id).run();
       return jsonResponse({
         success: false,
         rarity: assetData.rarity,
         imageUrl: assetData.imageUrl,
-        message: '商店购买失败，获得默认图片，积分已退还'
+        message: '商店购买失败，积分已退还'
       });
     }
 
-    // 4. 有效购买，发放卡片
     await this.env.DB.batch([
          this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`)
              .bind(currentUser.id, assetData.rarity),
@@ -450,53 +356,43 @@ class GachaService {
              .bind(currentUser.id, currentUser.username, 'shop_buy', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
 
-    // [KV] 异步更新图库索引
     this.ctx.waitUntil(updateGalleryIndex(this.env, {
-        url: assetData.imageUrl,
-        username: currentUser.username,
-        ts: Date.now()
+        url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
 
     return jsonResponse({ success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity });
   }
 
-  // [D1] 骰子游戏：纯金币变动
   async playDice(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
     const { betAmount, prediction } = await request.json();
     
-    // 校验参数
     const bet = parseInt(betAmount);
     if (isNaN(bet) || bet < 10 || bet > 1000) return jsonResponse({ error: 'Invalid Bet' }, 400);
     if (!['small', 'big'].includes(prediction)) return jsonResponse({ error: 'Invalid Prediction' }, 400);
 
-    // 1. [D1] 尝试扣除赌注
     const deductRes = await this.env.DB.prepare(
         'UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?'
     ).bind(bet, currentUser.id, bet).run();
 
     if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
 
-    // 2. 游戏逻辑
-    const roll = Math.floor(Math.random() * 6) + 1; // 1-6
+    const roll = Math.floor(Math.random() * 6) + 1;
     const isSmall = roll <= 3;
     const isWin = (prediction === 'small' && isSmall) || (prediction === 'big' && !isSmall);
     let winAmount = 0;
 
     if (isWin) {
-        winAmount = bet * 2; // 赔率 1:1 (本金+奖金)
-        // 3. [D1] 发放奖金 & 记录胜场
+        winAmount = bet * 2;
         await this.env.DB.prepare(
             'UPDATE users SET coins = coins + ?, wins = wins + 1 WHERE id = ?'
         ).bind(winAmount, currentUser.id).run();
     }
 
-    // 4. [D1] 记录日志 (可选，如果不重要可跳过)
     await this.env.DB.prepare(
         'INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)'
     ).bind(currentUser.id, currentUser.username, 'dice', `Bet:${bet} Roll:${roll} Win:${winAmount}`, Date.now()).run();
 
-    // 5. 获取最新余额
     const user = await this.env.DB.prepare('SELECT coins FROM users WHERE id = ?').bind(currentUser.id).first();
 
     return jsonResponse({
@@ -508,46 +404,37 @@ class GachaService {
     });
   }
 
-  // === 内部辅助方法 ===
-
-  // 统一处理：先查 KV 缓存，没有则 fetch，用完删缓存
   async getOrFetchAsset(username, sourceList) {
     const bufferKey = this.getBufferKey(username);
     const bufferData = await this.env.KV_CACHE.get(bufferKey, { type: 'json' });
     
     if (bufferData && bufferData.success) {
-      // 消费缓存
       this.ctx.waitUntil(this.env.KV_CACHE.delete(bufferKey));
       return bufferData;
     } else {
-      // 现场抓取
       const source = sourceList[Math.floor(Math.random() * sourceList.length)];
       return await this.fetchAndUpload(username, source);
     }
   }
 
-  // 填充缓冲区 (用于预加载)
   async refillBuffer(username) {
     try {
         const key = this.getBufferKey(username);
-        // 如果已有缓存，跳过
         const existing = await this.env.KV_CACHE.get(key);
         if (existing) return;
 
         const source = CONFIG.SOURCES[Math.floor(Math.random() * CONFIG.SOURCES.length)];
         const assetData = await this.fetchAndUpload(username, source);
         if (assetData.success) {
-            // [KV] 写入 buffer，1天过期
             await this.env.KV_CACHE.put(key, JSON.stringify(assetData), { expirationTtl: CONFIG.TTL.BUFFER });
         }
     } catch(e) { console.error('Refill error', e); }
   }
 
-  // 抓取图片上传到 R2
   async fetchAndUpload(username, source) {
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000); // 5秒超时
+        const timeout = setTimeout(() => controller.abort(), 5000);
         const imgRes = await fetch(source.url, { signal: controller.signal });
         clearTimeout(timeout);
 
@@ -559,57 +446,18 @@ class GachaService {
             const randomStr = Math.random().toString(36).slice(2, 6);
             const filename = `images/${base64Name}___${timestamp}___${randomStr}.jpg`;
             
-            // 上传到 R2
             await this.env.R2_BUCKET.put(filename, buffer, { httpMetadata: { contentType: contentType } });
             
             return { 
                 success: true, 
-                imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`, // 构建 R2 公网链接
+                imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`,
                 rarity: source.rarity, 
                 sourceName: source.name 
             };
         }
     } catch (e) { console.error('Fetch Asset Error', e); }
     
-    // 失败降级
     return { success: false, rarity: 'N', imageUrl: CONFIG.DEFAULT_IMG };
-  }
-
-  async settleTransaction(userId, user, assetData, skipPoints = false) {
-    const timestamp = Date.now();
-    let finalImageUrl = CONFIG.DEFAULT_IMG;
-    const pointsEarned = assetData.success ? (CONFIG.GAME.POINTS[assetData.rarity] || 1) : 0;
-
-    if (assetData.success) {
-      finalImageUrl = assetData.imageUrl;
-      user.drawCount = (user.drawCount || 0) + 1;
-      if (!skipPoints) user.coins = (user.coins || 0) + pointsEarned;
-      user.inventory = user.inventory || {};
-      user.inventory[assetData.rarity] = (user.inventory[assetData.rarity] || 0) + 1;
-      user.lastImageUrl = finalImageUrl;
-
-      const updates = [
-        this.userService.save(userId, user),
-        updateLeaderboard(this.env, {
-          username: user.nickname || user.username,
-          imageUrl: finalImageUrl, sourceName: assetData.sourceName,
-          timestamp: timestamp, timeText: new Date(timestamp).toLocaleString('zh-CN', { hour12: false }),
-          success: true, rarity: assetData.rarity
-        }),
-        updateGalleryIndex(this.env, { url: finalImageUrl, username: user.username, ts: timestamp })
-      ];
-      this.ctx.waitUntil(Promise.all(updates));
-    }
-
-    return jsonResponse({
-      imageUrl: finalImageUrl,
-      timestamp: timestamp,
-      success: assetData.success,
-      rarity: assetData.rarity,
-      points: skipPoints ? 0 : pointsEarned,
-      userCoins: user.coins,
-      inventory: user.inventory
-    });
   }
 }
 
@@ -646,7 +494,6 @@ async function handleShowcase(env) {
 async function handleLibrary(request, env, url) {
   if (!env.RECENT_REQUESTS) return new Response('Service Unavailable', { status: 503 });
   const page = parseInt(url.searchParams.get('page') || '1');
-  // 将pageSize改为24，这样在更多屏幕尺寸下都能对齐（24能被2、3、4、6、8整除）
   const pageSize = 24;
   let galleryItems = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.GALLERY_INDEX));
   if (!galleryItems || galleryItems.length === 0) {
@@ -807,7 +654,6 @@ const NEUTRAL_CSS = `
   .admin-tab.active { background: #E0F2FE; color: var(--primary); }
   .user-pill { background: white; padding: 6px 14px; border-radius: 8px; border: 1px solid #E2E8F0; font-size: 0.85rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; }
   .title-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: white; font-size: 0.7rem; font-weight: bold; vertical-align: middle; margin-left: 6px; text-shadow: 0 1px 1px rgba(0,0,0,0.2); }
-  .lang-btn { background: white; border: 1px solid #E2E8F0; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; cursor: pointer; color: var(--text-light); transition: 0.2s; }
   .user-badge { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; }
   .user-row-meta { font-size: 0.75rem; color: #94A3B8; }
   .dice-stage { font-size: 5rem; color: var(--primary); margin: 20px 0; height: 80px; display: flex; align-items: center; justify-content: center; }
@@ -832,215 +678,43 @@ const NEUTRAL_CSS = `
   .refresh-spin { animation: spin-once 0.8s ease-in-out; color: var(--primary) !important; }
   @keyframes spin-once { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-  /* 响应式设计优化 */
   @media (max-width: 480px) {
-    .modal-content {
-      width: 95%;
-      padding: 16px;
-      max-width: none;
-    }
-    .shop-grid {
-      grid-template-columns: 1fr;
-    }
-    .grid {
-      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-      gap: 8px;
-      padding: 10px;
-    }
-    .actions {
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-    #drawBtn {
-      grid-column: 1 / -1;
-    }
-    .main-grid {
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
-    .header {
-      flex-direction: column;
-      gap: 12px;
-      align-items: flex-start;
-    }
-    .user-pill {
-      font-size: 0.8rem;
-      padding: 5px 10px;
-    }
+    .modal-content { width: 95%; padding: 16px; max-width: none; }
+    .shop-grid { grid-template-columns: 1fr; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; padding: 10px; }
+    .actions { grid-template-columns: 1fr 1fr; gap: 8px; }
+    #drawBtn { grid-column: 1 / -1; }
+    .main-grid { grid-template-columns: 1fr; gap: 16px; }
+    .header { flex-direction: column; gap: 12px; align-items: flex-start; }
+    .user-pill { font-size: 0.8rem; padding: 5px 10px; }
+    #profileModal .modal-content { padding: 12px; }
+    #profileModal .modal-content > div:first-child { margin-bottom: 15px; }
+    #profileModal .modal-content > div:first-child > div:first-child { width: 60px; height: 60px; font-size: 1.5rem; }
+    #profileModal .modal-content h3 { font-size: 1.2rem; }
+    #profileModal .modal-content > div:nth-child(2) > div:first-child { grid-template-columns: 1fr; gap: 10px; }
+    #profileModal .modal-content > div:nth-child(2) > div:nth-child(2) > div:first-child { flex-direction: column; gap: 10px; }
+    #profileModal .modal-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) { grid-template-columns: repeat(3, 1fr); }
+    #profileModal .modal-content > div:nth-child(3) { grid-template-columns: 1fr; gap: 8px; }
   }
-  
   @media (max-width: 768px) {
-    .modal-content {
-      max-width: 90%;
-    }
-    .shop-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-    .grid {
-      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    }
+    .modal-content { max-width: 90%; }
+    .shop-grid { grid-template-columns: 1fr 1fr; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
   }
-  
-  /* 个人档案页特定响应式样式 */
-  @media (max-width: 480px) {
-    #profileModal .modal-content {
-      padding: 12px;
-    }
-    #profileModal .modal-content > div:first-child {
-      margin-bottom: 15px;
-    }
-    #profileModal .modal-content > div:first-child > div:first-child {
-      width: 60px;
-      height: 60px;
-      font-size: 1.5rem;
-    }
-    #profileModal .modal-content h3 {
-      font-size: 1.2rem;
-    }
-    #profileModal .modal-content > div:nth-child(2) > div:first-child {
-      grid-template-columns: 1fr;
-      gap: 10px;
-    }
-    #profileModal .modal-content > div:nth-child(2) > div:nth-child(2) > div:first-child {
-      flex-direction: column;
-      gap: 10px;
-    }
-    #profileModal .modal-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) {
-      grid-template-columns: repeat(3, 1fr);
-    }
-    #profileModal .modal-content > div:nth-child(3) {
-      grid-template-columns: 1fr;
-      gap: 8px;
-    }
-  }
-  
   @media (max-width: 768px) and (min-width: 481px) {
-    #profileModal .modal-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) {
-      grid-template-columns: repeat(4, 1fr);
-    }
+    #profileModal .modal-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) { grid-template-columns: repeat(4, 1fr); }
   }
 </style>
 `;
 
-const I18N_TEXT = {
-en: {
-  ready: "READY TO DRAW", start: "START", showcase: "Showcase", loading: "Loading...",
-  changelog: "Changelog", more: "Show More", less: "Show Less",
-  id_check: "Authentication", reg_tip: "Sign up or Login to play.",
-  confirm: "Submit", profile: "User Profile", name: "Nickname:", draws: "Total Draws:",
-  logout: "Logout", close: "Close", guest: "Guest",
-  retry: "RETRY", again: "AGAIN", name_req: "Missing fields",
-  net_err: "Network Error", reg_ok: "Registered! Please Login.", success: "Gacha Success",
-  fail: "Connection Failed", clear_confirm: "Are you sure you want to log out?",
-  btn_lang: "En", back: "Back", page: "Page", admin_panel: "Admin Panel",
-  admin_auth: "Admin Access", pass_tip: "Enter admin password", edit_log: "Visual Changelog Editor",
-  save: "Save Changes", verify_fail: "Incorrect Password", save_ok: "Saved!", save_err: "Save Failed",
-  add_row: "+ Add Row", del: "Del", date: "Date", ver: "Ver", content: "Content",
-  users_title: "Registered Users", users_tab: "Users", log_tab: "Changelog",
-  user_col: "Username", draws_col: "Draws", last_active_col: "Last Active", action_col: "Action",
-  delete_confirm: "Delete this user?", name_taken: "Name taken",
-  delete_ok: "User Deleted",
-  craft_title: "Card Synthesis", craft_desc: "Burn 5 low-rarity cards.",
-  shop_title: "Token Shop", shop_desc: "Spend points.",
-  buy: "Buy", points_short: "pts", buy_ok: "Purchase Successful!", no_money: "Not enough points!",
-  owned: "Owned", cost: "Cost", craft_ok: "Craft Success!",
-  rules_title: "Point Rules", rules_desc: "Points can be used in the Shop.",
-  rule_action: "Action", rule_points: "Points", points_label: "Coins:",
-  dice_title: "Guess Size", dice_desc: "Small (1-3) or Big (4-6). Pays 1:1.",
-  bet_ph: "Bet Amount (10-1000)", small: "SMALL (1-3)", big: "BIG (4-6)",
-  win: "YOU WIN!", lose: "YOU LOSE", points_col: "Coins", edit_points: "Mod", edit_points_prompt: "Enter points to add/sub:",
-  pool_std: "Standard", pool_ltd: "Limited", ltd_cost: "Cost:", start_ltd: "SUMMON",
-  login_tab: "Login", reg_tab: "Register", username_ph: "Username (a-z, 0-9)", nick_ph: "Nickname (Display)", pass_ph: "Password",
-  craft_confirm: "Consume 5 cards to craft 1 {target}?",
-  buy_confirm: "Spend {price} points?",
-  min_bet: "Minimum bet is 10",
-  server_err_no_money: "Not enough points!",
-  server_err_taken: "Username/Nickname already taken",
-  server_err_user_missing: "User not found",
-  server_err_pass: "Invalid Password",
-  server_err_auth: "Auth Failed",
-  img_load_err: "Image Load Error",
-  ann_title_def: "Notification",
-  ann_enabled: "Enabled",
-  ann_disabled: "Disabled",
-  ann_preview: "Preview",
-  ann_publish: "Publish",
-  ann_title: "Title",
-  ann_status: "Status",
-  low_pts: "Low Pts",
-  edit_profile: "Edit",
-  share_profile: "Share",
-  more_stats: "More Stats",
-  theme: "Theme",
-  card_collection: "Card Collection",
-  level: "Level",
-  coins_label: "Coins",
-  total_cards: "Total: {count} cards"
-},
-zh: {
-  ready: "准备召唤", start: "召唤", showcase: "精选图库", loading: "加载中...",
-  changelog: "更新履历", more: "展开更多", less: "收起列表",
-  id_check: "身份验证", reg_tip: "请登录或注册以继续。",
-  confirm: "提交", profile: "个人档案", name: "昵称：", draws: "召唤次数：",
-  logout: "注销", close: "关闭", guest: "未登录",
-  retry: "重试", again: "再召唤", name_req: "请填写完整信息",
-  net_err: "网络错误", reg_ok: "注册成功，请登录", success: "召唤成功",
-  fail: "连接中断", clear_confirm: "确定要注销吗？",
-  btn_lang: "汉", back: "返回", page: "第", admin_panel: "管理面板",
-  admin_auth: "管理员认证", pass_tip: "请输入管理员密码", edit_log: "可视化日志编辑器",
-  save: "保存更改", verify_fail: "密码错误", save_ok: "保存成功！", save_err: "保存失败",
-  add_row: "+ 新增一行", del: "删", date: "日期", ver: "版本", content: "内容",
-  users_title: "注册用户列表", users_tab: "用户管理", log_tab: "更新日志",
-  user_col: "账号/昵称", draws_col: "召唤数", last_active_col: "最近活跃", action_col: "操作",
-  delete_confirm: "确定删除该用户吗？此操作不可逆。", name_taken: "昵称或账号已被占用",
-  delete_ok: "用户已删除",
-  craft_title: "卡片合成", craft_desc: "消耗5张低阶卡片，进行一次高阶召唤。",
-  shop_title: "积分商店", shop_desc: "消耗积分购买指定等级的卡包。",
-  buy: "购买", points_short: "分", buy_ok: "购买成功！", no_money: "积分不足！",
-  owned: "持有", cost: "消耗", craft_ok: "合成召唤成功！",
-  rules_title: "积分规则", rules_desc: "积分可用于在商店购买物品。",
-  rule_action: "行为", rule_points: "获得积分", points_label: "当前积分：",
-  dice_title: "猜大小", dice_desc: "小(1-3) 或 大(4-6)，赔率1:1。",
-  bet_ph: "下注金额 (10-1000)", small: "押小 (1-3)", big: "押大 (4-6)",
-  win: "你赢了！", lose: "你输了", points_col: "积分", edit_points: "改", edit_points_prompt: "输入要增加或减少的积分:",
-  pool_std: "常驻池", pool_ltd: "限定池", ltd_cost: "消耗:", start_ltd: "召唤",
-  login_tab: "登录", reg_tab: "注册", username_ph: "账号 (英文/数字)", nick_ph: "昵称 (显示名)", pass_ph: "密码",
-  craft_confirm: "确定消耗5张低阶卡合成1张 {target} 吗？",
-  buy_confirm: "确定花费 {price} 积分吗？",
-  min_bet: "最小下注为 10",
-  server_err_no_money: "积分不足！",
-  server_err_taken: "用户名或昵称已被占用",
-  server_err_user_missing: "用户不存在",
-  server_err_pass: "密码错误",
-  server_err_auth: "认证失败",
-  img_load_err: "图片加载失败",
-  ann_title_def: "公告",
-  ann_enabled: "已启用",
-  ann_disabled: "已禁用",
-  ann_preview: "预览",
-  ann_publish: "发布 / 保存",
-  ann_title: "标题",
-  ann_status: "状态",
-  low_pts: "积分不足",
-  edit_profile: "编辑",
-  share_profile: "分享",
-  more_stats: "更多统计",
-  theme: "主题",
-  card_collection: "卡片收集",
-  level: "等级",
-  coins_label: "金币",
-  total_cards: "总计: {count} 张卡片"
-}
-};
-
 function getHtmlPage() {
   return `
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Gacha System</title>
+  <title>抽卡系统</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   ${NEUTRAL_CSS}
@@ -1095,10 +769,9 @@ function getHtmlPage() {
     <div class="logo"><i class="fas fa-cube"></i> Gacha<span>System</span></div>
     <div style="display:flex; gap:10px; align-items:center;">
        <div class="user-pill" onclick="App.openProfile()">
-         <i class="fas fa-user-astronaut"></i> <span id="navNickname">Guest</span>
+         <i class="fas fa-user-astronaut"></i> <span id="navNickname">游客</span>
          <span id="navTitle"></span>
        </div>
-       <div class="lang-btn" onclick="App.toggleLang()" id="langBtn">En</div>
     </div>
   </header>
 
@@ -1106,10 +779,10 @@ function getHtmlPage() {
     <div class="gacha-card">
       <div class="banner-tabs">
         <div class="banner-tab active" id="tab-std" onclick="App.switchPool('std')">
-            <span data-i18n="pool_std">Standard</span>
+            <span>常驻池</span>
         </div>
         <div class="banner-tab" id="tab-ltd" onclick="App.switchPool('ltd')">
-            <span data-i18n="pool_ltd">Limited</span>
+            <span>限定池</span>
             <span class="pool-info-tag" id="ltdCostDisplay">500pts</span>
         </div>
       </div>
@@ -1117,13 +790,13 @@ function getHtmlPage() {
         <div id="rarityTag" class="rarity-tag">SSR</div>
         <div class="placeholder" id="placeholder">
           <i class="fas fa-gamepad"></i>
-          <div data-i18n="ready">READY TO DRAW</div>
+          <div>准备召唤</div>
         </div>
         <img id="resultImg" alt="Result">
       </div>
       <div class="actions">
         <button class="btn" onclick="App.draw()" id="drawBtn">
-          <i class="fas fa-bolt"></i> <span data-i18n="start">START</span>
+          <i class="fas fa-bolt"></i> <span>召唤</span>
         </button>
         <button class="btn secondary" onclick="App.openCraft()" style="background:#FFF7ED; border-color:#FED7AA;">
           <i class="fas fa-flask"></i>
@@ -1141,20 +814,20 @@ function getHtmlPage() {
     <div class="panel-container">
       <div class="showcase-box">
         <div class="box-header">
-          <span><i class="fas fa-star" style="color:#F59E0B"></i> <span data-i18n="showcase">Showcase</span></span>
+          <span><i class="fas fa-star" style="color:#F59E0B"></i> 精选图库</span>
           <i class="fas fa-rotate" id="refreshBtn" style="cursor:pointer; font-size:0.9rem; color:#94A3B8" onclick="App.loadShowcase()"></i>
         </div>
         <div class="grid" id="showcaseGrid">
-          <div style="grid-column:1/-1; text-align:center; padding:20px; color:#94A3B8;" data-i18n="loading">Loading...</div>
+          <div style="grid-column:1/-1; text-align:center; padding:20px; color:#94A3B8;">加载中...</div>
         </div>
       </div>
       <div class="glass-card log-container">
-        <div class="log-header"><i class="fas fa-code-branch"></i> <span data-i18n="changelog">Changelog</span></div>
+        <div class="log-header"><i class="fas fa-code-branch"></i> 更新履历</div>
         <div id="logList" class="log-list collapsed">
-          <div style="text-align:center; color:#94A3B8;" data-i18n="loading">Loading...</div>
+          <div style="text-align:center; color:#94A3B8;">加载中...</div>
         </div>
         <div class="log-toggle" id="logToggle" onclick="App.toggleLog()" style="display:none">
-          <span data-i18n="more">Show More</span> <i class="fas fa-chevron-down"></i>
+          <span>展开更多</span> <i class="fas fa-chevron-down"></i>
         </div>
       </div>
     </div>
@@ -1162,25 +835,25 @@ function getHtmlPage() {
 
   <div id="authModal" class="modal">
     <div class="modal-content">
-      <h3 style="margin-top:0; color:var(--text-main)" data-i18n="id_check">Authentication</h3>
+      <h3 style="margin-top:0; color:var(--text-main)">身份验证</h3>
       <div class="auth-tabs">
-         <div class="auth-tab active" id="tab-login" onclick="App.switchAuth('login')" data-i18n="login_tab">Login</div>
-         <div class="auth-tab" id="tab-register" onclick="App.switchAuth('register')" data-i18n="reg_tab">Register</div>
+         <div class="auth-tab active" id="tab-login" onclick="App.switchAuth('login')">登录</div>
+         <div class="auth-tab" id="tab-register" onclick="App.switchAuth('register')">注册</div>
       </div>
       
       <div id="authForm">
         <div class="input-group">
-            <input type="text" id="authUsername" placeholder="Username (a-z, 0-9)" data-i18n="username_ph">
+            <input type="text" id="authUsername" placeholder="账号 (英文/数字)">
         </div>
         <div class="input-group" id="nickGroup" style="display:none;">
-            <input type="text" id="authNickname" placeholder="Nickname (Display Name)" data-i18n="nick_ph">
+            <input type="text" id="authNickname" placeholder="昵称 (显示名)">
         </div>
         <div class="input-group">
-            <input type="password" id="authPassword" placeholder="Password" data-i18n="pass_ph">
+            <input type="password" id="authPassword" placeholder="密码">
         </div>
       </div>
       
-      <button class="btn" style="width:100%;" onclick="App.doAuth()" data-i18n="confirm">Confirm</button>
+      <button class="btn" style="width:100%;" onclick="App.doAuth()">确认提交</button>
     </div>
   </div>
 
@@ -1191,25 +864,25 @@ function getHtmlPage() {
         <div style="width:80px; height:80px; margin:0 auto 15px; background:linear-gradient(135deg, var(--primary), var(--secondary)); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2rem; color:white; box-shadow:0 8px 20px rgba(59,130,246,0.3);">
           <i class="fas fa-user-astronaut"></i>
         </div>
-        <h3 style="margin:0 0 5px 0;" data-i18n="profile">User Profile</h3>
+        <h3 style="margin:0 0 5px 0;">个人档案</h3>
         <div style="font-size:0.85rem; color:#94A3B8; margin-bottom:20px;">@<span id="profileUsername"></span></div>
       </div>
       
       <div style="background:linear-gradient(135deg, #F8FAFC, #F1F5F9); padding:20px; border-radius:12px; margin-bottom:20px; border:1px solid #E2E8F0; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
           <div style="text-align:center; padding:12px; background:white; border-radius:8px; border:1px solid #E2E8F0;">
-            <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:5px;" data-i18n="name">Nickname</div>
+            <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:5px;">昵称</div>
             <div style="font-weight:bold; font-size:1.1rem; color:var(--text-main);" id="profileNickname"></div>
           </div>
           <div style="text-align:center; padding:12px; background:white; border-radius:8px; border:1px solid #E2E8F0;">
-            <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:5px;" data-i18n="draws">Total Draws</div>
+            <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:5px;">召唤次数</div>
             <div style="font-weight:bold; font-size:1.1rem; color:var(--primary);" id="profileCount">0</div>
           </div>
         </div>
         
         <div style="background:white; padding:15px; border-radius:8px; border:1px solid #E2E8F0; margin-bottom:15px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <div style="font-weight:bold; color:var(--text-main);" data-i18n="points_label">Points</div>
+            <div style="font-weight:bold; color:var(--text-main);">当前积分</div>
             <i class="fas fa-question-circle" style="color:#CBD5E1; cursor:pointer;" onclick="App.openRules()"></i>
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
@@ -1218,14 +891,14 @@ function getHtmlPage() {
               <div style="font-size:0.75rem; color:#B45309;">Coins</div>
             </div>
             <div style="flex:1; text-align:center;">
-              <div style="font-size:0.9rem; color:#94A3B8; margin-bottom:3px;" data-i18n="level">Level</div>
+              <div style="font-size:0.9rem; color:#94A3B8; margin-bottom:3px;">等级</div>
               <div style="font-weight:bold; color:var(--primary);" id="profileLevel">1</div>
             </div>
           </div>
         </div>
         
         <div style="background:white; padding:15px; border-radius:8px; border:1px solid #E2E8F0;">
-          <div style="font-weight:bold; color:var(--text-main); margin-bottom:10px;" data-i18n="card_collection">Card Collection</div>
+          <div style="font-weight:bold; color:var(--text-main); margin-bottom:10px;">卡片收集</div>
           <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:8px;">
             <div style="text-align:center; padding:8px; background:#F1F5F9; border-radius:6px;">
               <div style="font-size:0.7rem; color:#64748B;">N</div>
@@ -1249,39 +922,39 @@ function getHtmlPage() {
             </div>
           </div>
           <div style="margin-top:10px; font-size:0.75rem; color:#94A3B8; text-align:center;" id="totalCardsText">
-            Total: <span id="totalCards">0</span> cards
+            总计: <span id="totalCards">0</span> 张卡片
           </div>
         </div>
       </div>
       
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
-        <button class="btn secondary" onclick="App.editProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#E0F2FE; border-color:#BAE6FD;" data-i18n="edit_profile">
-          <i class="fas fa-edit"></i> Edit
+        <button class="btn secondary" onclick="App.editProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#E0F2FE; border-color:#BAE6FD;">
+          <i class="fas fa-edit"></i> 编辑
         </button>
-        <button class="btn secondary" onclick="App.shareProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#F0F9FF; border-color:#BAE6FD;" data-i18n="share_profile">
-          <i class="fas fa-share-alt"></i> Share
+        <button class="btn secondary" onclick="App.shareProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#F0F9FF; border-color:#BAE6FD;">
+          <i class="fas fa-share-alt"></i> 分享
         </button>
       </div>
       
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
-        <button class="btn secondary" onclick="App.logout()" style="display:flex; align-items:center; justify-content:center; gap:8px;" data-i18n="logout">
-          <i class="fas fa-sign-out-alt"></i> Logout
+        <button class="btn secondary" onclick="App.logout()" style="display:flex; align-items:center; justify-content:center; gap:8px;">
+          <i class="fas fa-sign-out-alt"></i> 注销
         </button>
-        <button class="btn" onclick="App.closeModals()" style="display:flex; align-items:center; justify-content:center; gap:8px;" data-i18n="close">
-          <i class="fas fa-times"></i> Close
+        <button class="btn" onclick="App.closeModals()" style="display:flex; align-items:center; justify-content:center; gap:8px;">
+          <i class="fas fa-times"></i> 关闭
         </button>
       </div>
       
       <div style="border-top:1px dashed #E2E8F0; padding-top:15px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.openAdmin()" data-i18n="admin_panel">
-            <i class="fas fa-cog"></i> Admin Panel
+          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.openAdmin()">
+            <i class="fas fa-cog"></i> 管理面板
           </div>
-          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.showMoreStats()" data-i18n="more_stats">
-            <i class="fas fa-chart-line"></i> More Stats
+          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.showMoreStats()">
+            <i class="fas fa-chart-line"></i> 更多统计
           </div>
-          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.toggleTheme()" data-i18n="theme">
-            <i class="fas fa-palette"></i> Theme
+          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.toggleTheme()">
+            <i class="fas fa-palette"></i> 切换主题
           </div>
         </div>
       </div>
@@ -1291,13 +964,13 @@ function getHtmlPage() {
   <div id="craftModal" class="modal">
     <div class="modal-content">
       <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
-      <h3 data-i18n="craft_title">Synthesis</h3>
-      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px;" data-i18n="craft_desc">Burn 5 low-rarity cards.</p>
+      <h3>卡片合成</h3>
+      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px;">消耗5张低阶卡片，进行一次高阶召唤。</p>
       <div class="shop-grid">
-        <div class="shop-item" id="craft-item-R" onclick="App.doCraft('R')"><div style="font-weight:bold; color:#3B82F6">R</div><div class="shop-cost"><span data-i18n="cost">Cost</span>: 5 N</div><div style="font-size:0.75rem; color:#94A3B8; margin-top:4px;"><span data-i18n="owned">Owned</span> N: <span id="invN">0</span></div></div>
-        <div class="shop-item" id="craft-item-SR" onclick="App.doCraft('SR')"><div style="font-weight:bold; color:#8B5CF6">SR</div><div class="shop-cost"><span data-i18n="cost">Cost</span>: 5 R</div><div style="font-size:0.75rem; color:#94A3B8; margin-top:4px;"><span data-i18n="owned">Owned</span> R: <span id="invR">0</span></div></div>
-        <div class="shop-item" id="craft-item-SSR" onclick="App.doCraft('SSR')"><div style="font-weight:bold; color:#F59E0B">SSR</div><div class="shop-cost"><span data-i18n="cost">Cost</span>: 5 SR</div><div style="font-size:0.75rem; color:#94A3B8; margin-top:4px;"><span data-i18n="owned">Owned</span> SR: <span id="invSR">0</span></div></div>
-        <div class="shop-item" id="craft-item-UR" onclick="App.doCraft('UR')"><div style="font-weight:bold; color:#EF4444">UR</div><div class="shop-cost"><span data-i18n="cost">Cost</span>: 5 SSR</div><div style="font-size:0.75rem; color:#94A3B8; margin-top:4px;"><span data-i18n="owned">Owned</span> SSR: <span id="invSSR">0</span></div></div>
+        <div class="shop-item" id="craft-item-R" onclick="App.doCraft('R')"><div style="font-weight:bold; color:#3B82F6">R</div><div class="shop-cost">消耗: 5 N</div><div style="font-size:0.75rem; color:#94A3B8; margin-top:4px;">持有 N: <span id="invN">0</span></div></div>
+        <div class="shop-item" id="craft-item-SR" onclick="App.doCraft('SR')"><div style="font-weight:bold; color:#8B5CF6">SR</div><div class="shop-cost">消耗: 5 R</div><div style="font-size:0.75rem; color:#94A3B8; margin-top:4px;">持有 R: <span id="invR">0</span></div></div>
+        <div class="shop-item" id="craft-item-SSR" onclick="App.doCraft('SSR')"><div style="font-weight:bold; color:#F59E0B">SSR</div><div class="shop-cost">消耗: 5 SR</div><div style="font-size:0.75rem; color:#94A3B8; margin-top:4px;">持有 SR: <span id="invSR">0</span></div></div>
+        <div class="shop-item" id="craft-item-UR" onclick="App.doCraft('UR')"><div style="font-weight:bold; color:#EF4444">UR</div><div class="shop-cost">消耗: 5 SSR</div><div style="font-size:0.75rem; color:#94A3B8; margin-top:4px;">持有 SSR: <span id="invSSR">0</span></div></div>
       </div>
     </div>
   </div>
@@ -1306,12 +979,12 @@ function getHtmlPage() {
     <div class="modal-content">
       <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
       <div style="text-align:center; margin-bottom:15px;">
-        <h3 style="margin:0 0 10px 0;" data-i18n="shop_title">Token Shop</h3>
+        <h3 style="margin:0 0 10px 0;">积分商店</h3>
         <div style="font-size:1.1rem; font-weight:bold; color:#F59E0B; background:#FEF3C7; padding:8px 16px; border-radius:10px; display:inline-flex; align-items:center; gap:8px; box-shadow:0 3px 6px rgba(245,158,11,0.3);">
            <i class="fas fa-coins"></i> <span id="shopBalance">0</span>
         </div>
       </div>
-      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px; text-align:center;" data-i18n="shop_desc">Spend points.</p>
+      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px; text-align:center;">消耗积分购买指定等级的卡包。</p>
       <div class="shop-grid" id="shopContent"></div>
     </div>
   </div>
@@ -1319,13 +992,13 @@ function getHtmlPage() {
   <div id="diceModal" class="modal">
     <div class="modal-content">
       <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
-      <h3 data-i18n="dice_title">Guess Size</h3>
-      <p style="color:var(--text-light); font-size:0.9rem;" data-i18n="dice_desc">Small (1-3) or Big (4-6)</p>
+      <h3>猜大小</h3>
+      <p style="color:var(--text-light); font-size:0.9rem;">小(1-3) 或 大(4-6)，赔率1:1。</p>
       <div class="dice-stage"><i class="fas fa-dice-d6" id="diceIcon"></i></div>
-      <div class="input-group" style="margin-bottom:10px;"><input type="number" id="betInput" placeholder="Bet Amount (10-1000)" data-i18n="bet_ph"></div>
+      <div class="input-group" style="margin-bottom:10px;"><input type="number" id="betInput" placeholder="下注金额 (10-1000)"></div>
       <div class="bet-controls">
-        <button class="bet-btn small" onclick="App.playDice('small')"><div data-i18n="small">SMALL (1-3)</div></button>
-        <button class="bet-btn big" onclick="App.playDice('big')"><div data-i18n="big">BIG (4-6)</div></button>
+        <button class="bet-btn small" onclick="App.playDice('small')"><div>押小 (1-3)</div></button>
+        <button class="bet-btn big" onclick="App.playDice('big')"><div>押大 (4-6)</div></button>
       </div>
       <div id="diceMsg" style="margin-top:15px; font-weight:bold; height:20px; color:#334155;"></div>
     </div>
@@ -1334,11 +1007,11 @@ function getHtmlPage() {
   <div id="rulesModal" class="modal">
     <div class="modal-content">
       <button class="modal-close-btn" onclick="App.closeRulesToProfile()"><i class="fas fa-times"></i></button>
-      <h3 data-i18n="rules_title">Point Rules</h3>
-      <p style="font-size:0.9rem; color:#94A3B8; margin-bottom:15px;" data-i18n="rules_desc">Info</p>
+      <h3>积分规则</h3>
+      <p style="font-size:0.9rem; color:#94A3B8; margin-bottom:15px;">积分可用于在商店购买物品。</p>
       <div style="background:#F8FAFC; padding:10px; border-radius:12px; border:1px solid #E2E8F0;">
         <table class="rules-table">
-          <thead><tr><th data-i18n="rule_action">Action</th><th data-i18n="rule_points">Points</th></tr></thead>
+          <thead><tr><th>行为</th><th>获得积分</th></tr></thead>
           <tbody>
             <tr><td>N</td><td style="font-weight:bold;">+5</td></tr>
             <tr><td>R</td><td style="font-weight:bold;">+10</td></tr>
@@ -1354,55 +1027,55 @@ function getHtmlPage() {
   <div id="adminModal" class="modal">
     <div class="modal-content" style="max-width:650px;">
       <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
-      <h3 style="margin-top:0;" data-i18n="admin_panel">Admin Panel</h3>
+      <h3 style="margin-top:0;">管理面板</h3>
       <div id="adminLogin">
-        <div class="input-group"><input type="password" id="adminPass" placeholder="Admin Password..."></div>
-        <button class="btn" style="width:100%;" onclick="App.verifyAdmin()" data-i18n="confirm">Confirm</button>
+        <div class="input-group"><input type="password" id="adminPass" placeholder="请输入管理员密码..."></div>
+        <button class="btn" style="width:100%;" onclick="App.verifyAdmin()">确认</button>
       </div>
       <div id="adminPanel" style="display:none; text-align:left;">
         <div class="admin-tabs">
-            <div class="admin-tab active" onclick="App.switchAdminTab('log')" id="tab-log" data-i18n="log_tab">Changelog</div>
-            <div class="admin-tab" onclick="App.switchAdminTab('users')" id="tab-users" data-i18n="users_tab">Users</div>
-            <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann" data-i18n="ann_title_def">Announcement</div>
+            <div class="admin-tab active" onclick="App.switchAdminTab('log')" id="tab-log">更新日志</div>
+            <div class="admin-tab" onclick="App.switchAdminTab('users')" id="tab-users">用户管理</div>
+            <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann">系统公告</div>
         </div>
         <div id="view-log">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <span style="font-weight:bold; font-size:0.9rem;" data-i18n="edit_log">Editor</span>
-            <button class="btn secondary" style="padding:4px 8px; font-size:0.8rem;" onclick="App.addAdminRow()" data-i18n="add_row">+ Add Row</button>
+            <span style="font-weight:bold; font-size:0.9rem;">可视化编辑器</span>
+            <button class="btn secondary" style="padding:4px 8px; font-size:0.8rem;" onclick="App.addAdminRow()">+ 新增一行</button>
             </div>
             <div style="max-height:300px; overflow-y:auto; margin-bottom:10px; border:1px solid #F1F5F9; border-radius:8px;">
-            <table class="admin-table" id="adminTable"><thead><tr><th width="80" data-i18n="date">Date</th><th width="60" data-i18n="ver">Ver</th><th data-i18n="content">Content</th><th width="100">Tag</th><th width="40"></th></tr></thead><tbody id="adminTbody"></tbody></table>
+            <table class="admin-table" id="adminTable"><thead><tr><th width="80">日期</th><th width="60">版本</th><th>内容</th><th width="100">标签</th><th width="40"></th></tr></thead><tbody id="adminTbody"></tbody></table>
             </div>
-            <button class="btn" style="width:100%;" onclick="App.saveAdminLog()" data-i18n="save">Save Changes</button>
+            <button class="btn" style="width:100%;" onclick="App.saveAdminLog()">保存更改</button>
         </div>
         <div id="view-users" style="display:none;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <span style="font-weight:bold; font-size:0.9rem;" data-i18n="users_title">Registered Users</span>
+                <span style="font-weight:bold; font-size:0.9rem;">注册用户列表</span>
                 <button class="btn secondary" onclick="App.loadAdminUsers()" style="font-size:0.8rem;"><i class="fas fa-sync"></i></button>
             </div>
             <div style="max-height:350px; overflow-y:auto; border:1px solid #F1F5F9; border-radius:8px;">
-                <table class="admin-table"><thead><tr><th data-i18n="user_col">User</th><th data-i18n="draws_col">Draws</th><th data-i18n="points_col">Coins</th><th data-i18n="action_col">Action</th></tr></thead><tbody id="userTbody"><tr><td colspan="4" style="text-align:center; padding:20px;" data-i18n="loading">Loading...</td></tr></tbody></table>
+                <table class="admin-table"><thead><tr><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="4" style="text-align:center; padding:20px;">加载中...</td></tr></tbody></table>
             </div>
         </div>
         <div id="view-ann" style="display:none;">
             <div style="margin-bottom: 15px;">
-                <label style="font-weight:bold; font-size:0.9rem;" data-i18n="ann_title">Title</label>
-                <input type="text" id="adminAnnTitle" class="admin-input" placeholder="Title">
+                <label style="font-weight:bold; font-size:0.9rem;">标题</label>
+                <input type="text" id="adminAnnTitle" class="admin-input" placeholder="公告标题">
             </div>
             <div class="toggle-wrapper">
-                <span style="font-weight:bold; font-size:0.9rem;" data-i18n="ann_status">Status:</span>
+                <span style="font-weight:bold; font-size:0.9rem;">状态:</span>
                 <select id="adminAnnEnable" class="admin-input" style="width:auto;">
-                    <option value="true" data-i18n="ann_enabled">Enabled</option>
-                    <option value="false" data-i18n="ann_disabled">Disabled</option>
+                    <option value="true">启用</option>
+                    <option value="false">禁用</option>
                 </select>
             </div>
             <div style="margin-bottom: 10px;">
-                <label style="font-weight:bold; font-size:0.9rem;" data-i18n="content">Content (Markdown)</label>
-                <textarea id="adminAnnContent" class="admin-textarea" placeholder="## Hello World..."></textarea>
+                <label style="font-weight:bold; font-size:0.9rem;">内容 (支持 Markdown)</label>
+                <textarea id="adminAnnContent" class="admin-textarea" placeholder="## 标题..."></textarea>
             </div>
             <div style="display:flex; gap:10px;">
-                <button class="btn" style="flex:1" onclick="App.saveAnnouncement()" data-i18n="ann_publish">Publish / Save</button>
-                <button class="btn secondary" style="flex:1" onclick="App.previewAnnouncement()" data-i18n="ann_preview">Preview</button>
+                <button class="btn" style="flex:1" onclick="App.saveAnnouncement()">发布 / 保存</button>
+                <button class="btn secondary" style="flex:1" onclick="App.previewAnnouncement()">预览</button>
             </div>
         </div>
       </div>
@@ -1414,12 +1087,12 @@ function getHtmlPage() {
       <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
       <div style="text-align: center; margin-bottom: 15px;">
         <i class="fas fa-bullhorn" style="font-size: 2rem; color: var(--primary);"></i>
-        <h3 id="annTitle" style="margin: 10px 0 0 0;">Announcement</h3>
+        <h3 id="annTitle" style="margin: 10px 0 0 0;">公告</h3>
       </div>
       <div id="annContent" class="md-content">
       </div>
       <div style="margin-top: 20px;">
-        <button class="btn" style="width: 100%;" onclick="App.closeAnnouncement()">OK</button>
+        <button class="btn" style="width: 100%;" onclick="App.closeAnnouncement()">我知道了</button>
       </div>
     </div>
   </div>
@@ -1429,27 +1102,22 @@ function getHtmlPage() {
   </div>
 
   <script>
-    const TEXT = ${JSON.stringify(I18N_TEXT)};
     const App = {
       username: localStorage.getItem('moe_username'),
-      lang: localStorage.getItem('moe_lang') || 'en',
       nickname: null, loading: false, adminPwd: null, logsData: [], currentAdminTab: 'log', inventory: {},
       currentPool: 'std',
       authMode: 'login', 
       
       async init() {
-        this.applyLang();
         this.initTheme();
         await this.fetchUserInfo();
         this.loadShowcase();
         this.loadChangelog();
         this.checkAnnouncement();
       },
-      toggleLang() { this.lang = this.lang === 'en' ? 'zh' : 'en'; localStorage.setItem('moe_lang', this.lang); this.applyLang(); },
       switchPool(pool) {
         if(this.loading) return;
         this.currentPool = pool;
-        const t = TEXT[this.lang];
         
         document.querySelectorAll('.banner-tab').forEach(el => el.classList.remove('active', 'limited'));
         document.getElementById('tab-' + pool).classList.add('active');
@@ -1460,10 +1128,10 @@ function getHtmlPage() {
         if (pool === 'ltd') {
             document.getElementById('tab-ltd').classList.add('limited');
             btn.className = 'btn limited-btn';
-            btn.innerHTML = \`<i class="fas fa-star"></i> \${t.start_ltd || 'SUMMON'} <small>(\${costConfig} pts)</small>\`;
+            btn.innerHTML = \`<i class="fas fa-star"></i> 限定召唤 <small>(\${costConfig} 积分)</small>\`;
         } else {
             btn.className = 'btn';
-            btn.innerHTML = \`<i class="fas fa-bolt"></i> \${t.start || 'START'}\`;
+            btn.innerHTML = \`<i class="fas fa-bolt"></i> 召唤\`;
         }
       },
       switchAuth(mode) {
@@ -1471,20 +1139,6 @@ function getHtmlPage() {
         document.getElementById('tab-login').classList.toggle('active', mode === 'login');
         document.getElementById('tab-register').classList.toggle('active', mode === 'register');
         document.getElementById('nickGroup').style.display = mode === 'register' ? 'block' : 'none';
-      },
-      applyLang() {
-        const t = TEXT[this.lang];
-        document.getElementById('langBtn').innerText = t.btn_lang;
-        document.querySelectorAll('[data-i18n]').forEach(el => {
-          const key = el.getAttribute('data-i18n');
-          if(t[key]) { 
-              if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = t[key]; 
-              else if(el.tagName === 'OPTION') el.text = t[key];
-              else el.innerText = t[key]; 
-          }
-        });
-        if(!this.username) document.getElementById('navNickname').innerText = t.guest;
-        if(document.getElementById('adminPanel').style.display === 'block') { this.renderAdminTable(); if(this.currentAdminTab === 'users') this.loadAdminUsers(); }
       },
       async fetchUserInfo() {
         if (!this.username) { document.getElementById('authModal').classList.add('show'); return; }
@@ -1514,7 +1168,6 @@ function getHtmlPage() {
         this.updateCraftStates();
         this.updateProfileStats();
       },
-      
       updateProfileStats() {
         const inv = this.inventory;
         document.getElementById('invCountN').innerText = inv.N || 0;
@@ -1523,21 +1176,13 @@ function getHtmlPage() {
         document.getElementById('invCountSSR').innerText = inv.SSR || 0;
         document.getElementById('invCountUR').innerText = inv.UR || 0;
         
-        // Calculate total cards
         const totalCards = (inv.N || 0) + (inv.R || 0) + (inv.SR || 0) + (inv.SSR || 0) + (inv.UR || 0);
         document.getElementById('totalCards').innerText = totalCards;
         
-        // Update total cards text with translation
-        const t = TEXT[this.lang];
-        const totalCardsText = t.total_cards.replace('{count}', totalCards);
-        document.getElementById('totalCardsText').innerHTML = totalCardsText;
-        
-        // Calculate user level based on total draws
         const drawCount = parseInt(document.getElementById('profileCount').innerText) || 0;
         const level = Math.floor(drawCount / 50) + 1;
         document.getElementById('profileLevel').innerText = level;
       },
-      
       showMoreStats() {
         const inv = this.inventory;
         const totalCards = (inv.N || 0) + (inv.R || 0) + (inv.SR || 0) + (inv.SSR || 0) + (inv.UR || 0);
@@ -1548,8 +1193,8 @@ function getHtmlPage() {
         const avgCoins = drawCount > 0 ? Math.round(coins / drawCount) : 'N/A';
         
         const statsHtml = '<div style="text-align:left; font-size:0.9rem;">' +
-          '<div style="margin-bottom:10px;"><strong>Total Cards:</strong> ' + totalCards + '</div>' +
-          '<div style="margin-bottom:10px;"><strong>Card Distribution:</strong></div>' +
+          '<div style="margin-bottom:10px;"><strong>卡片总数:</strong> ' + totalCards + '</div>' +
+          '<div style="margin-bottom:10px;"><strong>卡片分布:</strong></div>' +
           '<div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:5px; margin-bottom:15px;">' +
             '<div style="text-align:center; padding:5px; background:#F1F5F9; border-radius:4px;">' +
               '<div style="font-size:0.7rem; color:#64748B;">N</div>' +
@@ -1572,18 +1217,15 @@ function getHtmlPage() {
               '<div style="font-weight:bold;">' + (inv.UR || 0) + '</div>' +
             '</div>' +
           '</div>' +
-          '<div style="margin-bottom:10px;"><strong>Draw Success Rate:</strong> ' + successRate + '</div>' +
-          '<div style="margin-bottom:10px;"><strong>Average Coins per Draw:</strong> ' + avgCoins + '</div>' +
+          '<div style="margin-bottom:10px;"><strong>召唤成功率:</strong> ' + successRate + '</div>' +
+          '<div style="margin-bottom:10px;"><strong>平均每次召唤获币:</strong> ' + avgCoins + '</div>' +
         '</div>';
         
-        this.showStatsModal('Detailed Statistics', statsHtml);
+        this.showStatsModal('详细统计', statsHtml);
       },
-      
       showStatsModal(title, content) {
-        // Remove existing stats modal if any
         const existingModal = document.getElementById('statsModal');
         if (existingModal) {
-          // 清理事件监听器
           const newModal = existingModal.cloneNode(false);
           existingModal.parentNode.replaceChild(newModal, existingModal);
           existingModal.remove();
@@ -1595,83 +1237,63 @@ function getHtmlPage() {
             '<h3 style="margin-top:0;">' + title + '</h3>' +
             content +
             '<div style="margin-top:20px; text-align:center;">' +
-              '<button class="btn" onclick="App.closeModals()" style="padding:8px 20px;">Close</button>' +
+              '<button class="btn" onclick="App.closeModals()" style="padding:8px 20px;">关闭</button>' +
             '</div>' +
           '</div>' +
         '</div>';
         
-        // Add new modal to body
         document.body.insertAdjacentHTML('beforeend', modalHtml);
-        
-        // Add click event to modal backdrop to close when clicking outside content
         const modal = document.getElementById('statsModal');
         if (modal) {
-          // 使用命名函数以便后续移除
           const backdropClickHandler = function(e) {
             if (e.target === this) {
               App.closeModals();
             }
           };
           modal.addEventListener('click', backdropClickHandler);
-          // 存储引用以便清理
           modal._backdropClickHandler = backdropClickHandler;
         }
       },
-      
       editProfile() {
         const currentNickname = document.getElementById('profileNickname').innerText;
-        const newNickname = prompt('Enter new nickname (max 20 characters):', currentNickname);
+        const newNickname = prompt('输入新昵称 (最多20个字符):', currentNickname);
         if (newNickname && newNickname !== currentNickname && newNickname.length <= 20) {
-          this.toast('Updating profile...', 'info');
-          // In a real implementation, this would call an API endpoint
-          // For now, we'll just update the UI
+          this.toast('更新个人资料中...', 'info');
           document.getElementById('profileNickname').innerText = newNickname;
           document.getElementById('navNickname').innerText = newNickname;
-          this.toast('Profile updated!', 'ok');
+          this.toast('个人资料已更新！', 'ok');
         } else if (newNickname && newNickname.length > 20) {
-          this.toast('Nickname too long (max 20 characters)', 'warn');
+          this.toast('昵称太长 (最多20个字符)', 'warn');
         }
       },
-      
       shareProfile() {
-        const username = document.getElementById('profileUsername').innerText;
         const nickname = document.getElementById('profileNickname').innerText;
         const drawCount = document.getElementById('profileCount').innerText;
         const coins = document.getElementById('profileCoins').innerText;
-        
-        const shareText = 'Check out ' + nickname + "'s Gacha profile! Draws: " + drawCount + ', Coins: ' + coins + '. Play at ' + window.location.origin;
+        const shareText = nickname + ' 的抽卡档案！召唤次数: ' + drawCount + ', 积分: ' + coins + '。快来玩吧：' + window.location.origin;
         
         if (navigator.share) {
-          navigator.share({
-            title: nickname + "'s Gacha Profile",
-            text: shareText,
-            url: window.location.origin
-          }).catch(err => {
-            console.log('Error sharing:', err);
+          navigator.share({ title: nickname + " 的抽卡档案", text: shareText, url: window.location.origin }).catch(err => {
             this.copyToClipboard(shareText);
           });
         } else {
           this.copyToClipboard(shareText);
         }
       },
-      
       copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
-          this.toast('Profile link copied to clipboard!', 'ok');
+          this.toast('链接已复制到剪贴板！', 'ok');
         }).catch(err => {
-          console.error('Failed to copy:', err);
-          this.toast('Failed to copy to clipboard', 'warn');
+          this.toast('复制失败', 'warn');
         });
       },
-      
       toggleTheme() {
         const currentTheme = localStorage.getItem('moe_theme') || 'light';
         const newTheme = currentTheme === 'light' ? 'dark' : 'light';
         localStorage.setItem('moe_theme', newTheme);
         this.applyTheme(newTheme);
-        this.toast('Theme changed to ' + newTheme, 'ok');
+        this.toast('已切换至' + (newTheme === 'dark' ? '深色' : '浅色') + '模式', 'ok');
       },
-      
       applyTheme(theme) {
         if (theme === 'dark') {
           document.documentElement.style.setProperty('--bg-color', '#0F172A');
@@ -1685,7 +1307,6 @@ function getHtmlPage() {
           document.documentElement.style.setProperty('--text-light', '#94A3B8');
         }
       },
-      
       initTheme() {
         const savedTheme = localStorage.getItem('moe_theme') || 'light';
         this.applyTheme(savedTheme);
@@ -1698,26 +1319,25 @@ function getHtmlPage() {
          document.getElementById('invSSR').innerText = inv.SSR || 0; document.getElementById('craft-item-UR').classList.toggle('can-craft', (inv.SSR || 0) >= 5);
       },
       mapError(err) {
-        const t = TEXT[this.lang];
         const map = {
-            'Not Enough Points': 'server_err_no_money',
-            'Username Taken': 'server_err_taken',
-            'Nickname Taken': 'server_err_taken',
-            'User Not Found': 'server_err_user_missing',
-            'Invalid Password': 'server_err_pass',
-            'Auth Failed': 'server_err_auth'
+            'Not Enough Points': '积分不足！',
+            'Username Taken': '用户名或昵称已被占用',
+            'Nickname Taken': '用户名或昵称已被占用',
+            'User Not Found': '用户不存在',
+            'Invalid Password': '密码错误',
+            'Auth Failed': '认证失败',
+            'Missing fields': '请填写完整信息',
+            'Invalid Credentials': '账号或密码错误'
         };
-        if(map[err] && t[map[err]]) return t[map[err]];
-        return err;
+        return map[err] || err;
       },
       async doAuth() {
         const u = document.getElementById('authUsername').value.trim();
         const p = document.getElementById('authPassword').value;
         const n = document.getElementById('authNickname').value.trim();
-        const t = TEXT[this.lang];
         
         if (this.authMode === 'register') {
-             if (!u || !p || !n) return this.toast(t.name_req, 'warn');
+             if (!u || !p || !n) return this.toast('请填写完整信息', 'warn');
              try {
                 const res = await fetch('/auth/register', { 
                     method: 'POST', 
@@ -1725,14 +1345,14 @@ function getHtmlPage() {
                 });
                 const d = await res.json();
                 if(d.success) { 
-                    this.toast(t.reg_ok, 'ok'); 
+                    this.toast('注册成功，请登录', 'ok'); 
                     this.switchAuth('login');
                 } else { 
                     this.toast(this.mapError(d.error), 'warn'); 
                 }
-             } catch(e) { this.toast(t.net_err, 'warn'); }
+             } catch(e) { this.toast('网络错误', 'warn'); }
         } else {
-             if (!u || !p) return this.toast(t.name_req, 'warn');
+             if (!u || !p) return this.toast('请输入账号和密码', 'warn');
              try {
                 const res = await fetch('/auth/login', { 
                     method: 'POST', 
@@ -1745,9 +1365,9 @@ function getHtmlPage() {
                     this.updateUI(d.user);
                     document.getElementById('authModal').classList.remove('show');
                 } else { 
-                    this.toast(this.mapError(d.error || t.fail), 'warn'); 
+                    this.toast(this.mapError(d.error || '连接失败'), 'warn'); 
                 }
-             } catch(e) { this.toast(t.net_err, 'warn'); }
+             } catch(e) { this.toast('网络错误', 'warn'); }
         }
       },
       async checkAnnouncement() {
@@ -1764,8 +1384,7 @@ function getHtmlPage() {
         } catch(e) {}
       },
       showAnnouncementModal(data) {
-        const t = TEXT[this.lang];
-        document.getElementById('annTitle').innerText = data.title || t.ann_title_def;
+        document.getElementById('annTitle').innerText = data.title || '公告';
         document.getElementById('annContent').innerHTML = marked.parse(data.content || '');
         document.getElementById('announcementModal').classList.add('show');
       },
@@ -1778,7 +1397,7 @@ function getHtmlPage() {
       previewAnnouncement() {
         const content = document.getElementById('adminAnnContent').value;
         const title = document.getElementById('adminAnnTitle').value;
-        this.showAnnouncementModal({ title: title + " (Preview)", content: content });
+        this.showAnnouncementModal({ title: title + " (预览)", content: content });
       },
       async loadAdminAnnouncement() {
         try {
@@ -1787,23 +1406,22 @@ function getHtmlPage() {
             document.getElementById('adminAnnTitle').value = data.title || '';
             document.getElementById('adminAnnContent').value = data.content || '';
             document.getElementById('adminAnnEnable').value = data.enabled ? 'true' : 'false';
-        } catch(e) { this.toast('Load Failed', 'warn'); }
+        } catch(e) { this.toast('加载失败', 'warn'); }
       },
       async saveAnnouncement() {
         const title = document.getElementById('adminAnnTitle').value;
         const content = document.getElementById('adminAnnContent').value;
         const enabled = document.getElementById('adminAnnEnable').value === 'true';
-        const t = TEXT[this.lang];
-        if(!title || !content) return this.toast(t.name_req, 'warn');
+        if(!title || !content) return this.toast('请填写标题和内容', 'warn');
         try {
             const res = await fetch('/admin/save-announcement', { 
                 method: 'POST', 
                 body: JSON.stringify({ password: this.adminPwd, announcement: { title, content, enabled } }) 
             });
             const d = await res.json();
-            if(d.success) this.toast(t.save_ok, 'ok'); 
-            else this.toast(this.mapError(d.error) || t.save_err, 'warn'); 
-        } catch(e) { this.toast(t.net_err, 'warn'); }
+            if(d.success) this.toast('保存成功！', 'ok'); 
+            else this.toast(this.mapError(d.error) || '保存失败', 'warn'); 
+        } catch(e) { this.toast('网络错误', 'warn'); }
       },
       async loadChangelog() {
         try {
@@ -1827,16 +1445,15 @@ function getHtmlPage() {
           }
         } catch(e) {}
       },
-      toggleLog() { const list = document.getElementById('logList'); const btn = document.getElementById('logToggle'); const t = TEXT[this.lang]; list.classList.toggle('collapsed'); btn.innerHTML = list.classList.contains('collapsed') ? (t.more + ' <i class="fas fa-chevron-down"></i>') : (t.less + ' <i class="fas fa-chevron-up"></i>'); },
+      toggleLog() { const list = document.getElementById('logList'); const btn = document.getElementById('logToggle'); list.classList.toggle('collapsed'); btn.innerHTML = list.classList.contains('collapsed') ? ('展开更多 <i class="fas fa-chevron-down"></i>') : ('收起列表 <i class="fas fa-chevron-up"></i>'); },
       async draw() {
         if(this.loading) return;
         if(!this.username) { document.getElementById('authModal').classList.add('show'); return; }
-        const t = TEXT[this.lang];
         
         if (this.currentPool === 'ltd') {
              const currentCoins = parseInt(document.getElementById('profileCoins').innerText) || 0;
              const cost = ${CONFIG.LIMITED.COST};
-             if (currentCoins < cost) return this.toast(t.no_money, 'warn');
+             if (currentCoins < cost) return this.toast('积分不足！', 'warn');
         }
 
         this.loading = true;
@@ -1860,14 +1477,13 @@ function getHtmlPage() {
           const data = await res.json();
           
           if(data.error) {
-              if (data.error === 'Not Enough Points') throw new Error(t.server_err_no_money);
               if (data.error === 'USER_NOT_FOUND') {
                    document.getElementById('authModal').classList.add('show');
-                   throw new Error(t.reg_tip);
+                   throw new Error('请登录或注册');
               }
               throw this.mapError(data.error);
           }
-          this.handleDrawResult(data, img, tag, btn, t);
+          this.handleDrawResult(data, img, tag, btn);
         } catch(e) { 
           this.loading = false; 
           this.switchPool(this.currentPool);
@@ -1877,11 +1493,10 @@ function getHtmlPage() {
       async doCraft(target) {
         if(this.loading) return;
         if(!this.username) { document.getElementById('authModal').classList.add('show'); return; }
-        const t = TEXT[this.lang];
         const costMap = { 'R': 'N', 'SR': 'R', 'SSR': 'SR', 'UR': 'SSR' };
-        if ((this.inventory[costMap[target]] || 0) < 5) return this.toast('Need 5 ' + costMap[target], 'warn');
+        if ((this.inventory[costMap[target]] || 0) < 5) return this.toast('需要 5 张 ' + costMap[target], 'warn');
         
-        if(!confirm(t.craft_confirm.replace('{target}', target))) return;
+        if(!confirm('确定消耗5张低阶卡合成1张 ' + target + ' 吗？')) return;
         
         this.loading = true; this.closeModals();
         const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag'); 
@@ -1890,10 +1505,10 @@ function getHtmlPage() {
           const res = await fetch('/user/craft', { method: 'POST', body: JSON.stringify({ targetRarity: target }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           if(data.error) throw new Error(this.mapError(data.error));
-          this.handleDrawResult(data, img, tag, btn, t, true);
-        } catch(e) { this.loading = false; btn.innerHTML = t.start; this.toast(e.message, 'warn'); this.fetchUserInfo(); }
+          this.handleDrawResult(data, img, tag, btn, true);
+        } catch(e) { this.loading = false; this.switchPool(this.currentPool); this.toast(e.message, 'warn'); this.fetchUserInfo(); }
       },
-      handleDrawResult(data, img, tag, btn, t, isSpecial = false) {
+      handleDrawResult(data, img, tag, btn, isSpecial = false) {
           img.src = data.imageUrl;
           const onImageLoad = () => {
              img.classList.add('show'); 
@@ -1902,19 +1517,19 @@ function getHtmlPage() {
              
              if (this.currentPool === 'ltd') {
                  const cost = ${CONFIG.LIMITED.COST};
-                 btn.innerHTML = \`<i class="fas fa-star"></i> \${t.again || 'AGAIN'} <small>(\${cost} pts)</small>\`;
+                 btn.innerHTML = \`<i class="fas fa-star"></i> 再召唤 <small>(\${cost} 积分)</small>\`;
              } else {
-                 btn.innerHTML = '<i class="fas fa-bolt"></i> ' + t.again;
+                 btn.innerHTML = '<i class="fas fa-bolt"></i> 再召唤';
              }
 
              if (data.rarity) { tag.innerText = data.rarity; tag.className = 'rarity-tag r-' + data.rarity.toLowerCase(); tag.classList.add('show'); }
              if(data.success) { 
-                 this.toast(isSpecial || this.currentPool === 'ltd' ? (t.craft_ok || 'Success!') : t.success, 'ok'); 
+                 this.toast(isSpecial || this.currentPool === 'ltd' ? '合成/召唤成功！' : '召唤成功', 'ok'); 
                  if(data.inventory) this.inventory = data.inventory; 
                  if(data.userCoins !== undefined) document.getElementById('profileCoins').innerText = data.userCoins; 
                  this.updateCraftStates(); 
              } else { 
-                 this.toast(t.fail, 'warn'); 
+                 this.toast('连接失败', 'warn'); 
              }
              setTimeout(() => this.fetchUserInfo(), 500);
           };
@@ -1923,7 +1538,7 @@ function getHtmlPage() {
               img.onerror = () => { 
                   this.loading = false; 
                   this.switchPool(this.currentPool); 
-                  this.toast(t.img_load_err, 'warn'); 
+                  this.toast('图片加载失败', 'warn'); 
               }; 
           }
       },
@@ -1934,20 +1549,19 @@ function getHtmlPage() {
         if(!this.username) return document.getElementById('authModal').classList.add('show');
         const balance = parseInt(document.getElementById('profileCoins').innerText) || 0;
         if(document.getElementById('shopBalance')) document.getElementById('shopBalance').innerText = balance;
-        const t = TEXT[this.lang];
         const packs = [{ id: 'R', color: '#3B82F6', price: 100 }, { id: 'SR', color: '#8B5CF6', price: 500 }, { id: 'SSR', color: '#F59E0B', price: 2000 }, { id: 'UR', color: '#EF4444', price: 8000 }];
         const container = document.getElementById('shopContent');
         if(container) {
             container.innerHTML = packs.map(p => {
                 const can = balance >= p.price;
-                return \`<div class="shop-item \${can?'':'disabled'}" \${can? \`onclick="App.buyPack('\${p.id}', \${p.price})"\` : ''}><div style="font-weight:900; font-size:1.5rem; color:\${p.color}">\${p.id}</div><div class="price-tag"><i class="fas fa-coins"></i> \${p.price}</div><div style="font-size:0.8rem; margin-top:5px; color:#94A3B8;">\${can?t.buy:t.low_pts}</div></div>\`;
+                return \`<div class="shop-item \${can?'':'disabled'}" \${can? \`onclick="App.buyPack('\${p.id}', \${p.price})"\` : ''}><div style="font-weight:900; font-size:1.5rem; color:\${p.color}">\${p.id}</div><div class="price-tag"><i class="fas fa-coins"></i> \${p.price}</div><div style="font-size:0.8rem; margin-top:5px; color:#94A3B8;">\${can?'购买':'积分不足'}</div></div>\`;
             }).join('');
         }
         document.getElementById('shopModal').classList.add('show');
       },
       async buyPack(rarity, price) {
-        if(this.loading) return; const t = TEXT[this.lang];
-        if(!confirm(t.buy_confirm.replace('{price}', price))) return;
+        if(this.loading) return;
+        if(!confirm('确定花费 ' + price + ' 积分吗？')) return;
         this.loading = true; this.closeModals();
         const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag');
         btn.innerHTML = '<i class="fas fa-shopping-cart fa-spin"></i>'; img.classList.remove('show'); tag.classList.remove('show');
@@ -1955,14 +1569,14 @@ function getHtmlPage() {
           const res = await fetch('/shop/buy', { method: 'POST', body: JSON.stringify({ targetRarity: rarity }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           if(data.error) throw new Error(this.mapError(data.error));
-          this.handleDrawResult(data, img, tag, btn, t, true);
-        } catch(e) { this.loading = false; btn.innerHTML = t.start; this.toast(e.message, 'warn'); }
+          this.handleDrawResult(data, img, tag, btn, true);
+        } catch(e) { this.loading = false; this.switchPool(this.currentPool); this.toast(e.message, 'warn'); }
       },
       openDice() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('diceModal').classList.add('show'); document.getElementById('diceIcon').className = 'fas fa-dice-d6'; document.getElementById('diceMsg').innerText = ''; },
       async playDice(prediction) {
-        if(this.loading) return; const t = TEXT[this.lang]; const bet = parseInt(document.getElementById('betInput').value); if(!bet || bet < 10) return this.toast(t.min_bet, 'warn');
+        if(this.loading) return; const bet = parseInt(document.getElementById('betInput').value); if(!bet || bet < 10) return this.toast('最小下注为 10', 'warn');
         this.loading = true; const icon = document.getElementById('diceIcon'); const msg = document.getElementById('diceMsg'); 
-        icon.classList.add('dice-result-anim'); msg.innerText = t.loading;
+        icon.classList.add('dice-result-anim'); msg.innerText = '加载中...';
         try {
           const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
@@ -1970,69 +1584,58 @@ function getHtmlPage() {
              this.loading = false; icon.classList.remove('dice-result-anim');
              if(data.error) { msg.innerText = this.mapError(data.error); return; }
              const diceIcons = ['one', 'two', 'three', 'four', 'five', 'six']; icon.className = \`fas fa-dice-\${diceIcons[data.roll - 1]}\`;
-             if(data.isWin) { msg.innerText = \`\${t.win} (+\${data.winAmount})\`; msg.style.color = '#10B981'; this.toast(t.win, 'ok'); } else { msg.innerText = t.lose; msg.style.color = '#EF4444'; }
+             if(data.isWin) { msg.innerText = \`你赢了！ (+\${data.winAmount})\`; msg.style.color = '#10B981'; this.toast('你赢了！', 'ok'); } else { msg.innerText = '你输了'; msg.style.color = '#EF4444'; }
              document.getElementById('profileCoins').innerText = data.newBalance;
           }, 600);
-        } catch(e) { this.loading = false; icon.classList.remove('dice-result-anim'); this.toast(t.net_err, 'warn'); }
+        } catch(e) { this.loading = false; icon.classList.remove('dice-result-anim'); this.toast('网络错误', 'warn'); }
       },
       async loadShowcase() {
         const grid = document.getElementById('showcaseGrid'); 
-        const btn = document.getElementById('refreshBtn'); // 1. 获取按钮
+        const btn = document.getElementById('refreshBtn');
         
-        // 2. 触发动画
         if(btn) {
             btn.classList.remove('refresh-spin');
-            void btn.offsetWidth; // 触发重绘
+            void btn.offsetWidth;
             btn.classList.add('refresh-spin');
         }
 
-        const t = TEXT[this.lang];
         try { const res = await fetch('/showcase'); const data = await res.json(); if(data.length) { grid.innerHTML = data.map(item => \`<div class="grid-item" onclick="App.preview('\${item.imageUrl}')"><img src="\${item.imageUrl}" loading="lazy"></div>\`).join(''); } } catch(e) {}
-        // 3. 清理动画类 (可选，配合CSS即可，这里设置超时移除以防连续点击)
         if(btn) setTimeout(() => btn.classList.remove('refresh-spin'), 800);
       },
       openAdmin() { this.closeModals(); document.getElementById('adminModal').classList.add('show'); },
       async verifyAdmin() {
-        const pwd = document.getElementById('adminPass').value; const t = TEXT[this.lang];
+        const pwd = document.getElementById('adminPass').value;
         try {
             const res = await fetch('/admin/verify', { method: 'POST', body: JSON.stringify({password: pwd}) }); const d = await res.json();
-            if(d.success) { this.adminPwd = pwd; document.getElementById('adminLogin').style.display = 'none'; document.getElementById('adminPanel').style.display = 'block'; this.switchAdminTab('log'); this.renderAdminTable(); } else { this.toast(t.verify_fail, 'warn'); }
-        } catch(e) { this.toast(t.net_err, 'warn'); }
+            if(d.success) { this.adminPwd = pwd; document.getElementById('adminLogin').style.display = 'none'; document.getElementById('adminPanel').style.display = 'block'; this.switchAdminTab('log'); this.renderAdminTable(); } else { this.toast('密码错误', 'warn'); }
+        } catch(e) { this.toast('网络错误', 'warn'); }
       },
       switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'ann') this.loadAdminAnnouncement();},
       async loadAdminUsers() {
-        const tbody = document.getElementById('userTbody'); const t = TEXT[this.lang]; tbody.innerHTML = \`<tr><td colspan="4" style="text-align:center;">\${t.loading}</td></tr>\`; 
-        try { const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); const data = await res.json(); if(data.success && data.users.length) { tbody.innerHTML = data.users.map(u => \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">\${t.edit_points}</button></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">\${t.del}</button></td></tr>\`).join(''); } else { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Empty</td></tr>'; } } catch(e) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Err</td></tr>'; }
+        const tbody = document.getElementById('userTbody'); tbody.innerHTML = \`<tr><td colspan="4" style="text-align:center;">加载中...</td></tr>\`; 
+        try { const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); const data = await res.json(); if(data.success && data.users.length) { tbody.innerHTML = data.users.map(u => \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">删</button></td></tr>\`).join(''); } else { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Empty</td></tr>'; } } catch(e) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Err</td></tr>'; }
       },
-      async adminEditPoints(userId) { const t = TEXT[this.lang]; const val = prompt(t.edit_points_prompt); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast(t.save_ok, 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('Net Error', 'warn'); } },
-      async deleteUser(id) { const t = TEXT[this.lang]; if(!confirm(t.delete_confirm)) return; try { const res = await fetch('/admin/delete-user', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: id }) }); const d = await res.json(); if(d.success) { this.toast(t.delete_ok, 'ok'); this.loadAdminUsers(); } else { this.toast('Error', 'warn'); } } catch(e) { this.toast(t.net_err, 'warn'); } },
-      renderAdminTable() { const t = TEXT[this.lang]; document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => \`<tr><td><input class="admin-input" value="\${log.date}" onchange="App.updateLog(\${idx}, 'date', this.value)"></td><td><input class="admin-input" value="\${log.ver}" onchange="App.updateLog(\${idx}, 'ver', this.value)"></td><td><input class="admin-input" value="\${log.content}" onchange="App.updateLog(\${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:4px 6px;" onchange="App.updateLog(\${idx}, 'tag', this.value)"><option value="optimization" \${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" \${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" \${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" \${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" \${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" \${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.delLog(\${idx})">\${t.del}</button></td></tr>\`).join(''); },
+      async adminEditPoints(userId) { const val = prompt('输入要增加或减少的积分:'); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
+      async deleteUser(id) { if(!confirm('确定删除该用户吗？此操作不可逆。')) return; try { const res = await fetch('/admin/delete-user', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: id }) }); const d = await res.json(); if(d.success) { this.toast('用户已删除', 'ok'); this.loadAdminUsers(); } else { this.toast('Error', 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
+      renderAdminTable() { document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => \`<tr><td><input class="admin-input" value="\${log.date}" onchange="App.updateLog(\${idx}, 'date', this.value)"></td><td><input class="admin-input" value="\${log.ver}" onchange="App.updateLog(\${idx}, 'ver', this.value)"></td><td><input class="admin-input" value="\${log.content}" onchange="App.updateLog(\${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:4px 6px;" onchange="App.updateLog(\${idx}, 'tag', this.value)"><option value="optimization" \${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" \${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" \${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" \${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" \${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" \${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.delLog(\${idx})">删</button></td></tr>\`).join(''); },
       updateLog(idx, field, val) { this.logsData[idx][field] = val; }, addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
-      async saveAdminLog() { const t = TEXT[this.lang]; try { const res = await fetch('/admin/save-changelog', { method: 'POST', body: JSON.stringify({password: this.adminPwd, logs: this.logsData}) }); const d = await res.json(); if(d.success) { this.toast(t.save_ok, 'ok'); this.loadChangelog(); } else { this.toast(t.save_err, 'warn'); } } catch(e) { this.toast(t.save_err, 'warn'); } },
+      async saveAdminLog() { try { const res = await fetch('/admin/save-changelog', { method: 'POST', body: JSON.stringify({password: this.adminPwd, logs: this.logsData}) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadChangelog(); } else { this.toast('保存失败', 'warn'); } } catch(e) { this.toast('保存失败', 'warn'); } },
       openProfile() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('profileModal').classList.add('show'); },
       closeModals() {
-        // 移除所有模态框的show类
         document.querySelectorAll('.modal').forEach(m => {
           m.classList.remove('show');
-          
-          // 清理动态弹窗的事件监听器
           if (m.id === 'statsModal' || m.getAttribute('data-dynamic') === 'true') {
-            // 移除点击背景关闭的事件监听器
             if (m._backdropClickHandler) {
               m.removeEventListener('click', m._backdropClickHandler);
               delete m._backdropClickHandler;
             }
-            
-            // 延迟移除DOM元素，确保CSS过渡动画完成
             setTimeout(() => {
               if (m.parentNode && (m.id === 'statsModal' || m.getAttribute('data-dynamic') === 'true')) {
                 m.remove();
               }
-            }, 300); // 等待CSS过渡动画完成（通常0.2s）
+            }, 300);
           }
         });
-        
-        // 确保statsModal被移除（备用清理）
         setTimeout(() => {
           const statsModal = document.getElementById('statsModal');
           if (statsModal && statsModal.parentNode) {
@@ -2040,7 +1643,7 @@ function getHtmlPage() {
           }
         }, 350);
       },
-      logout() { if(confirm(TEXT[this.lang].clear_confirm)) { localStorage.removeItem('moe_username'); location.reload(); } },
+      logout() { if(confirm('确定要注销吗？')) { localStorage.removeItem('moe_username'); location.reload(); } },
       preview(src) { document.getElementById('bigImg').src=src; document.getElementById('imgModal').classList.add('show'); },
       toast(msg, type) { const div = document.createElement('div'); div.className = 'toast'; div.innerHTML = \`<span>\${type==='ok'?'✅':'⚠️'}</span> \${msg}\`; document.body.appendChild(div); setTimeout(() => div.remove(), 2500); }
     };
@@ -2057,61 +1660,21 @@ function getHtmlPage() {
 function getLibraryHtml(items, pager) {
   return `
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Gallery</title>
+  <title>图库</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   ${NEUTRAL_CSS}
   <style>
     body { padding-top: 70px; }
     .nav { position: fixed; top: 0; left: 0; right: 0; height: 60px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-bottom: 1px solid #E2E8F0; z-index: 100; padding: 0 20px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      grid-auto-rows: 140px; /* 固定行高，与最小列宽一致 */
-      grid-auto-flow: dense; /* 密集填充模式，自动填充空白 */
-      gap: 12px;
-      padding: 15px;
-      max-width: 1000px;
-      margin: 0 auto;
-      /* 确保网格容器有最小高度，避免最后一排太突兀 */
-      min-height: calc(140px * 4); /* 至少显示4行 */
-      /* 更好的对齐控制 */
-      align-items: stretch;
-      justify-items: stretch;
-    }
-    .item {
-      position: relative;
-      border-radius: 8px;
-      overflow: hidden;
-      background: #F1F5F9;
-      cursor: zoom-in;
-      border: 1px solid #E2E8F0;
-      transition: 0.2s;
-      /* 确保项目填满网格单元格 */
-      height: 100%;
-      width: 100%;
-    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); grid-auto-rows: 140px; grid-auto-flow: dense; gap: 12px; padding: 15px; max-width: 1000px; margin: 0 auto; min-height: calc(140px * 4); align-items: stretch; justify-items: stretch; }
+    .item { position: relative; border-radius: 8px; overflow: hidden; background: #F1F5F9; cursor: zoom-in; border: 1px solid #E2E8F0; transition: 0.2s; height: 100%; width: 100%; }
     .item:hover { transform: translateY(-3px); border-color: var(--primary); }
-    .item img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block; /* 移除图片底部间隙 */
-    }
-    .item-user {
-      position: absolute;
-      bottom: 0;
-      width: 100%;
-      padding: 15px 10px 4px;
-      background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
-      color: white;
-      font-size: 0.75rem;
-      text-align: center;
-      pointer-events: none; /* 防止干扰点击 */
-    }
+    .item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .item-user { position: absolute; bottom: 0; width: 100%; padding: 15px 10px 4px; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); color: white; font-size: 0.75rem; text-align: center; pointer-events: none; }
     .pager { display: flex; justify-content: center; gap: 15px; padding: 30px; }
     .page-btn { width: 40px; height: 40px; border-radius: 8px; background: white; display: flex; align-items: center; justify-content: center; color: var(--text-main); font-weight: bold; text-decoration: none; border: 1px solid #E2E8F0; transition: 0.2s; }
     .page-btn:hover { border-color: var(--primary); color: var(--primary); }
@@ -2119,9 +1682,9 @@ function getLibraryHtml(items, pager) {
 </head>
 <body>
   <nav class="nav">
-    <div style="text-align:left;"><a href="/" class="btn secondary" style="padding: 8px 16px; font-size:0.9rem;"><i class="fas fa-arrow-left"></i> <span data-i18n="back">Back</span></a></div>
-    <div style="text-align:center; font-weight:bold; color:var(--text-main)"><span data-i18n="page">Page</span> ${pager.currentPage} / ${pager.totalPages}</div>
-    <div style="text-align:right;"><div class="lang-btn" onclick="toggleLang()" id="langBtn" style="display:inline-block;">En</div></div>
+    <div style="text-align:left;"><a href="/" class="btn secondary" style="padding: 8px 16px; font-size:0.9rem;"><i class="fas fa-arrow-left"></i> <span>返回</span></a></div>
+    <div style="text-align:center; font-weight:bold; color:var(--text-main)">第 ${pager.currentPage} 页 / 共 ${pager.totalPages} 页</div>
+    <div style="text-align:right;"></div>
   </nav>
   <div class="grid">
     ${items.map(item => `<div class="item" onclick="show('${item.url}')"><img data-src="${item.url}" class="lazy"><div class="item-user">@${item.username}</div></div>`).join('')}
@@ -2132,10 +1695,6 @@ function getLibraryHtml(items, pager) {
   </div>
   <div id="imgModal" class="modal" onclick="this.classList.remove('show')"><img id="bigImg" style="max-width:95%; max-height:90vh; border-radius:8px;"></div>
   <script>
-    const TEXT = ${JSON.stringify(I18N_TEXT)}; let currentLang = localStorage.getItem('moe_lang') || 'en';
-    function applyLang() { const t = TEXT[currentLang]; document.getElementById('langBtn').innerText = t.btn_lang; document.querySelectorAll('[data-i18n]').forEach(el => { const key = el.getAttribute('data-i18n'); if(t[key]) el.innerText = t[key]; }); }
-    function toggleLang() { currentLang = currentLang === 'en' ? 'zh' : 'en'; localStorage.setItem('moe_lang', currentLang); applyLang(); }
-    applyLang();
     const observer = new IntersectionObserver(es => es.forEach(e => { if(e.isIntersecting) { e.target.src = e.target.dataset.src; observer.unobserve(e.target); } }));
     document.querySelectorAll('.lazy').forEach(i => observer.observe(i));
     function show(u) { document.getElementById('bigImg').src=u; document.getElementById('imgModal').classList.add('show'); }
