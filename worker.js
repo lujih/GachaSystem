@@ -685,8 +685,20 @@ const NEUTRAL_CSS = `
     .actions { grid-template-columns: 1fr 1fr; gap: 8px; }
     #drawBtn { grid-column: 1 / -1; }
     .main-grid { grid-template-columns: 1fr; gap: 16px; }
-    .header { flex-direction: column; gap: 12px; align-items: flex-start; }
-    .user-pill { font-size: 0.8rem; padding: 5px 10px; }
+    .header { flex-direction: column; gap: 16px; align-items: stretch; padding: 0; }
+    .logo-container { text-align: center; }
+    .logo { font-size: 1.4rem; }
+    .logo-subtitle { font-size: 0.8rem; }
+    .header-right { justify-content: center; }
+    .user-pill {
+      font-size: 0.85rem;
+      padding: 8px 14px;
+      justify-content: center;
+      max-width: 280px;
+      margin: 0 auto;
+    }
+    .user-avatar { width: 28px; height: 28px; font-size: 0.9rem; }
+    .user-chevron { display: none; }
     #profileModal .modal-content { padding: 12px; }
     #profileModal .modal-content > div:first-child { margin-bottom: 15px; }
     #profileModal .modal-content > div:first-child > div:first-child { width: 60px; height: 60px; font-size: 1.5rem; }
@@ -720,9 +732,64 @@ function getHtmlPage() {
   ${NEUTRAL_CSS}
   <style>
     body { padding: 20px 20px 60px 20px; display: flex; flex-direction: column; align-items: center; }
-    .header { width: 100%; max-width: 600px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-    .logo { font-size: 1.4rem; font-weight: 900; color: var(--text-main); letter-spacing: -0.5px; }
+    .header { width: 100%; max-width: 900px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding: 0 10px; }
+    .logo-container { display: flex; flex-direction: column; }
+    .logo { font-size: 1.6rem; font-weight: 900; color: var(--text-main); letter-spacing: -0.5px; line-height: 1.2; }
     .logo span { color: var(--primary); }
+    .logo-subtitle { font-size: 0.85rem; color: var(--text-light); margin-top: 4px; font-weight: 500; }
+    .header-right { display: flex; align-items: center; }
+    .user-pill {
+      background: white;
+      padding: 8px 16px 8px 12px;
+      border-radius: 12px;
+      border: 1px solid #E2E8F0;
+      font-size: 0.9rem;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .user-pill:hover {
+      border-color: var(--primary);
+      box-shadow: 0 4px 8px rgba(59, 130, 246, 0.15);
+      transform: translateY(-1px);
+    }
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 1rem;
+    }
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+    .user-name {
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .user-title {
+      font-size: 0.7rem;
+      color: var(--text-light);
+      background: #F1F5F9;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .user-chevron {
+      font-size: 0.8rem;
+      color: #94A3B8;
+      margin-left: 4px;
+    }
     .main-grid { width: 100%; max-width: 900px; display: grid; grid-template-columns: 1fr; gap: 24px; }
     @media(min-width: 768px) { .main-grid { grid-template-columns: 360px 1fr; align-items: start; } }
     .gacha-card { background: white; border-radius: var(--radius); border: 1px solid #E2E8F0; padding: 6px; box-shadow: var(--shadow); }
@@ -766,11 +833,20 @@ function getHtmlPage() {
 </head>
 <body>
   <header class="header">
-    <div class="logo"><i class="fas fa-cube"></i> Gacha<span>System</span></div>
-    <div style="display:flex; gap:10px; align-items:center;">
+    <div class="logo-container">
+      <div class="logo"><i class="fas fa-cube"></i> Gacha<span>System</span></div>
+      <div class="logo-subtitle">抽卡收集系统</div>
+    </div>
+    <div class="header-right">
        <div class="user-pill" onclick="App.openProfile()">
-         <i class="fas fa-user-astronaut"></i> <span id="navNickname">游客</span>
-         <span id="navTitle"></span>
+         <div class="user-avatar">
+           <i class="fas fa-user-astronaut"></i>
+         </div>
+         <div class="user-info">
+           <span class="user-name" id="navNickname">游客</span>
+           <span class="user-title" id="navTitle"></span>
+         </div>
+         <i class="fas fa-chevron-right user-chevron"></i>
        </div>
     </div>
   </header>
