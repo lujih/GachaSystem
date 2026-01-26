@@ -147,7 +147,7 @@ export default {
 
       'GET /library': () => handleLibrary(request, env, url),
       
-      'POST /admin/users': async () => { /* 实际需实现用户列表查询 */ return jsonResponse({success:false}); },
+      'POST /admin/users': () => handleAdminUsers(request, env),
       'POST /admin/verify': () => handleAdminVerify(request, env),
       'POST /admin/save-changelog': () => handleAdminSaveLog(request, env),
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
@@ -957,6 +957,36 @@ async function handleLibrary(request, env, url) {
 async function handleAdminVerify(request, env) {
   const { password } = await request.json();
   return jsonResponse({ success: password === env.admin }, password === env.admin ? 200 : 403);
+}
+
+async function handleAdminUsers(request, env) {
+  const { password } = await request.json();
+  if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
+  
+  try {
+    // 查询用户列表，按创建时间倒序排列
+    const usersResult = await env.DB.prepare(
+      'SELECT username, nickname, draw_count, coins, level, exp, total_exp, last_login_date, login_streak, created_at FROM users ORDER BY created_at DESC'
+    ).all();
+    
+    const users = usersResult.results ? usersResult.results.map(user => ({
+      username: user.username,
+      nickname: user.nickname || user.username,
+      drawCount: user.draw_count || 0,
+      coins: user.coins || 0,
+      level: user.level || 1,
+      exp: user.exp || 0,
+      totalExp: user.total_exp || 0,
+      lastLoginDate: user.last_login_date,
+      loginStreak: user.login_streak || 0,
+      createdAt: user.created_at
+    })) : [];
+    
+    return jsonResponse({ success: true, users });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    return jsonResponse({ error: 'Database error' }, 500);
+  }
 }
 
 async function handleAdminSaveLog(request, env) {
