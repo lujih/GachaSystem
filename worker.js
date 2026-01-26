@@ -1286,6 +1286,21 @@ function getHtmlPage() {
     .panel-container { display: flex; flex-direction: column; gap: 24px; }
     .box-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-weight: 800; font-size: 1rem; padding: 0 4px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; }
+    /* 精选图库特定样式 - 确保6张图片整齐排列 */
+    #showcaseGrid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    @media (max-width: 768px) {
+      #showcaseGrid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    @media (max-width: 480px) {
+      #showcaseGrid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+    }
     .grid-item { aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #F1F5F9; cursor: pointer; border: 1px solid #E2E8F0; transition: 0.2s; }
     .grid-item:hover { border-color: var(--primary); transform: translateY(-2px); }
     .grid-item img { width: 100%; height: 100%; object-fit: cover; }
@@ -1737,7 +1752,7 @@ function getHtmlPage() {
         if (pool === 'ltd') {
             document.getElementById('tab-ltd').classList.add('limited');
             btn.className = 'btn limited-btn';
-            btn.innerHTML = \`<i class="fas fa-star"></i> 限定召唤 <small>(\${costConfig} 积分)</small>\`;
+            btn.innerHTML = \`<i class="fas fa-star"></i> 召唤 <small>(\${costConfig} 积分)</small>\`;
         } else {
             btn.className = 'btn';
             btn.innerHTML = \`<i class="fas fa-bolt"></i> 召唤\`;
