@@ -685,19 +685,28 @@ const NEUTRAL_CSS = `
     .actions { grid-template-columns: 1fr 1fr; gap: 8px; }
     #drawBtn { grid-column: 1 / -1; }
     .main-grid { grid-template-columns: 1fr; gap: 16px; }
-    .header { flex-direction: column; gap: 16px; align-items: stretch; padding: 0; }
-    .logo-container { text-align: center; }
-    .logo { font-size: 1.4rem; }
-    .logo-subtitle { font-size: 0.8rem; }
-    .header-right { justify-content: center; }
-    .user-pill {
-      font-size: 0.85rem;
-      padding: 8px 14px;
-      justify-content: center;
-      max-width: 280px;
-      margin: 0 auto;
+    .header {
+      flex-direction: row;
+      gap: 12px;
+      align-items: center;
+      padding: 0 5px;
+      max-width: 100%;
     }
-    .user-avatar { width: 28px; height: 28px; font-size: 0.9rem; }
+    .logo-container { text-align: left; }
+    .logo { font-size: 1.3rem; }
+    .logo-subtitle { font-size: 0.75rem; margin-top: 2px; }
+    .header-right { justify-content: flex-end; }
+    .user-pill {
+      font-size: 0.8rem;
+      padding: 6px 10px 6px 8px;
+      gap: 6px;
+      max-width: none;
+      margin: 0;
+    }
+    .user-avatar { width: 24px; height: 24px; font-size: 0.8rem; }
+    .user-info { min-width: 0; }
+    .user-name { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
+    .user-title { font-size: 0.65rem; padding: 1px 4px; }
     .user-chevron { display: none; }
     #profileModal .modal-content { padding: 12px; }
     #profileModal .modal-content > div:first-child { margin-bottom: 15px; }
