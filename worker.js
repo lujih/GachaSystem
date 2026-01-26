@@ -26,6 +26,56 @@ const CONFIG = {
     DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2 },
     PRELOAD: { ENABLED: true }
   },
+  // 等级系统配置
+  LEVEL: {
+    // 经验获取配置
+    EXP_GAIN: {
+      DRAW: { 'N': 5, 'R': 10, 'SR': 30, 'SSR': 100, 'UR': 500 }, // 抽卡获得经验（与积分相同）
+      CRAFT: 50, // 合成成功获得经验
+      SHOP_BUY: 20, // 商店购买获得经验
+      DICE_WIN: 30, // 骰子获胜获得经验
+      DAILY_LOGIN: 50, // 每日登录获得经验
+      LOGIN_STREAK_BONUS: [0, 10, 20, 30, 50, 80, 120] // 连续登录额外奖励
+    },
+    // 等级升级所需经验公式：基础值 × (等级^1.5)
+    BASE_EXP: 100,
+    EXP_MULTIPLIER: 1.5,
+    MAX_LEVEL: 100,
+    // 等级奖励配置
+    REWARDS: {
+      // 每级奖励积分
+      COINS_PER_LEVEL: 50,
+      // 特殊等级奖励
+      SPECIAL_LEVELS: {
+        5: { coins: 500, title: '新手收集者' },
+        10: { coins: 1000, title: '初级收藏家' },
+        20: { coins: 2000, title: '中级收藏家' },
+        30: { coins: 3000, title: '高级收藏家' },
+        40: { coins: 5000, title: '资深收藏家' },
+        50: { coins: 8000, title: '大师收藏家' },
+        60: { coins: 12000, title: '传奇收藏家' },
+        70: { coins: 18000, title: '史诗收藏家' },
+        80: { coins: 25000, title: '神话收藏家' },
+        90: { coins: 35000, title: '不朽收藏家' },
+        100: { coins: 50000, title: '至尊收藏家' }
+      }
+    },
+    // 等级特权配置
+    PRIVILEGES: {
+      // 等级影响抽卡概率加成（每级增加0.1%稀有卡概率）
+      GACHA_RARITY_BOOST_PER_LEVEL: 0.001,
+      // 等级影响合成成功率加成（每级增加0.2%成功率）
+      CRAFT_SUCCESS_BOOST_PER_LEVEL: 0.002,
+      // 等级解锁特殊功能
+      UNLOCKS: {
+        10: 'unlock_limited_pool', // 解锁限定池
+        20: 'unlock_advanced_craft', // 解锁高级合成
+        30: 'unlock_special_shop', // 解锁特殊商店
+        40: 'unlock_daily_quests', // 解锁每日任务
+        50: 'unlock_guild_system' // 解锁公会系统
+      }
+    }
+  },
   KEYS: {
     CHANGELOG: 'system:changelog',
     ANNOUNCEMENT: 'system:announcement',
@@ -33,7 +83,7 @@ const CONFIG = {
     GALLERY_INDEX: 'system:gallery_index'
   },
   TTL: { SESSION: 86400 * 7, BUFFER: 86400, CACHE: 60 * 5, LEADERBOARD: 86400 * 30, GALLERY_CACHE: 86400 * 7 },
-  R2_DOMAIN: "https://cft1.cszxorx.dpdns.org", 
+  R2_DOMAIN: "https://cft1.cszxorx.dpdns.org",
   DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
 };
 
@@ -83,6 +133,7 @@ export default {
       'POST /auth/register': () => userService.register(request),
       'POST /auth/login': () => userService.login(request),
       'GET /user/info': () => userService.getInfo(currentUser),
+      'POST /user/claim-reward': () => userService.claimReward(currentUser, request),
       
       'GET /draw': () => gachaService.draw(currentUser),
       'POST /draw/limited': () => gachaService.drawLimited(currentUser),
@@ -96,7 +147,7 @@ export default {
 
       'GET /library': () => handleLibrary(request, env, url),
       
-      'POST /admin/users': async () => { /* 实际需实现用户列表查询 */ return jsonResponse({success:false}); }, 
+      'POST /admin/users': async () => { /* 实际需实现用户列表查询 */ return jsonResponse({success:false}); },
       'POST /admin/verify': () => handleAdminVerify(request, env),
       'POST /admin/save-changelog': () => handleAdminSaveLog(request, env),
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
@@ -125,14 +176,42 @@ class UserService {
     this.ctx = ctx;
   }
 
+  // 计算升级所需经验
+  calculateRequiredExp(level) {
+    const { BASE_EXP, EXP_MULTIPLIER } = CONFIG.LEVEL;
+    return Math.floor(BASE_EXP * Math.pow(level, EXP_MULTIPLIER));
+  }
+
+  // 计算等级进度百分比
+  calculateLevelProgress(exp, level) {
+    const currentLevelExp = this.calculateRequiredExp(level);
+    const nextLevelExp = this.calculateRequiredExp(level + 1);
+    const expInCurrentLevel = exp - currentLevelExp;
+    const expNeededForNextLevel = nextLevelExp - currentLevelExp;
+    
+    if (expNeededForNextLevel <= 0) return 100;
+    return Math.min(100, Math.floor((expInCurrentLevel / expNeededForNextLevel) * 100));
+  }
+
   async register(request) {
     const { username, nickname, password } = await request.json();
     if (!username || !password) return jsonResponse({ error: 'Missing fields' }, 400);
 
     try {
       await this.env.DB.prepare(
-        'INSERT INTO users (username, nickname, password, coins, created_at) VALUES (?, ?, ?, ?, ?)'
-      ).bind(username, nickname || username, password, 1000, Date.now()).run();
+        'INSERT INTO users (username, nickname, password, coins, level, exp, total_exp, login_streak, last_login_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        username,
+        nickname || username,
+        password,
+        1000,  // 初始积分
+        1,     // 初始等级
+        0,     // 初始经验
+        0,     // 初始总经验
+        0,     // 初始登录连续天数
+        null,  // 最后登录日期
+        Date.now()
+      ).run();
       
       return jsonResponse({ success: true });
     } catch (e) {
@@ -145,24 +224,88 @@ class UserService {
     const { username, password } = await request.json();
     
     const user = await this.env.DB.prepare(
-      'SELECT id, username, nickname FROM users WHERE username = ? AND password = ?'
+      'SELECT id, username, nickname, level, exp, total_exp, login_streak, last_login_date FROM users WHERE username = ? AND password = ?'
     ).bind(username, password).first();
 
     if (!user) return jsonResponse({ error: 'Invalid Credentials' }, 403);
 
+    // 处理登录连续天数
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    let loginStreak = user.login_streak || 0;
+    let expGain = 0;
+    
+    if (user.last_login_date) {
+      const lastLoginDate = new Date(user.last_login_date);
+      const lastLoginDay = lastLoginDate.toISOString().split('T')[0];
+      
+      if (lastLoginDay === today) {
+        // 今天已经登录过，不增加连续天数
+      } else if (this.isConsecutiveDay(lastLoginDate, now)) {
+        // 连续登录
+        loginStreak = Math.min(loginStreak + 1, CONFIG.LEVEL.EXP_GAIN.LOGIN_STREAK_BONUS.length - 1);
+      } else {
+        // 中断连续登录
+        loginStreak = 0;
+      }
+    } else {
+      // 首次登录
+      loginStreak = 0;
+    }
+    
+    // 计算每日登录经验奖励
+    expGain = CONFIG.LEVEL.EXP_GAIN.DAILY_LOGIN;
+    if (loginStreak > 0 && loginStreak < CONFIG.LEVEL.EXP_GAIN.LOGIN_STREAK_BONUS.length) {
+      expGain += CONFIG.LEVEL.EXP_GAIN.LOGIN_STREAK_BONUS[loginStreak];
+    }
+    
+    // 更新用户登录信息
+    await this.env.DB.prepare(
+      'UPDATE users SET last_login_date = ?, login_streak = ?, exp = exp + ?, total_exp = total_exp + ? WHERE id = ?'
+    ).bind(now.toISOString(), loginStreak, expGain, expGain, user.id).run();
+
     const token = crypto.randomUUID();
-    const sessionData = { id: user.id, username: user.username, nickname: user.nickname };
+    const sessionData = {
+      id: user.id,
+      username: user.username,
+      nickname: user.nickname,
+      level: user.level,
+      exp: user.exp + expGain,
+      total_exp: user.total_exp + expGain,
+      login_streak: loginStreak
+    };
     
     await this.env.KV_CACHE.put(`session:${token}`, JSON.stringify(sessionData), { expirationTtl: CONFIG.TTL.SESSION });
 
-    return jsonResponse({ success: true, token, user: sessionData });
+    return jsonResponse({
+      success: true,
+      token,
+      user: sessionData,
+      daily_login_reward: {
+        exp_gained: expGain,
+        streak: loginStreak,
+        streak_bonus: CONFIG.LEVEL.EXP_GAIN.LOGIN_STREAK_BONUS[loginStreak] || 0
+      }
+    });
+  }
+
+  // 检查是否是连续天
+  isConsecutiveDay(lastDate, currentDate) {
+    const last = new Date(lastDate);
+    const current = new Date(currentDate);
+    last.setHours(0, 0, 0, 0);
+    current.setHours(0, 0, 0, 0);
+    
+    const diffTime = current - last;
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+    return diffDays === 1;
   }
 
   async getInfo(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
 
     const [userRes, invRes] = await Promise.all([
-      this.env.DB.prepare('SELECT coins, draw_count, wins FROM users WHERE id = ?').bind(currentUser.id).first(),
+      this.env.DB.prepare('SELECT coins, draw_count, wins, level, exp, total_exp, login_streak, last_login_date FROM users WHERE id = ?').bind(currentUser.id).first(),
       this.env.DB.prepare('SELECT rarity, count FROM inventory WHERE user_id = ?').bind(currentUser.id).all()
     ]);
 
@@ -173,14 +316,167 @@ class UserService {
       invRes.results.forEach(row => inventory[row.rarity] = row.count);
     }
 
+    // 计算等级相关信息
+    const currentLevel = userRes.level || 1;
+    const currentExp = userRes.exp || 0;
+    const totalExp = userRes.total_exp || 0;
+    const requiredExpForCurrentLevel = this.calculateRequiredExp(currentLevel);
+    const requiredExpForNextLevel = this.calculateRequiredExp(currentLevel + 1);
+    const levelProgress = this.calculateLevelProgress(currentExp, currentLevel);
+    
+    // 检查是否有未领取的等级奖励
+    const unclaimedRewards = await this.checkUnclaimedRewards(currentUser.id, currentLevel);
+
     return jsonResponse({
       username: currentUser.username,
       nickname: currentUser.nickname,
       coins: userRes.coins,
       drawCount: userRes.draw_count,
       wins: userRes.wins,
-      inventory
+      level: currentLevel,
+      exp: currentExp,
+      total_exp: totalExp,
+      level_progress: levelProgress,
+      required_exp_current: requiredExpForCurrentLevel,
+      required_exp_next: requiredExpForNextLevel,
+      exp_to_next_level: Math.max(0, requiredExpForNextLevel - currentExp),
+      login_streak: userRes.login_streak || 0,
+      last_login_date: userRes.last_login_date,
+      inventory,
+      unclaimed_rewards: unclaimedRewards,
+      level_privileges: this.getLevelPrivileges(currentLevel)
     });
+  }
+
+  // 检查未领取的等级奖励
+  async checkUnclaimedRewards(userId, currentLevel) {
+    try {
+      const claimedRewards = await this.env.DB.prepare(
+        'SELECT level FROM level_rewards WHERE user_id = ?'
+      ).bind(userId).all();
+      
+      const claimedLevels = new Set();
+      if (claimedRewards.results) {
+        claimedRewards.results.forEach(row => claimedLevels.add(row.level));
+      }
+      
+      const unclaimed = [];
+      const specialLevels = Object.keys(CONFIG.LEVEL.REWARDS.SPECIAL_LEVELS).map(Number);
+      
+      for (const level of specialLevels) {
+        if (level <= currentLevel && !claimedLevels.has(level)) {
+          unclaimed.push({
+            level: level,
+            reward: CONFIG.LEVEL.REWARDS.SPECIAL_LEVELS[level]
+          });
+        }
+      }
+      
+      return unclaimed;
+    } catch (e) {
+      console.error('Error checking unclaimed rewards:', e);
+      return [];
+    }
+  }
+
+  // 获取等级特权
+  getLevelPrivileges(level) {
+    const privileges = {
+      gacha_rarity_boost: level * CONFIG.LEVEL.PRIVILEGES.GACHA_RARITY_BOOST_PER_LEVEL,
+      craft_success_boost: level * CONFIG.LEVEL.PRIVILEGES.CRAFT_SUCCESS_BOOST_PER_LEVEL,
+      unlocked_features: []
+    };
+    
+    // 检查解锁的功能
+    for (const [requiredLevel, feature] of Object.entries(CONFIG.LEVEL.PRIVILEGES.UNLOCKS)) {
+      if (level >= parseInt(requiredLevel)) {
+        privileges.unlocked_features.push(feature);
+      }
+    }
+    
+    return privileges;
+  }
+
+  // 领取等级奖励
+  async claimReward(currentUser, request) {
+    if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+    
+    try {
+      const { level } = await request.json();
+      if (!level || typeof level !== 'number' || level < 1 || level > CONFIG.LEVEL.MAX_LEVEL) {
+        return jsonResponse({ error: 'Invalid level' }, 400);
+      }
+      
+      // 获取用户当前等级
+      const user = await this.env.DB.prepare(
+        'SELECT level FROM users WHERE id = ?'
+      ).bind(currentUser.id).first();
+      
+      if (!user) return jsonResponse({ error: 'User not found' }, 404);
+      
+      const currentLevel = user.level || 1;
+      
+      // 检查用户是否达到了该等级
+      if (currentLevel < level) {
+        return jsonResponse({ error: 'Level not reached yet' }, 403);
+      }
+      
+      // 检查奖励是否已经领取过
+      const existingReward = await this.env.DB.prepare(
+        'SELECT id FROM level_rewards WHERE user_id = ? AND level = ? AND reward_type = ?'
+      ).bind(currentUser.id, level, 'special').first();
+      
+      if (existingReward) {
+        return jsonResponse({ error: 'Reward already claimed' }, 409);
+      }
+      
+      // 检查是否为特殊等级奖励
+      const specialReward = CONFIG.LEVEL.REWARDS.SPECIAL_LEVELS[level];
+      if (!specialReward) {
+        return jsonResponse({ error: 'No special reward for this level' }, 404);
+      }
+      
+      // 开始事务处理
+      const batch = [];
+      
+      // 发放积分奖励
+      if (specialReward.coins && specialReward.coins > 0) {
+        batch.push(
+          this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?')
+            .bind(specialReward.coins, currentUser.id)
+        );
+      }
+      
+      // 记录奖励领取
+      batch.push(
+        this.env.DB.prepare(
+          'INSERT INTO level_rewards (user_id, level, reward_type, reward_data, claimed_at) VALUES (?, ?, ?, ?, ?)'
+        ).bind(currentUser.id, level, 'special', JSON.stringify(specialReward), Date.now())
+      );
+      
+      // 发放称号奖励
+      if (specialReward.title) {
+        batch.push(
+          this.env.DB.prepare(
+            'INSERT OR IGNORE INTO user_titles (user_id, title_name, unlocked_at) VALUES (?, ?, ?)'
+          ).bind(currentUser.id, specialReward.title, Date.now())
+        );
+      }
+      
+      // 执行所有操作
+      await this.env.DB.batch(batch);
+      
+      return jsonResponse({
+        success: true,
+        level: level,
+        reward: specialReward,
+        message: 'Reward claimed successfully'
+      });
+      
+    } catch (error) {
+      console.error('Error claiming reward:', error);
+      return jsonResponse({ error: 'Internal server error' }, 500);
+    }
   }
 }
 
@@ -189,6 +485,109 @@ class GachaService {
     this.env = env;
     this.ctx = ctx;
     this.userService = userService;
+  }
+
+  // 检查用户是否升级并处理升级逻辑
+  async checkLevelUp(userId) {
+    try {
+      // 获取用户当前等级和经验
+      const user = await this.env.DB.prepare(
+        'SELECT level, exp, total_exp FROM users WHERE id = ?'
+      ).bind(userId).first();
+      
+      if (!user) return null;
+      
+      const currentLevel = user.level || 1;
+      const currentExp = user.exp || 0;
+      
+      // 如果已经是最高等级，不再升级
+      if (currentLevel >= CONFIG.LEVEL.MAX_LEVEL) return null;
+      
+      // 计算升级所需经验
+      const requiredExpForNextLevel = this.userService.calculateRequiredExp(currentLevel + 1);
+      
+      // 检查是否满足升级条件
+      if (currentExp >= requiredExpForNextLevel) {
+        let newLevel = currentLevel + 1;
+        let remainingExp = currentExp - requiredExpForNextLevel;
+        
+        // 处理连续升级（如果剩余经验足够升更多级）
+        while (newLevel < CONFIG.LEVEL.MAX_LEVEL && remainingExp >= this.userService.calculateRequiredExp(newLevel + 1)) {
+          remainingExp -= this.userService.calculateRequiredExp(newLevel + 1);
+          newLevel++;
+        }
+        
+        // 计算总升级数
+        const levelsGained = newLevel - currentLevel;
+        
+        // 计算总奖励积分
+        const totalCoinsReward = levelsGained * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL;
+        
+        // 更新用户等级和经验
+        await this.env.DB.prepare(
+          'UPDATE users SET level = ?, exp = ?, coins = coins + ? WHERE id = ?'
+        ).bind(newLevel, remainingExp, totalCoinsReward, userId).run();
+        
+        // 记录等级奖励
+        for (let level = currentLevel + 1; level <= newLevel; level++) {
+          // 记录每级的基础积分奖励
+          await this.env.DB.prepare(
+            'INSERT OR IGNORE INTO level_rewards (user_id, level, reward_type, reward_data, claimed_at) VALUES (?, ?, ?, ?, ?)'
+          ).bind(userId, level, 'coins', JSON.stringify({ coins: CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL }), Date.now()).run();
+          
+          // 检查特殊等级奖励
+          if (CONFIG.LEVEL.REWARDS.SPECIAL_LEVELS[level]) {
+            const specialReward = CONFIG.LEVEL.REWARDS.SPECIAL_LEVELS[level];
+            
+            // 记录特殊奖励
+            await this.env.DB.prepare(
+              'INSERT OR IGNORE INTO level_rewards (user_id, level, reward_type, reward_data, claimed_at) VALUES (?, ?, ?, ?, ?)'
+            ).bind(userId, level, 'special', JSON.stringify(specialReward), Date.now()).run();
+            
+            // 发放特殊奖励积分
+            await this.env.DB.prepare(
+              'UPDATE users SET coins = coins + ? WHERE id = ?'
+            ).bind(specialReward.coins, userId).run();
+            
+            // 如果奖励包含称号，添加到用户称号表
+            if (specialReward.title) {
+              await this.env.DB.prepare(
+                'INSERT OR IGNORE INTO user_titles (user_id, title_name, unlocked_at) VALUES (?, ?, ?)'
+              ).bind(userId, specialReward.title, Date.now()).run();
+            }
+          }
+        }
+        
+        // 返回升级信息
+        return {
+          leveled_up: true,
+          old_level: currentLevel,
+          new_level: newLevel,
+          levels_gained: levelsGained,
+          coins_reward: totalCoinsReward,
+          special_rewards: this.getSpecialRewardsForLevels(currentLevel + 1, newLevel)
+        };
+      }
+      
+      return null; // 没有升级
+    } catch (error) {
+      console.error('Error in checkLevelUp:', error);
+      return null;
+    }
+  }
+  
+  // 获取指定等级范围内的特殊奖励
+  getSpecialRewardsForLevels(startLevel, endLevel) {
+    const specialRewards = [];
+    for (let level = startLevel; level <= endLevel; level++) {
+      if (CONFIG.LEVEL.REWARDS.SPECIAL_LEVELS[level]) {
+        specialRewards.push({
+          level: level,
+          reward: CONFIG.LEVEL.REWARDS.SPECIAL_LEVELS[level]
+        });
+      }
+    }
+    return specialRewards;
   }
 
   getBufferKey(username) { return `buffer:${username}`; }
@@ -209,11 +608,12 @@ class GachaService {
     }
 
     const points = CONFIG.GAME.POINTS[assetData.rarity] || 5;
+    const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[assetData.rarity] || 5;
     const timestamp = Date.now();
 
     const batch = [
-        this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + 1 WHERE id = ?')
-            .bind(points, currentUser.id),
+        this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + 1, exp = exp + ?, total_exp = total_exp + ? WHERE id = ?')
+            .bind(points, expGain, expGain, currentUser.id),
         this.env.DB.prepare(`
             INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
             ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1
@@ -231,11 +631,15 @@ class GachaService {
         url: assetData.imageUrl, username: currentUser.username, ts: timestamp
     }));
 
+    // 检查等级提升
+    await this.checkLevelUp(currentUser.id);
+
     return jsonResponse({
         success: true,
         rarity: assetData.rarity,
         imageUrl: assetData.imageUrl,
-        pointsEarned: points
+        pointsEarned: points,
+        expGained: expGain
     });
   }
 
@@ -263,7 +667,12 @@ class GachaService {
       });
     }
 
+    // 限定池抽卡也获得经验（使用UR的经验值，因为限定池通常是UR）
+    const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW['UR'] || 500;
+    
     await this.env.DB.batch([
+        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?')
+            .bind(expGain, expGain, currentUser.id),
         this.env.DB.prepare(`
             INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
             ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1
@@ -276,7 +685,15 @@ class GachaService {
         url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
     
-    return jsonResponse({ success: true, rarity: assetData.rarity, imageUrl: assetData.imageUrl });
+    // 检查等级提升
+    await this.checkLevelUp(currentUser.id);
+    
+    return jsonResponse({
+      success: true,
+      rarity: assetData.rarity,
+      imageUrl: assetData.imageUrl,
+      expGained: expGain
+    });
   }
 
   async craft(currentUser, request) {
@@ -308,7 +725,12 @@ class GachaService {
       });
     }
 
+    // 合成成功获得经验
+    const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT;
+    
     await this.env.DB.batch([
+        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?')
+            .bind(expGain, expGain, currentUser.id),
         this.env.DB.prepare(`
             INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
             ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1
@@ -321,6 +743,9 @@ class GachaService {
         url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
 
+    // 检查等级提升
+    await this.checkLevelUp(currentUser.id);
+    
     return this.userService.getInfo(currentUser);
   }
 
@@ -349,7 +774,12 @@ class GachaService {
       });
     }
 
+    // 商店购买获得经验
+    const expGain = CONFIG.LEVEL.EXP_GAIN.SHOP_BUY;
+    
     await this.env.DB.batch([
+        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?')
+            .bind(expGain, expGain, currentUser.id),
          this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`)
              .bind(currentUser.id, assetData.rarity),
          this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -360,7 +790,15 @@ class GachaService {
         url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
 
-    return jsonResponse({ success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity });
+    // 检查等级提升
+    await this.checkLevelUp(currentUser.id);
+    
+    return jsonResponse({
+      success: true,
+      imageUrl: assetData.imageUrl,
+      rarity: assetData.rarity,
+      expGained: expGain
+    });
   }
 
   async playDice(currentUser, request) {
@@ -381,17 +819,26 @@ class GachaService {
     const isSmall = roll <= 3;
     const isWin = (prediction === 'small' && isSmall) || (prediction === 'big' && !isSmall);
     let winAmount = 0;
+    let expGain = 0;
 
     if (isWin) {
         winAmount = bet * 2;
+        expGain = CONFIG.LEVEL.EXP_GAIN.DICE_WIN;
         await this.env.DB.prepare(
-            'UPDATE users SET coins = coins + ?, wins = wins + 1 WHERE id = ?'
-        ).bind(winAmount, currentUser.id).run();
+            'UPDATE users SET coins = coins + ?, wins = wins + 1, exp = exp + ?, total_exp = total_exp + ? WHERE id = ?'
+        ).bind(winAmount, expGain, expGain, currentUser.id).run();
+        
+        // 检查等级提升
+        await this.checkLevelUp(currentUser.id);
+    } else {
+        await this.env.DB.prepare(
+            'UPDATE users SET wins = wins WHERE id = ?'
+        ).bind(currentUser.id).run();
     }
 
     await this.env.DB.prepare(
         'INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).bind(currentUser.id, currentUser.username, 'dice', `Bet:${bet} Roll:${roll} Win:${winAmount}`, Date.now()).run();
+    ).bind(currentUser.id, currentUser.username, 'dice', `Bet:${bet} Roll:${roll} Win:${winAmount} Exp:${expGain}`, Date.now()).run();
 
     const user = await this.env.DB.prepare('SELECT coins FROM users WHERE id = ?').bind(currentUser.id).first();
 
@@ -400,6 +847,7 @@ class GachaService {
         roll,
         isWin,
         winAmount,
+        expGained: expGain,
         newBalance: user.coins
     });
   }
@@ -853,7 +1301,10 @@ function getHtmlPage() {
          </div>
          <div class="user-info">
            <span class="user-name" id="navNickname">游客</span>
-           <span class="user-title" id="navTitle"></span>
+           <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+             <span class="user-level-badge" id="navLevel" style="background: linear-gradient(135deg, #3B82F6, #8B5CF6); color: white; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold;">Lv.1</span>
+             <span class="user-title" id="navTitle"></span>
+           </div>
          </div>
          <i class="fas fa-chevron-right user-chevron"></i>
        </div>
@@ -977,7 +1428,50 @@ function getHtmlPage() {
             </div>
             <div style="flex:1; text-align:center;">
               <div style="font-size:0.9rem; color:#94A3B8; margin-bottom:3px;">等级</div>
-              <div style="font-weight:bold; color:var(--primary);" id="profileLevel">1</div>
+              <div style="font-weight:bold; color:var(--primary); font-size:1.5rem;" id="profileLevel">1</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 等级进度信息 -->
+        <div style="background:white; padding:15px; border-radius:8px; border:1px solid #E2E8F0; margin-bottom:15px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <div style="font-weight:bold; color:var(--text-main);">等级进度</div>
+            <i class="fas fa-trophy" style="color:#F59E0B;"></i>
+          </div>
+          
+          <div style="margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#94A3B8; margin-bottom:4px;">
+              <span>经验值: <span id="profileExp">0</span> / <span id="profileExpNext">100</span></span>
+              <span id="profileLevelProgress">0%</span>
+            </div>
+            <div style="height:10px; background:#F1F5F9; border-radius:5px; overflow:hidden;">
+              <div id="profileExpBar" style="height:100%; background:linear-gradient(90deg, #3B82F6, #8B5CF6); width:0%; border-radius:5px; transition:width 0.5s ease;"></div>
+            </div>
+            <div style="font-size:0.75rem; color:#94A3B8; margin-top:4px; text-align:center;">
+              升级还需: <span id="profileExpToNext">100</span> 经验
+            </div>
+          </div>
+          
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;">
+            <div style="text-align:center; padding:8px; background:#F0F9FF; border-radius:6px; border:1px solid #BAE6FD;">
+              <div style="font-size:0.75rem; color:#0284C7;">总经验</div>
+              <div style="font-weight:bold; font-size:0.9rem; color:#0369A1;" id="profileTotalExp">0</div>
+            </div>
+            <div style="text-align:center; padding:8px; background:#FEF3C7; border-radius:6px; border:1px solid #FDE68A;">
+              <div style="font-size:0.75rem; color:#B45309;">登录天数</div>
+              <div style="font-weight:bold; font-size:0.9rem; color:#92400E;" id="profileLoginStreak">0</div>
+            </div>
+          </div>
+          
+          <!-- 未领取奖励提示 -->
+          <div id="unclaimedRewardsAlert" style="display:none; margin-top:12px; padding:8px; background:linear-gradient(135deg, #ECFDF5, #D1FAE5); border-radius:6px; border:1px solid #10B981; text-align:center; cursor:pointer;" onclick="App.openLevelRewards()">
+            <div style="display:flex; align-items:center; justify-content:center; gap:6px;">
+              <i class="fas fa-gift" style="color:#10B981;"></i>
+              <span style="font-size:0.8rem; color:#065F46; font-weight:bold;">
+                有 <span id="unclaimedRewardsCount">0</span> 个等级奖励待领取
+              </span>
+              <i class="fas fa-chevron-right" style="color:#10B981; font-size:0.7rem;"></i>
             </div>
           </div>
         </div>
@@ -1247,6 +1741,63 @@ function getHtmlPage() {
         document.getElementById('profileUsername').innerText = user.username;
         document.getElementById('profileCount').innerText = user.drawCount || 0;
         document.getElementById('profileCoins').innerText = user.coins || 0;
+        
+        // 更新等级信息
+        const level = user.level || 1;
+        const exp = user.exp || 0;
+        const totalExp = user.total_exp || 0;
+        const nextLevelExp = user.next_level_exp || 100;
+        const levelProgress = user.level_progress || 0;
+        const loginStreak = user.login_streak || 0;
+        const unclaimedRewards = user.unclaimed_rewards || [];
+        
+        // 导航栏等级徽章
+        const navLevelEl = document.getElementById('navLevel');
+        if (navLevelEl) {
+          navLevelEl.innerText = 'Lv.' + level;
+        }
+        
+        // 个人资料页等级信息
+        const profileLevelEl = document.getElementById('profileLevel');
+        if (profileLevelEl) {
+          profileLevelEl.innerText = level;
+        }
+        
+        const profileExpEl = document.getElementById('profileExp');
+        if (profileExpEl) {
+          profileExpEl.innerText = exp + '/' + nextLevelExp;
+        }
+        
+        const profileTotalExpEl = document.getElementById('profileTotalExp');
+        if (profileTotalExpEl) {
+          profileTotalExpEl.innerText = totalExp;
+        }
+        
+        const profileLoginStreakEl = document.getElementById('profileLoginStreak');
+        if (profileLoginStreakEl) {
+          profileLoginStreakEl.innerText = loginStreak;
+        }
+        
+        // 经验进度条
+        const profileExpBarEl = document.getElementById('profileExpBar');
+        if (profileExpBarEl) {
+          profileExpBarEl.style.width = levelProgress + '%';
+        }
+        
+        // 未领取奖励提醒
+        const unclaimedRewardsAlert = document.getElementById('unclaimedRewardsAlert');
+        if (unclaimedRewardsAlert) {
+          if (unclaimedRewards.length > 0) {
+            unclaimedRewardsAlert.style.display = 'block';
+            const rewardsCountEl = document.getElementById('unclaimedRewardsCount');
+            if (rewardsCountEl) {
+              rewardsCountEl.innerText = unclaimedRewards.length;
+            }
+          } else {
+            unclaimedRewardsAlert.style.display = 'none';
+          }
+        }
+        
         const titleEl = document.getElementById('navTitle');
         if(user.title) { titleEl.innerHTML = user.title.name; titleEl.className = 'title-badge'; titleEl.style.backgroundColor = user.title.color; } else { titleEl.innerHTML = ''; }
         this.inventory = user.inventory || {};

@@ -7,6 +7,11 @@ CREATE TABLE IF NOT EXISTS users (
     coins INTEGER DEFAULT 1000,
     draw_count INTEGER DEFAULT 0,
     wins INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1,
+    exp INTEGER DEFAULT 0,
+    total_exp INTEGER DEFAULT 0,
+    last_login_date TEXT,
+    login_streak INTEGER DEFAULT 0,
     created_at INTEGER
 );
 
@@ -29,6 +34,29 @@ CREATE TABLE IF NOT EXISTS logs (
     created_at INTEGER
 );
 
+-- 等级奖励记录表 (记录用户已领取的等级奖励)
+CREATE TABLE IF NOT EXISTS level_rewards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    level INTEGER NOT NULL,
+    reward_type TEXT NOT NULL,
+    reward_value INTEGER,
+    claimed_at INTEGER,
+    UNIQUE(user_id, level, reward_type)
+);
+
+-- 用户称号表
+CREATE TABLE IF NOT EXISTS user_titles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title_id TEXT NOT NULL,
+    unlocked_at INTEGER,
+    is_equipped INTEGER DEFAULT 0,
+    UNIQUE(user_id, title_id)
+);
+
 -- 索引 (优化查询速度)
 CREATE INDEX IF NOT EXISTS idx_inv_user ON inventory(user_id);
 CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_level_rewards_user ON level_rewards(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_titles_user ON user_titles(user_id);
