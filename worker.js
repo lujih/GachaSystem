@@ -666,6 +666,7 @@ class GachaService {
         return jsonResponse({ error: 'Not Enough Points' }, 403);
     }
 
+    const source = CONFIG.LIMITED.SOURCES[Math.floor(Math.random() * CONFIG.LIMITED.SOURCES.length)];
     let assetData = await this.getOrFetchAsset(currentUser.username, CONFIG.LIMITED.SOURCES);
 
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
@@ -724,6 +725,8 @@ class GachaService {
     }
 
     const targetSource = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
+    
+    // [修改点] 明确使用 fetchAndUpload 进行直接请求，绕过 Buffer
     const assetData = await this.fetchAndUpload(currentUser.username, targetSource);
 
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
@@ -736,7 +739,6 @@ class GachaService {
       });
     }
 
-    // 合成成功获得经验
     const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT;
     
     await this.env.DB.batch([
@@ -754,12 +756,13 @@ class GachaService {
         url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
 
-    // 检查等级提升
     await this.checkLevelUp(currentUser.id);
     
+    // [注意] 此处不调用 refillBuffer
     return this.userService.getInfo(currentUser);
   }
 
+  // 2. 商店购买：同样使用 fetchAndUpload 直接获取
   async shopBuy(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
     const { targetRarity } = await request.json();
@@ -773,6 +776,8 @@ class GachaService {
     if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
 
     const source = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
+    
+    // [修改点] 明确使用 fetchAndUpload 进行直接请求，绕过 Buffer
     const assetData = await this.fetchAndUpload(currentUser.username, source);
 
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
@@ -785,7 +790,6 @@ class GachaService {
       });
     }
 
-    // 商店购买获得经验
     const expGain = CONFIG.LEVEL.EXP_GAIN.SHOP_BUY;
     
     await this.env.DB.batch([
@@ -801,9 +805,9 @@ class GachaService {
         url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
 
-    // 检查等级提升
     await this.checkLevelUp(currentUser.id);
     
+    // [注意] 此处不调用 refillBuffer
     return jsonResponse({
       success: true,
       imageUrl: assetData.imageUrl,
@@ -944,18 +948,31 @@ async function handleAdminSaveAnnouncement(request, env) {
   const { password, announcement, refreshId } = await request.json();
   if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
   
-  // 如果没有请求刷新ID，尝试获取旧数据的ID，或者如果没有旧ID则新建
+  // 获取旧数据
+  const oldData = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
+  
+  // 默认生成新ID (当前时间戳)
   let newId = Date.now();
-  if (!refreshId) {
-      const oldData = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
-      if (oldData && oldData.id) {
+
+  // 智能ID判断逻辑：
+  // 如果没有强制刷新 (refreshId 为 false) 且存在旧数据
+  if (!refreshId && oldData && oldData.id) {
+      // 检查内容是否发生变化
+      const isTitleSame = oldData.title === announcement.title;
+      const isContentSame = oldData.content === announcement.content;
+      
+      // 如果标题和内容都没变，且没有强制刷新，才保留旧ID (避免重复弹窗)
+      if (isTitleSame && isContentSame) {
           newId = oldData.id;
       }
+      // 否则(内容变了)，newId 保持为 Date.now()，实现自动推送
   }
 
   const dataToSave = { ...announcement, id: newId };
   await env.RECENT_REQUESTS.put(CONFIG.KEYS.ANNOUNCEMENT, JSON.stringify(dataToSave));
-  return jsonResponse({ success: true });
+  
+  // 返回 newId 方便前端判断是否更新了 ID
+  return jsonResponse({ success: true, updated: newId !== (oldData && oldData.id) });
 }
 
 async function handleShowcase(env) {
