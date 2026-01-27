@@ -129,7 +129,9 @@ export default {
 
     const routes = {
       'GET /': () => handleHome(),
-      
+
+      'GET /user/profile': () => handleProfile(),
+
       'POST /auth/register': () => userService.register(request),
       'POST /auth/login': () => userService.login(request),
       'GET /user/info': () => userService.getInfo(currentUser),
@@ -913,6 +915,10 @@ async function handleHome() {
   return new Response(getHtmlPage(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
+async function handleProfile() {
+  return new Response(getProfilePage(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
 async function handleChangelog(env) {
   if (!env.RECENT_REQUESTS) return jsonResponse(DEFAULT_CHANGELOG);
   let logs = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.CHANGELOG));
@@ -1340,7 +1346,7 @@ function getHtmlPage() {
       <div class="logo-subtitle">抽卡收集系统</div>
     </div>
     <div class="header-right">
-       <div class="user-pill" onclick="App.openProfile()">
+       <div class="user-pill" onclick="window.location.href='/user/profile'">
          <div class="user-avatar">
            <i class="fas fa-user-astronaut"></i>
          </div>
@@ -1435,158 +1441,6 @@ function getHtmlPage() {
       </div>
       
       <button class="btn" style="width:100%;" onclick="App.doAuth()">确认提交</button>
-    </div>
-  </div>
-
-  <div id="profileModal" class="modal">
-    <div class="modal-content">
-      <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
-      <div style="text-align:center; margin-bottom:20px;">
-        <div style="width:80px; height:80px; margin:0 auto 15px; background:linear-gradient(135deg, var(--primary), var(--secondary)); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2rem; color:white; box-shadow:0 8px 20px rgba(59,130,246,0.3);">
-          <i class="fas fa-user-astronaut"></i>
-        </div>
-        <h3 style="margin:0 0 5px 0;">个人档案</h3>
-        <div style="font-size:0.85rem; color:#94A3B8; margin-bottom:20px;">@<span id="profileUsername"></span></div>
-      </div>
-      
-      <div style="background:linear-gradient(135deg, #F8FAFC, #F1F5F9); padding:20px; border-radius:12px; margin-bottom:20px; border:1px solid #E2E8F0; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
-          <div style="text-align:center; padding:12px; background:white; border-radius:8px; border:1px solid #E2E8F0;">
-            <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:5px;">昵称</div>
-            <div style="font-weight:bold; font-size:1.1rem; color:var(--text-main);" id="profileNickname"></div>
-          </div>
-          <div style="text-align:center; padding:12px; background:white; border-radius:8px; border:1px solid #E2E8F0;">
-            <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:5px;">召唤次数</div>
-            <div style="font-weight:bold; font-size:1.1rem; color:var(--primary);" id="profileCount">0</div>
-          </div>
-        </div>
-        
-        <div style="background:white; padding:15px; border-radius:8px; border:1px solid #E2E8F0; margin-bottom:15px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <div style="font-weight:bold; color:var(--text-main);">当前积分</div>
-            <i class="fas fa-question-circle" style="color:#CBD5E1; cursor:pointer;" onclick="App.openRules()"></i>
-          </div>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <div style="background:linear-gradient(135deg, #FEF3C7, #FDE68A); padding:8px 15px; border-radius:8px; flex:1; text-align:center;">
-              <div style="font-size:1.5rem; font-weight:bold; color:#D97706;" id="profileCoins">0</div>
-              <div style="font-size:0.75rem; color:#B45309;">Coins</div>
-            </div>
-            <div style="flex:1; text-align:center;">
-              <div style="font-size:0.9rem; color:#94A3B8; margin-bottom:3px;">等级</div>
-              <div style="font-weight:bold; color:var(--primary); font-size:1.5rem;" id="profileLevel">1</div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 等级进度信息 -->
-        <div style="background:white; padding:15px; border-radius:8px; border:1px solid #E2E8F0; margin-bottom:15px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <div style="font-weight:bold; color:var(--text-main);">等级进度</div>
-            <i class="fas fa-trophy" style="color:#F59E0B;"></i>
-          </div>
-          
-          <div style="margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#94A3B8; margin-bottom:4px;">
-              <span>经验值: <span id="profileExp">0</span> / <span id="profileExpNext">100</span></span>
-              <span id="profileLevelProgress">0%</span>
-            </div>
-            <div style="height:10px; background:#F1F5F9; border-radius:5px; overflow:hidden;">
-              <div id="profileExpBar" style="height:100%; background:linear-gradient(90deg, #3B82F6, #8B5CF6); width:0%; border-radius:5px; transition:width 0.5s ease;"></div>
-            </div>
-            <div style="font-size:0.75rem; color:#94A3B8; margin-top:4px; text-align:center;">
-              升级还需: <span id="profileExpToNext">100</span> 经验
-            </div>
-          </div>
-          
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;">
-            <div style="text-align:center; padding:8px; background:#F0F9FF; border-radius:6px; border:1px solid #BAE6FD;">
-              <div style="font-size:0.75rem; color:#0284C7;">总经验</div>
-              <div style="font-weight:bold; font-size:0.9rem; color:#0369A1;" id="profileTotalExp">0</div>
-            </div>
-            <div style="text-align:center; padding:8px; background:#FEF3C7; border-radius:6px; border:1px solid #FDE68A;">
-              <div style="font-size:0.75rem; color:#B45309;">登录天数</div>
-              <div style="font-weight:bold; font-size:0.9rem; color:#92400E;" id="profileLoginStreak">0</div>
-            </div>
-          </div>
-          
-          <!-- 等级特权显示区域 -->
-          <div id="profileLevelPrivileges" style="margin-top:12px;">
-            <!-- 等级特权信息会动态插入 -->
-          </div>
-          
-          <!-- 未领取奖励提示 -->
-          <div id="unclaimedRewardsAlert" style="display:none; margin-top:12px; padding:8px; background:linear-gradient(135deg, #ECFDF5, #D1FAE5); border-radius:6px; border:1px solid #10B981; text-align:center; cursor:pointer;" onclick="App.openLevelRewards()">
-            <div style="display:flex; align-items:center; justify-content:center; gap:6px;">
-              <i class="fas fa-gift" style="color:#10B981;"></i>
-              <span style="font-size:0.8rem; color:#065F46; font-weight:bold;">
-                有 <span id="unclaimedRewardsCount">0</span> 个等级奖励待领取
-              </span>
-              <i class="fas fa-chevron-right" style="color:#10B981; font-size:0.7rem;"></i>
-            </div>
-          </div>
-        </div>
-        
-        <div style="background:white; padding:15px; border-radius:8px; border:1px solid #E2E8F0;">
-          <div style="font-weight:bold; color:var(--text-main); margin-bottom:10px;">卡片收集</div>
-          <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:8px;">
-            <div style="text-align:center; padding:8px; background:#F1F5F9; border-radius:6px;">
-              <div style="font-size:0.7rem; color:#64748B;">N</div>
-              <div style="font-weight:bold; font-size:0.9rem;" id="invCountN">0</div>
-            </div>
-            <div style="text-align:center; padding:8px; background:#DBEAFE; border-radius:6px;">
-              <div style="font-size:0.7rem; color:#1E40AF;">R</div>
-              <div style="font-weight:bold; font-size:0.9rem;" id="invCountR">0</div>
-            </div>
-            <div style="text-align:center; padding:8px; background:#EDE9FE; border-radius:6px;">
-              <div style="font-size:0.7rem; color:#5B21B6;">SR</div>
-              <div style="font-weight:bold; font-size:0.9rem;" id="invCountSR">0</div>
-            </div>
-            <div style="text-align:center; padding:8px; background:#FEF3C7; border-radius:6px;">
-              <div style="font-size:0.7rem; color:#92400E;">SSR</div>
-              <div style="font-weight:bold; font-size:0.9rem;" id="invCountSSR">0</div>
-            </div>
-            <div style="text-align:center; padding:8px; background:#FEE2E2; border-radius:6px;">
-              <div style="font-size:0.7rem; color:#991B1B;">UR</div>
-              <div style="font-weight:bold; font-size:0.9rem;" id="invCountUR">0</div>
-            </div>
-          </div>
-          <div style="margin-top:10px; font-size:0.75rem; color:#94A3B8; text-align:center;" id="totalCardsText">
-            总计: <span id="totalCards">0</span> 张卡片
-          </div>
-        </div>
-      </div>
-      
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
-        <button class="btn secondary" onclick="App.editProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#E0F2FE; border-color:#BAE6FD;">
-          <i class="fas fa-edit"></i> 编辑
-        </button>
-        <button class="btn secondary" onclick="App.shareProfile()" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#F0F9FF; border-color:#BAE6FD;">
-          <i class="fas fa-share-alt"></i> 分享
-        </button>
-      </div>
-      
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
-        <button class="btn secondary" onclick="App.logout()" style="display:flex; align-items:center; justify-content:center; gap:8px;">
-          <i class="fas fa-sign-out-alt"></i> 注销
-        </button>
-        <button class="btn" onclick="App.closeModals()" style="display:flex; align-items:center; justify-content:center; gap:8px;">
-          <i class="fas fa-times"></i> 关闭
-        </button>
-      </div>
-      
-      <div style="border-top:1px dashed #E2E8F0; padding-top:15px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.openAdmin()">
-            <i class="fas fa-cog"></i> 管理面板
-          </div>
-          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.showMoreStats()">
-            <i class="fas fa-chart-line"></i> 更多统计
-          </div>
-          <div style="font-size:0.8rem; color:#94A3B8; cursor:pointer;" onclick="App.toggleTheme()">
-            <i class="fas fa-palette"></i> 切换主题
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -2545,6 +2399,176 @@ function getLibraryHtml(items, pager) {
     const observer = new IntersectionObserver(es => es.forEach(e => { if(e.isIntersecting) { e.target.src = e.target.dataset.src; observer.unobserve(e.target); } }));
     document.querySelectorAll('.lazy').forEach(i => observer.observe(i));
     function show(u) { document.getElementById('bigImg').src=u; document.getElementById('imgModal').classList.add('show'); }
+  </script>
+</body>
+</html>
+  `;
+}
+
+function getProfilePage() {
+  return `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>个人档案 - GachaSystem</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  ${NEUTRAL_CSS}
+  <style>
+    body { padding: 20px; max-width: 800px; margin: 0 auto; }
+    .profile-header { text-align: center; margin-bottom: 30px; }
+    .avatar-large { 
+      width: 100px; height: 100px; margin: 0 auto 15px; 
+      background: linear-gradient(135deg, var(--primary), var(--secondary)); 
+      border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+      font-size: 2.5rem; color: white; box-shadow: 0 8px 20px rgba(59,130,246,0.3); 
+    }
+    .stat-card { background: white; padding: 15px; border-radius: 12px; border: 1px solid #E2E8F0; text-align: center; }
+    .stat-val { font-size: 1.5rem; font-weight: bold; color: var(--text-main); }
+    .stat-label { font-size: 0.8rem; color: var(--text-light); }
+    .back-nav { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="back-nav">
+    <a href="/" class="btn secondary" style="padding: 8px 16px;"><i class="fas fa-arrow-left"></i> 返回首页</a>
+  </div>
+
+  <div class="glass-card" style="padding: 30px;">
+    <div class="profile-header">
+      <div class="avatar-large"><i class="fas fa-user-astronaut"></i></div>
+      <h2 id="profileNickname" style="margin: 0 0 5px 0;">加载中...</h2>
+      <div style="color: #94A3B8;">@<span id="profileUsername">...</span></div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+      <div class="stat-card">
+        <div class="stat-label">当前积分</div>
+        <div class="stat-val" style="color: #D97706;" id="profileCoins">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">当前等级</div>
+        <div class="stat-val" style="color: var(--primary);" id="profileLevel">-</div>
+      </div>
+    </div>
+
+    <!-- 经验条区域 -->
+    <div style="background:white; padding:15px; border-radius:12px; border:1px solid #E2E8F0; margin-bottom:20px;">
+        <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#94A3B8; margin-bottom:5px;">
+            <span>经验值: <span id="profileExp">0</span> / <span id="profileExpNext">100</span></span>
+            <span id="profileLevelProgress">0%</span>
+        </div>
+        <div style="height:10px; background:#F1F5F9; border-radius:5px; overflow:hidden;">
+            <div id="profileExpBar" style="height:100%; background:linear-gradient(90deg, #3B82F6, #8B5CF6); width:0%; transition:width 0.5s ease;"></div>
+        </div>
+    </div>
+
+    <!-- 卡片统计区域 -->
+    <div style="background:white; padding:15px; border-radius:12px; border:1px solid #E2E8F0; margin-bottom:20px;">
+      <h4 style="margin: 0 0 15px 0; color: var(--text-main);">卡片收集统计</h4>
+      <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:8px;">
+        <div class="stat-card" style="padding: 8px; background:#F1F5F9;">
+          <div style="font-size:0.7rem; color:#64748B;">N</div>
+          <div style="font-weight:bold;" id="invCountN">0</div>
+        </div>
+        <div class="stat-card" style="padding: 8px; background:#DBEAFE;">
+          <div style="font-size:0.7rem; color:#1E40AF;">R</div>
+          <div style="font-weight:bold;" id="invCountR">0</div>
+        </div>
+        <div class="stat-card" style="padding: 8px; background:#EDE9FE;">
+          <div style="font-size:0.7rem; color:#5B21B6;">SR</div>
+          <div style="font-weight:bold;" id="invCountSR">0</div>
+        </div>
+        <div class="stat-card" style="padding: 8px; background:#FEF3C7;">
+          <div style="font-size:0.7rem; color:#92400E;">SSR</div>
+          <div style="font-weight:bold;" id="invCountSSR">0</div>
+        </div>
+        <div class="stat-card" style="padding: 8px; background:#FEE2E2;">
+          <div style="font-size:0.7rem; color:#991B1B;">UR</div>
+          <div style="font-weight:bold;" id="invCountUR">0</div>
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:10px; font-size:0.8rem; color:#94A3B8;">
+         召唤总数: <span id="profileCount">0</span> | 登录天数: <span id="profileLoginStreak">0</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+        <button class="btn secondary" onclick="App.editProfile()"><i class="fas fa-edit"></i> 修改昵称</button>
+        <button class="btn secondary" onclick="App.logout()"><i class="fas fa-sign-out-alt"></i> 注销登录</button>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script>
+    const App = {
+      username: localStorage.getItem('moe_username'),
+      
+      async init() {
+        if (!this.username) {
+            window.location.href = '/'; // 未登录回首页
+            return;
+        }
+        await this.fetchUserInfo();
+      },
+
+      async fetchUserInfo() {
+        try {
+          const res = await fetch('/user/info', { headers: { 'X-User-ID': this.username } });
+          const data = await res.json();
+          if (data && data.username) {
+             this.updateUI(data);
+          } else {
+             this.logout();
+          }
+        } catch(e) { console.error(e); }
+      },
+
+      updateUI(user) {
+        document.getElementById('profileNickname').innerText = user.nickname || user.username;
+        document.getElementById('profileUsername').innerText = user.username;
+        document.getElementById('profileCoins').innerText = user.coins || 0;
+        document.getElementById('profileLevel').innerText = user.level || 1;
+        document.getElementById('profileCount').innerText = user.drawCount || 0;
+        document.getElementById('profileLoginStreak').innerText = user.login_streak || 0;
+
+        // 更新经验条
+        const exp = user.exp || 0;
+        const next = user.required_exp_next || 100;
+        const progress = user.level_progress || 0;
+        document.getElementById('profileExp').innerText = exp + '/' + next;
+        document.getElementById('profileExpNext').innerText = next;
+        document.getElementById('profileLevelProgress').innerText = progress + '%';
+        document.getElementById('profileExpBar').style.width = progress + '%';
+
+        // 更新库存
+        const inv = user.inventory || {};
+        ['N', 'R', 'SR', 'SSR', 'UR'].forEach(r => {
+            document.getElementById('invCount' + r).innerText = inv[r] || 0;
+        });
+      },
+
+      editProfile() {
+        const current = document.getElementById('profileNickname').innerText;
+        const newNick = prompt('输入新昵称:', current);
+        if (newNick && newNick !== current) {
+            // 这里可以添加实际的API调用来保存昵称
+            // 由于原worker没有单独的修改昵称接口，这里仅做前端演示或复用注册接口逻辑
+            alert('功能开发中 (需后端添加修改接口)'); 
+        }
+      },
+
+      logout() {
+        if(confirm('确定要退出登录吗？')) {
+            localStorage.removeItem('moe_username');
+            window.location.href = '/';
+        }
+      }
+    };
+
+    window.onload = () => App.init();
   </script>
 </body>
 </html>
