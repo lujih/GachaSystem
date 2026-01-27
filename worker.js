@@ -1615,6 +1615,7 @@ function getHtmlPage() {
       nickname: null, loading: false, adminPwd: null, logsData: [], currentAdminTab: 'log', inventory: {},
       currentPool: 'std',
       authMode: 'login', 
+      coins: 0,
       
       async init() {
         this.initTheme();
@@ -1665,111 +1666,53 @@ function getHtmlPage() {
         } catch(e) {}
       },
       updateUI(user) {
-        // ... (昵称、积分等原有代码保持不变) ...
-        document.getElementById('navNickname').innerText = user.nickname || user.username;
-        document.getElementById('profileNickname').innerText = user.nickname;
-        document.getElementById('profileUsername').innerText = user.username;
-        document.getElementById('profileCount').innerText = user.drawCount || 0;
-        document.getElementById('profileCoins').innerText = user.coins || 0;
+        // --- 1. 更新顶部导航栏 (Header) ---
+        // 必须做非空检查，防止报错中断代码执行
+        const navNick = document.getElementById('navNickname');
+        if (navNick) navNick.innerText = user.nickname || user.username;
 
-        // === 修复等级和进度条显示 ===
-        const level = user.level || 1;
-        const exp = user.exp || 0;
-        const totalExp = user.total_exp || 0;
-        // 下一级所需经验
-        const nextLevelExp = user.required_exp_next || 100; 
-        // 进度百分比
-        const levelProgress = user.level_progress || 0; 
-        // 升级剩余
-        const expToNext = user.exp_to_next_level || Math.max(0, nextLevelExp - exp);
-        
-        // 1. 更新文本显示
-        const profileLevelEl = document.getElementById('profileLevel');
-        if (profileLevelEl) profileLevelEl.innerText = level;
-        
-        const navLevelEl = document.getElementById('navLevel');
-        if (navLevelEl) navLevelEl.innerText = 'Lv.' + level;
+        const navLevel = document.getElementById('navLevel');
+        if (navLevel) navLevel.innerText = 'Lv.' + (user.level || 1);
 
-        const profileExpEl = document.getElementById('profileExp');
-        if (profileExpEl) profileExpEl.innerText = exp; // 修正：只赋值当前经验数字
-
-        const profileExpNextEl = document.getElementById('profileExpNext');
-        if (profileExpNextEl) profileExpNextEl.innerText = nextLevelExp;
-
-        const profileLevelProgressEl = document.getElementById('profileLevelProgress');
-        if (profileLevelProgressEl) profileLevelProgressEl.innerText = levelProgress + '%';
-
-        const profileExpToNextEl = document.getElementById('profileExpToNext');
-        if (profileExpToNextEl) profileExpToNextEl.innerText = expToNext;
-
-        const profileTotalExpEl = document.getElementById('profileTotalExp');
-        if (profileTotalExpEl) profileTotalExpEl.innerText = totalExp;
-
-        // 2. 关键修复：更新进度条宽度
-        const profileExpBarEl = document.getElementById('profileExpBar');
-        if (profileExpBarEl) {
-          // 强制添加 % 符号，并处理 NaN 情况
-          const safeProgress = isNaN(levelProgress) ? 0 : levelProgress;
-          profileExpBarEl.style.width = safeProgress + '%';
-        }
-
-        // 未领取奖励提醒
-        const unclaimedRewardsAlert = document.getElementById('unclaimedRewardsAlert');
-        if (unclaimedRewardsAlert) {
-          if (unclaimedRewards.length > 0) {
-            unclaimedRewardsAlert.style.display = 'block';
-            const rewardsCountEl = document.getElementById('unclaimedRewardsCount');
-            if (rewardsCountEl) {
-              rewardsCountEl.innerText = unclaimedRewards.length;
-            }
-          } else {
-            unclaimedRewardsAlert.style.display = 'none';
+        const navTitle = document.getElementById('navTitle');
+        if (navTitle) {
+          if (user.title) { 
+            navTitle.innerHTML = user.title.name; 
+            navTitle.className = 'title-badge'; 
+            navTitle.style.backgroundColor = user.title.color; 
+          } else { 
+            navTitle.innerHTML = ''; 
+            navTitle.className = 'user-title';
+            navTitle.style.backgroundColor = 'transparent';
           }
         }
 
-        // 更新等级特权信息
-        const levelPrivileges = user.level_privileges || {};
-        const privilegesEl = document.getElementById('profileLevelPrivileges');
-        if (privilegesEl && levelPrivileges) {
-          let privilegesHtml = '<div style="margin-top: 15px; padding: 12px; background: #EFF6FF; border-radius: 8px; border: 1px solid #BFDBFE;">';
-          privilegesHtml += '<div style="font-weight: bold; color: #1D4ED8; margin-bottom: 8px; font-size: 0.9rem;">等级特权</div>';
-
-          if (levelPrivileges.gacha_rarity_boost && levelPrivileges.gacha_rarity_boost > 0) {
-            privilegesHtml += '<div style="font-size: 0.8rem; color: #374151; margin-bottom: 4px;">';
-            privilegesHtml += '<i class="fas fa-arrow-up" style="color: #10B981;"></i> ';
-            privilegesHtml += '稀有卡概率：+' + (levelPrivileges.gacha_rarity_boost * 100).toFixed(1) + '%';
-            privilegesHtml += '</div>';
-          }
-
-          if (levelPrivileges.craft_success_boost && levelPrivileges.craft_success_boost > 0) {
-            privilegesHtml += '<div style="font-size: 0.8rem; color: #374151; margin-bottom: 4px;">';
-            privilegesHtml += '<i class="fas fa-flask" style="color: #8B5CF6;"></i> ';
-            privilegesHtml += '合成成功率：+' + (levelPrivileges.craft_success_boost * 100).toFixed(1) + '%';
-            privilegesHtml += '</div>';
-          }
-
-          if (levelPrivileges.unlocked_features && levelPrivileges.unlocked_features.length > 0) {
-            privilegesHtml += '<div style="font-size: 0.8rem; color: #374151;">';
-            privilegesHtml += '<i class="fas fa-unlock" style="color: #F59E0B;"></i> ';
-            privilegesHtml += '已解锁功能：' + levelPrivileges.unlocked_features.length + ' 项';
-            privilegesHtml += '</div>';
-          }
-
-          privilegesHtml += '</div>';
-          privilegesEl.innerHTML = privilegesHtml;
-        }
-
-        const titleEl = document.getElementById('navTitle');
-        if(user.title) { 
-          titleEl.innerHTML = user.title.name; 
-          titleEl.className = 'title-badge'; 
-          titleEl.style.backgroundColor = user.title.color; 
-        } else { 
-          titleEl.innerHTML = ''; 
-        }
+        // --- 2. 更新内存数据 (用于商店等功能) ---
+        this.coins = user.coins || 0;
         this.inventory = user.inventory || {};
+
+        // --- 3. 尝试更新可能存在的其他元素 (安全更新) ---
+        // 只有当元素存在时才更新，避免 null 报错
+        const elProfileCoins = document.getElementById('profileCoins');
+        if (elProfileCoins) elProfileCoins.innerText = this.coins;
+        
+        const elProfileCount = document.getElementById('profileCount');
+        if (elProfileCount) elProfileCount.innerText = user.drawCount || 0;
+
+        // 如果首页还有未读消息提示等
+        const unclaimedRewardsAlert = document.getElementById('unclaimedRewardsAlert');
+        if (unclaimedRewardsAlert && user.unclaimed_rewards) {
+           if (user.unclaimed_rewards.length > 0) {
+             unclaimedRewardsAlert.style.display = 'block';
+             const cnt = document.getElementById('unclaimedRewardsCount');
+             if(cnt) cnt.innerText = user.unclaimed_rewards.length;
+           } else {
+             unclaimedRewardsAlert.style.display = 'none';
+           }
+        }
+        
+        // 更新合成状态
         this.updateCraftStates();
-        this.updateProfileStats();
       },
       updateProfileStats() {
         const inv = this.inventory;
@@ -2133,7 +2076,11 @@ function getHtmlPage() {
              if(data.success) { 
                  this.toast(isSpecial || this.currentPool === 'ltd' ? '合成/召唤成功！' : '召唤成功', 'ok'); 
                  if(data.inventory) this.inventory = data.inventory; 
-                 if(data.userCoins !== undefined) document.getElementById('profileCoins').innerText = data.userCoins; 
+                 if(data.userCoins !== undefined) {
+                    this.coins = data.userCoins;
+                    const pCoins = document.getElementById('profileCoins');
+                    if(pCoins) pCoins.innerText = data.userCoins;
+                 }
                  this.updateCraftStates(); 
              } else { 
                  this.toast('连接失败', 'warn'); 
@@ -2154,7 +2101,7 @@ function getHtmlPage() {
       closeRulesToProfile() { document.getElementById('rulesModal').classList.remove('show'); document.getElementById('profileModal').classList.add('show'); },
       openShop() {
         if(!this.username) return document.getElementById('authModal').classList.add('show');
-        const balance = parseInt(document.getElementById('profileCoins').innerText) || 0;
+        const balance = this.coins;
         if(document.getElementById('shopBalance')) document.getElementById('shopBalance').innerText = balance;
         const packs = [{ id: 'R', color: '#3B82F6', price: 100 }, { id: 'SR', color: '#8B5CF6', price: 500 }, { id: 'SSR', color: '#F59E0B', price: 2000 }, { id: 'UR', color: '#EF4444', price: 8000 }];
         const container = document.getElementById('shopContent');
@@ -2192,7 +2139,9 @@ function getHtmlPage() {
              if(data.error) { msg.innerText = this.mapError(data.error); return; }
              const diceIcons = ['one', 'two', 'three', 'four', 'five', 'six']; icon.className = \`fas fa-dice-\${diceIcons[data.roll - 1]}\`;
              if(data.isWin) { msg.innerText = \`你赢了！ (+\${data.winAmount})\`; msg.style.color = '#10B981'; this.toast('你赢了！', 'ok'); } else { msg.innerText = '你输了'; msg.style.color = '#EF4444'; }
-             document.getElementById('profileCoins').innerText = data.newBalance;
+             this.coins = data.newBalance;
+             const pCoins = document.getElementById('profileCoins');
+             if(pCoins) pCoins.innerText = data.newBalance;
           }, 600);
         } catch(e) { this.loading = false; icon.classList.remove('dice-result-anim'); this.toast('网络错误', 'warn'); }
       },
