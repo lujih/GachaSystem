@@ -941,9 +941,19 @@ async function handleGetAnnouncement(env) {
 }
 
 async function handleAdminSaveAnnouncement(request, env) {
-  const { password, announcement } = await request.json();
+  const { password, announcement, refreshId } = await request.json();
   if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
-  const dataToSave = { ...announcement, id: Date.now() };
+  
+  // 如果没有请求刷新ID，尝试获取旧数据的ID，或者如果没有旧ID则新建
+  let newId = Date.now();
+  if (!refreshId) {
+      const oldData = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
+      if (oldData && oldData.id) {
+          newId = oldData.id;
+      }
+  }
+
+  const dataToSave = { ...announcement, id: newId };
   await env.RECENT_REQUESTS.put(CONFIG.KEYS.ANNOUNCEMENT, JSON.stringify(dataToSave));
   return jsonResponse({ success: true });
 }
@@ -1170,6 +1180,16 @@ const NEUTRAL_CSS = `
   .auth-tab.active { background:var(--bg-color); color:var(--primary); }
   .refresh-spin { animation: spin-once 0.8s ease-in-out; color: var(--primary) !important; }
   @keyframes spin-once { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  .switch { position: relative; display: inline-block; width: 48px; height: 24px; vertical-align: middle; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #CBD5E1; transition: .4s; border-radius: 24px; }
+  .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+  input:checked + .slider { background-color: var(--secondary); }
+  input:checked + .slider:before { transform: translateX(24px); }
+  
+  .form-row { margin-bottom: 15px; }
+  .form-label { display: block; font-weight: bold; font-size: 0.9rem; color: var(--text-main); margin-bottom: 6px; }
+  .form-hint { font-size: 0.75rem; color: var(--text-light); margin-top: 4px; }
 
   @media (max-width: 480px) {
     .modal-content { width: 95%; padding: 16px; max-width: none; }
@@ -1566,24 +1586,47 @@ function getHtmlPage() {
             </div>
         </div>
         <div id="view-ann" style="display:none;">
-            <div style="margin-bottom: 15px;">
-                <label style="font-weight:bold; font-size:0.9rem;">标题</label>
-                <input type="text" id="adminAnnTitle" class="admin-input" placeholder="公告标题">
+            <div class="form-row">
+                <label class="form-label">公告标题</label>
+                <input type="text" id="adminAnnTitle" class="admin-input" placeholder="例如：新春活动开启！">
             </div>
-            <div class="toggle-wrapper">
-                <span style="font-weight:bold; font-size:0.9rem;">状态:</span>
-                <select id="adminAnnEnable" class="admin-input" style="width:auto;">
-                    <option value="true">启用</option>
-                    <option value="false">禁用</option>
-                </select>
+            
+            <div class="form-row" style="display: flex; gap: 20px; align-items: flex-start;">
+                <!-- 启用开关 -->
+                <div>
+                    <label class="form-label">启用状态</label>
+                    <label class="switch">
+                        <input type="checkbox" id="adminAnnEnable">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                
+                <!-- 强制推送开关 -->
+                <div>
+                    <label class="form-label">强制弹窗</label>
+                    <label class="switch">
+                        <input type="checkbox" id="adminAnnRefresh">
+                        <span class="slider"></span>
+                    </label>
+                    <div class="form-hint" style="max-width: 200px;">开启后，所有用户将再次看到此公告（用于重要更新）。</div>
+                </div>
             </div>
-            <div style="margin-bottom: 10px;">
-                <label style="font-weight:bold; font-size:0.9rem;">内容 (支持 Markdown)</label>
-                <textarea id="adminAnnContent" class="admin-textarea" placeholder="## 标题..."></textarea>
+
+            <div class="form-row">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <label class="form-label">公告内容 (Markdown)</label>
+                    <a href="https://markdown.com.cn/basic-syntax/" target="_blank" style="font-size:0.75rem; color:var(--primary); text-decoration:none;">语法参考</a>
+                </div>
+                <textarea id="adminAnnContent" class="admin-textarea" placeholder="## 标题&#10;- 内容列表&#10;- 支持 **加粗**"></textarea>
             </div>
+
             <div style="display:flex; gap:10px;">
-                <button class="btn" style="flex:1" onclick="App.saveAnnouncement()">发布 / 保存</button>
-                <button class="btn secondary" style="flex:1" onclick="App.previewAnnouncement()">预览</button>
+                <button class="btn" style="flex:2" onclick="App.saveAnnouncement()">
+                    <i class="fas fa-save"></i> 保存并发布
+                </button>
+                <button class="btn secondary" style="flex:1" onclick="App.previewAnnouncement()">
+                    <i class="fas fa-eye"></i> 预览
+                </button>
             </div>
         </div>
       </div>
@@ -1955,21 +1998,36 @@ function getHtmlPage() {
             const data = await res.json();
             document.getElementById('adminAnnTitle').value = data.title || '';
             document.getElementById('adminAnnContent').value = data.content || '';
-            document.getElementById('adminAnnEnable').value = data.enabled ? 'true' : 'false';
+            // 修改为 checkbox 赋值
+            document.getElementById('adminAnnEnable').checked = data.enabled || false;
+            // 默认“强制弹窗”为关闭，防止误触
+            document.getElementById('adminAnnRefresh').checked = false;
         } catch(e) { this.toast('加载失败', 'warn'); }
       },
       async saveAnnouncement() {
         const title = document.getElementById('adminAnnTitle').value;
         const content = document.getElementById('adminAnnContent').value;
-        const enabled = document.getElementById('adminAnnEnable').value === 'true';
+        // 获取 checkbox 状态
+        const enabled = document.getElementById('adminAnnEnable').checked;
+        const refreshId = document.getElementById('adminAnnRefresh').checked; // 获取是否刷新ID
+        
         if(!title || !content) return this.toast('请填写标题和内容', 'warn');
+        
         try {
             const res = await fetch('/admin/save-announcement', { 
                 method: 'POST', 
-                body: JSON.stringify({ password: this.adminPwd, announcement: { title, content, enabled } }) 
+                body: JSON.stringify({ 
+                    password: this.adminPwd, 
+                    announcement: { title, content, enabled },
+                    refreshId: refreshId // 传给后端
+                }) 
             });
             const d = await res.json();
-            if(d.success) this.toast('保存成功！', 'ok'); 
+            if(d.success) {
+                this.toast('保存成功！' + (refreshId ? ' (已推送弹窗)' : ''), 'ok'); 
+                // 保存成功后自动关闭强制推送开关，防止下次误触
+                document.getElementById('adminAnnRefresh').checked = false;
+            }
             else this.toast(this.mapError(d.error) || '保存失败', 'warn'); 
         } catch(e) { this.toast('网络错误', 'warn'); }
       },
@@ -2476,7 +2534,7 @@ function getProfilePage() {
         const next = user.required_exp_next || 100; // 确保字段名是 required_exp_next
         const progress = user.level_progress || 0;
         
-        document.getElementById('profileExp').innerText = exp + ' / ' + next;
+        document.getElementById('profileExp').innerText = exp;
         document.getElementById('profileExpNext').innerText = next;
         document.getElementById('profileLevelProgress').innerText = progress + '%';
         // 修复宽度赋值
