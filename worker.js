@@ -1350,7 +1350,8 @@ function getHtmlPage() {
 </head>
 <body>
   <header class="header">
-    <div class="logo-container">
+    <!-- 修改处：添加 onclick 事件和 cursor 样式 -->
+    <div class="logo-container" onclick="App.openAdmin()" style="cursor: pointer;" title="点击进入管理面板">
       <div class="logo"><i class="fas fa-cube"></i> Gacha<span>System</span></div>
       <div class="logo-subtitle">抽卡收集系统</div>
     </div>
@@ -1690,7 +1691,7 @@ function getHtmlPage() {
         if (navLevelEl) navLevelEl.innerText = 'Lv.' + level;
 
         const profileExpEl = document.getElementById('profileExp');
-        if (profileExpEl) profileExpEl.innerText = exp + ' / ' + nextLevelExp; // 显示格式：当前 / 总需
+        if (profileExpEl) profileExpEl.innerText = exp; // 修正：只赋值当前经验数字
 
         const profileExpNextEl = document.getElementById('profileExpNext');
         if (profileExpNextEl) profileExpNextEl.innerText = nextLevelExp;
