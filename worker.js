@@ -186,13 +186,16 @@ class UserService {
 
   // 计算等级进度百分比
   calculateLevelProgress(exp, level) {
-    const currentLevelExp = this.calculateRequiredExp(level);
-    const nextLevelExp = this.calculateRequiredExp(level + 1);
-    const expInCurrentLevel = exp - currentLevelExp;
-    const expNeededForNextLevel = nextLevelExp - currentLevelExp;
+    // 下一级所需的经验阈值
+    const expNeededForNextLevel = this.calculateRequiredExp(level + 1);
     
     if (expNeededForNextLevel <= 0) return 100;
-    return Math.min(100, Math.floor((expInCurrentLevel / expNeededForNextLevel) * 100));
+    
+    // 简单公式：当前经验 / 下一级所需经验 * 100
+    let progress = (exp / expNeededForNextLevel) * 100;
+    
+    // 确保在 0-100 之间
+    return Math.max(0, Math.min(100, Math.floor(progress)));
   }
 
   async register(request) {
@@ -318,15 +321,21 @@ class UserService {
       invRes.results.forEach(row => inventory[row.rarity] = row.count);
     }
 
-    // 计算等级相关信息
+    // --- 修复重点开始 ---
     const currentLevel = userRes.level || 1;
     const currentExp = userRes.exp || 0;
     const totalExp = userRes.total_exp || 0;
-    const requiredExpForCurrentLevel = this.calculateRequiredExp(currentLevel);
+    
+    // 获取下一级升级需要的经验值（作为分母）
     const requiredExpForNextLevel = this.calculateRequiredExp(currentLevel + 1);
+    
+    // 计算百分比
     const levelProgress = this.calculateLevelProgress(currentExp, currentLevel);
     
-    // 检查是否有未领取的等级奖励
+    // 计算剩余多少升级（仅用于显示）
+    const expToNextLevel = Math.max(0, requiredExpForNextLevel - currentExp);
+    // --- 修复重点结束 ---
+    
     const unclaimedRewards = await this.checkUnclaimedRewards(currentUser.id, currentLevel);
 
     return jsonResponse({
@@ -339,9 +348,9 @@ class UserService {
       exp: currentExp,
       total_exp: totalExp,
       level_progress: levelProgress,
-      required_exp_current: requiredExpForCurrentLevel,
-      required_exp_next: requiredExpForNextLevel,
-      exp_to_next_level: Math.max(0, requiredExpForNextLevel - currentExp),
+      // 统一前端字段名，避免歧义
+      required_exp_next: requiredExpForNextLevel, 
+      exp_to_next_level: expToNextLevel,
       login_streak: userRes.login_streak || 0,
       last_login_date: userRes.last_login_date,
       inventory,
@@ -1655,74 +1664,52 @@ function getHtmlPage() {
         } catch(e) {}
       },
       updateUI(user) {
+        // ... (昵称、积分等原有代码保持不变) ...
         document.getElementById('navNickname').innerText = user.nickname || user.username;
         document.getElementById('profileNickname').innerText = user.nickname;
         document.getElementById('profileUsername').innerText = user.username;
         document.getElementById('profileCount').innerText = user.drawCount || 0;
         document.getElementById('profileCoins').innerText = user.coins || 0;
 
-        // 更新等级信息 - 修复这里
+        // === 修复等级和进度条显示 ===
         const level = user.level || 1;
         const exp = user.exp || 0;
         const totalExp = user.total_exp || 0;
-        const currentLevelExp = user.required_exp_current || 0;
-        const nextLevelExp = user.required_exp_next || 100;
-        const levelProgress = user.level_progress || 0;
+        // 下一级所需经验
+        const nextLevelExp = user.required_exp_next || 100; 
+        // 进度百分比
+        const levelProgress = user.level_progress || 0; 
+        // 升级剩余
         const expToNext = user.exp_to_next_level || Math.max(0, nextLevelExp - exp);
-        const loginStreak = user.login_streak || 0;
-        const unclaimedRewards = user.unclaimed_rewards || [];
-
-        // 存储未领取奖励供其他函数使用
-        this.unclaimedRewards = unclaimedRewards;
-
-        // 导航栏等级徽章
-        const navLevelEl = document.getElementById('navLevel');
-        if (navLevelEl) {
-          navLevelEl.innerText = 'Lv.' + level;
-        }
-
-        // 个人资料页等级信息
+        
+        // 1. 更新文本显示
         const profileLevelEl = document.getElementById('profileLevel');
-        if (profileLevelEl) {
-          profileLevelEl.innerText = level;
-        }
+        if (profileLevelEl) profileLevelEl.innerText = level;
+        
+        const navLevelEl = document.getElementById('navLevel');
+        if (navLevelEl) navLevelEl.innerText = 'Lv.' + level;
 
         const profileExpEl = document.getElementById('profileExp');
-        if (profileExpEl) {
-          profileExpEl.innerText = exp + '/' + nextLevelExp;
-        }
+        if (profileExpEl) profileExpEl.innerText = exp + ' / ' + nextLevelExp; // 显示格式：当前 / 总需
 
         const profileExpNextEl = document.getElementById('profileExpNext');
-        if (profileExpNextEl) {
-          profileExpNextEl.innerText = nextLevelExp;
-        }
+        if (profileExpNextEl) profileExpNextEl.innerText = nextLevelExp;
+
+        const profileLevelProgressEl = document.getElementById('profileLevelProgress');
+        if (profileLevelProgressEl) profileLevelProgressEl.innerText = levelProgress + '%';
+
+        const profileExpToNextEl = document.getElementById('profileExpToNext');
+        if (profileExpToNextEl) profileExpToNextEl.innerText = expToNext;
 
         const profileTotalExpEl = document.getElementById('profileTotalExp');
-        if (profileTotalExpEl) {
-          profileTotalExpEl.innerText = totalExp;
-        }
+        if (profileTotalExpEl) profileTotalExpEl.innerText = totalExp;
 
-        const profileLoginStreakEl = document.getElementById('profileLoginStreak');
-        if (profileLoginStreakEl) {
-          profileLoginStreakEl.innerText = loginStreak;
-        }
-
-        // 经验进度条
+        // 2. 关键修复：更新进度条宽度
         const profileExpBarEl = document.getElementById('profileExpBar');
         if (profileExpBarEl) {
-          profileExpBarEl.style.width = levelProgress + '%';
-        }
-
-        // 等级进度百分比
-        const profileLevelProgressEl = document.getElementById('profileLevelProgress');
-        if (profileLevelProgressEl) {
-          profileLevelProgressEl.innerText = levelProgress + '%';
-        }
-
-        // 升级还需经验
-        const profileExpToNextEl = document.getElementById('profileExpToNext');
-        if (profileExpToNextEl) {
-          profileExpToNextEl.innerText = expToNext;
+          // 强制添加 % 符号，并处理 NaN 情况
+          const safeProgress = isNaN(levelProgress) ? 0 : levelProgress;
+          profileExpBarEl.style.width = safeProgress + '%';
         }
 
         // 未领取奖励提醒
@@ -2536,11 +2523,13 @@ function getProfilePage() {
 
         // 更新经验条
         const exp = user.exp || 0;
-        const next = user.required_exp_next || 100;
+        const next = user.required_exp_next || 100; // 确保字段名是 required_exp_next
         const progress = user.level_progress || 0;
-        document.getElementById('profileExp').innerText = exp + '/' + next;
+        
+        document.getElementById('profileExp').innerText = exp + ' / ' + next;
         document.getElementById('profileExpNext').innerText = next;
         document.getElementById('profileLevelProgress').innerText = progress + '%';
+        // 修复宽度赋值
         document.getElementById('profileExpBar').style.width = progress + '%';
 
         // 更新库存
