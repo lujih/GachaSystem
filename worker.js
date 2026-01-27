@@ -323,54 +323,29 @@ class UserService {
     const requiredExpForCurrentLevel = this.calculateRequiredExp(currentLevel);
     const requiredExpForNextLevel = this.calculateRequiredExp(currentLevel + 1);
     const levelProgress = this.calculateLevelProgress(currentExp, currentLevel);
-    const expToNextLevel = Math.max(0, requiredExpForNextLevel - currentExp);
     
     // 检查是否有未领取的等级奖励
     const unclaimedRewards = await this.checkUnclaimedRewards(currentUser.id, currentLevel);
 
-    // 获取用户称号
-    const titleRes = await this.env.DB.prepare(
-      'SELECT title_name FROM user_titles WHERE user_id = ? ORDER BY unlocked_at DESC LIMIT 1'
-    ).bind(currentUser.id).first();
-
     return jsonResponse({
       username: currentUser.username,
-      nickname: currentUser.nickname || currentUser.username,
-      coins: userRes.coins || 0,
-      drawCount: userRes.draw_count || 0,
-      wins: userRes.wins || 0,
+      nickname: currentUser.nickname,
+      coins: userRes.coins,
+      drawCount: userRes.draw_count,
+      wins: userRes.wins,
       level: currentLevel,
       exp: currentExp,
       total_exp: totalExp,
       level_progress: levelProgress,
       required_exp_current: requiredExpForCurrentLevel,
       required_exp_next: requiredExpForNextLevel,
-      exp_to_next_level: expToNextLevel,
+      exp_to_next_level: Math.max(0, requiredExpForNextLevel - currentExp),
       login_streak: userRes.login_streak || 0,
       last_login_date: userRes.last_login_date,
       inventory,
       unclaimed_rewards: unclaimedRewards,
-      level_privileges: this.getLevelPrivileges(currentLevel),
-      title: titleRes ? { name: titleRes.title_name, color: this.getTitleColor(titleRes.title_name) } : null
+      level_privileges: this.getLevelPrivileges(currentLevel)
     });
-  }
-
-  // 获取称号颜色
-  getTitleColor(titleName) {
-    const colorMap = {
-      '新手收集者': '#3B82F6',
-      '初级收藏家': '#8B5CF6',
-      '中级收藏家': '#10B981',
-      '高级收藏家': '#F59E0B',
-      '资深收藏家': '#EF4444',
-      '大师收藏家': '#EC4899',
-      '传奇收藏家': '#7C3AED',
-      '史诗收藏家': '#F97316',
-      '神话收藏家': '#14B8A6',
-      '不朽收藏家': '#8B5CF6',
-      '至尊收藏家': '#DC2626'
-    };
-    return colorMap[titleName] || '#6B7280';
   }
 
   // 检查未领取的等级奖励
@@ -1534,11 +1509,6 @@ function getHtmlPage() {
             </div>
           </div>
           
-          <!-- 等级特权信息 -->
-          <div id="profileLevelPrivileges" style="margin-top:15px;">
-            <!-- 等级特权信息会动态插入 -->
-          </div>
-          
           <!-- 未领取奖励提示 -->
           <div id="unclaimedRewardsAlert" style="display:none; margin-top:12px; padding:8px; background:linear-gradient(135deg, #ECFDF5, #D1FAE5); border-radius:6px; border:1px solid #10B981; text-align:center; cursor:pointer;" onclick="App.openLevelRewards()">
             <div style="display:flex; align-items:center; justify-content:center; gap:6px;">
@@ -1611,22 +1581,6 @@ function getHtmlPage() {
             <i class="fas fa-palette"></i> 切换主题
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 等级奖励模态框 -->
-  <div id="levelRewardsModal" class="modal">
-    <div class="modal-content" style="max-width: 500px;">
-      <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
-      <h3 style="margin-top:0; color:var(--primary);">
-        <i class="fas fa-trophy"></i> 等级奖励
-      </h3>
-      <div style="margin-bottom:15px; font-size:0.9rem; color:var(--text-light);">
-        达到特定等级后可领取以下奖励：
-      </div>
-      <div id="levelRewardsList" style="max-height: 400px; overflow-y: auto;">
-        <!-- 奖励列表会动态生成 -->
       </div>
     </div>
   </div>
@@ -1777,7 +1731,6 @@ function getHtmlPage() {
       nickname: null, loading: false, adminPwd: null, logsData: [], currentAdminTab: 'log', inventory: {},
       currentPool: 'std',
       authMode: 'login', 
-      unclaimedRewards: [],
       
       async init() {
         this.initTheme();
@@ -1819,16 +1772,13 @@ function getHtmlPage() {
           if (data && data.username) { 
               this.username = data.username; 
               this.nickname = data.nickname;
-              this.unclaimedRewards = data.unclaimed_rewards || [];
               this.updateUI(data); 
           } else { 
               localStorage.removeItem('moe_username');
               this.username = null;
               document.getElementById('authModal').classList.add('show'); 
           }
-        } catch(e) {
-          console.error('Failed to fetch user info:', e);
-        }
+        } catch(e) {}
       },
       updateUI(user) {
         document.getElementById('navNickname').innerText = user.nickname || user.username;
@@ -1841,10 +1791,10 @@ function getHtmlPage() {
         const level = user.level || 1;
         const exp = user.exp || 0;
         const totalExp = user.total_exp || 0;
-        const nextLevelExp = user.required_exp_next || 100;
+        const nextLevelExp = user.next_level_exp || 100;
         const levelProgress = user.level_progress || 0;
-        const expToNext = user.exp_to_next_level || (nextLevelExp - exp);
         const loginStreak = user.login_streak || 0;
+        const unclaimedRewards = user.unclaimed_rewards || [];
         
         // 导航栏等级徽章
         const navLevelEl = document.getElementById('navLevel');
@@ -1863,11 +1813,6 @@ function getHtmlPage() {
           profileExpEl.innerText = exp + '/' + nextLevelExp;
         }
         
-        const profileExpNextEl = document.getElementById('profileExpNext');
-        if (profileExpNextEl) {
-          profileExpNextEl.innerText = nextLevelExp;
-        }
-        
         const profileTotalExpEl = document.getElementById('profileTotalExp');
         if (profileTotalExpEl) {
           profileTotalExpEl.innerText = totalExp;
@@ -1884,58 +1829,14 @@ function getHtmlPage() {
           profileExpBarEl.style.width = levelProgress + '%';
         }
         
-        // 等级进度百分比
-        const profileLevelProgressEl = document.getElementById('profileLevelProgress');
-        if (profileLevelProgressEl) {
-          profileLevelProgressEl.innerText = levelProgress + '%';
-        }
-        
-        // 升级还需经验
-        const profileExpToNextEl = document.getElementById('profileExpToNext');
-        if (profileExpToNextEl) {
-          profileExpToNextEl.innerText = expToNext;
-        }
-        
-        // 更新等级特权信息
-        const levelPrivileges = user.level_privileges || {};
-        const privilegesEl = document.getElementById('profileLevelPrivileges');
-        if (privilegesEl && levelPrivileges) {
-          let privilegesHtml = '<div style="margin-top: 12px; padding: 12px; background: #EFF6FF; border-radius: 8px; border: 1px solid #BFDBFE;">';
-          privilegesHtml += '<div style="font-weight: bold; color: #1D4ED8; margin-bottom: 8px; font-size: 0.85rem;">等级特权</div>';
-          
-          if (levelPrivileges.gacha_rarity_boost && levelPrivileges.gacha_rarity_boost > 0) {
-            privilegesHtml += '<div style="font-size: 0.75rem; color: #374151; margin-bottom: 4px;">';
-            privilegesHtml += '<i class="fas fa-arrow-up" style="color: #10B981;"></i> ';
-            privilegesHtml += '稀有卡概率：+' + (levelPrivileges.gacha_rarity_boost * 100).toFixed(1) + '%';
-            privilegesHtml += '</div>';
-          }
-          
-          if (levelPrivileges.craft_success_boost && levelPrivileges.craft_success_boost > 0) {
-            privilegesHtml += '<div style="font-size: 0.75rem; color: #374151; margin-bottom: 4px;">';
-            privilegesHtml += '<i class="fas fa-flask" style="color: #8B5CF6;"></i> ';
-            privilegesHtml += '合成成功率：+' + (levelPrivileges.craft_success_boost * 100).toFixed(1) + '%';
-            privilegesHtml += '</div>';
-          }
-          
-          if (levelPrivileges.unlocked_features && levelPrivileges.unlocked_features.length > 0) {
-            privilegesHtml += '<div style="font-size: 0.75rem; color: #374151;">';
-            privilegesHtml += '<i class="fas fa-unlock" style="color: #F59E0B;"></i> ';
-            privilegesHtml += '已解锁功能：' + levelPrivileges.unlocked_features.length + ' 项';
-            privilegesHtml += '</div>';
-          }
-          
-          privilegesHtml += '</div>';
-          privilegesEl.innerHTML = privilegesHtml;
-        }
-        
         // 未领取奖励提醒
         const unclaimedRewardsAlert = document.getElementById('unclaimedRewardsAlert');
         if (unclaimedRewardsAlert) {
-          if (user.unclaimed_rewards && user.unclaimed_rewards.length > 0) {
+          if (unclaimedRewards.length > 0) {
             unclaimedRewardsAlert.style.display = 'block';
             const rewardsCountEl = document.getElementById('unclaimedRewardsCount');
             if (rewardsCountEl) {
-              rewardsCountEl.innerText = user.unclaimed_rewards.length;
+              rewardsCountEl.innerText = unclaimedRewards.length;
             }
           } else {
             unclaimedRewardsAlert.style.display = 'none';
@@ -1943,14 +1844,7 @@ function getHtmlPage() {
         }
         
         const titleEl = document.getElementById('navTitle');
-        if(user.title) { 
-          titleEl.innerHTML = user.title.name; 
-          titleEl.className = 'title-badge'; 
-          titleEl.style.backgroundColor = user.title.color; 
-        } else { 
-          titleEl.innerHTML = ''; 
-        }
-        
+        if(user.title) { titleEl.innerHTML = user.title.name; titleEl.className = 'title-badge'; titleEl.style.backgroundColor = user.title.color; } else { titleEl.innerHTML = ''; }
         this.inventory = user.inventory || {};
         this.updateCraftStates();
         this.updateProfileStats();
@@ -1967,6 +1861,8 @@ function getHtmlPage() {
         document.getElementById('totalCards').innerText = totalCards;
         
         const drawCount = parseInt(document.getElementById('profileCount').innerText) || 0;
+        const level = Math.floor(drawCount / 50) + 1;
+        document.getElementById('profileLevel').innerText = level;
       },
       showMoreStats() {
         const inv = this.inventory;
@@ -2055,8 +1951,7 @@ function getHtmlPage() {
         const nickname = document.getElementById('profileNickname').innerText;
         const drawCount = document.getElementById('profileCount').innerText;
         const coins = document.getElementById('profileCoins').innerText;
-        const level = document.getElementById('profileLevel').innerText;
-        const shareText = nickname + ' 的抽卡档案！等级：' + level + '，召唤次数: ' + drawCount + ', 积分: ' + coins + '。快来玩吧：' + window.location.origin;
+        const shareText = nickname + ' 的抽卡档案！召唤次数: ' + drawCount + ', 积分: ' + coins + '。快来玩吧：' + window.location.origin;
         
         if (navigator.share) {
           navigator.share({ title: nickname + " 的抽卡档案", text: shareText, url: window.location.origin }).catch(err => {
@@ -2407,86 +2302,6 @@ function getHtmlPage() {
       updateLog(idx, field, val) { this.logsData[idx][field] = val; }, addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
       async saveAdminLog() { try { const res = await fetch('/admin/save-changelog', { method: 'POST', body: JSON.stringify({password: this.adminPwd, logs: this.logsData}) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadChangelog(); } else { this.toast('保存失败', 'warn'); } } catch(e) { this.toast('保存失败', 'warn'); } },
       openProfile() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('profileModal').classList.add('show'); },
-      
-      // 等级奖励相关功能
-      openLevelRewards() {
-        if (!this.username) return document.getElementById('authModal').classList.add('show');
-        
-        const unclaimedRewards = this.unclaimedRewards || [];
-        const container = document.getElementById('levelRewardsList');
-        
-        if (unclaimedRewards.length === 0) {
-          container.innerHTML = \`
-            <div style="text-align: center; padding: 40px 20px; color: #94A3B8;">
-              <i class="fas fa-gift" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.5;"></i>
-              <div>暂无待领取的等级奖励</div>
-              <div style="font-size: 0.85rem; margin-top: 10px;">继续提升等级以获得更多奖励！</div>
-            </div>
-          \`;
-        } else {
-          let rewardsHtml = '';
-          unclaimedRewards.forEach(reward => {
-            const rewardData = reward.reward;
-            rewardsHtml += \`
-              <div style="background: white; border-radius: 10px; padding: 15px; margin-bottom: 12px; border: 2px solid #10B981; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                  <div style="font-weight: bold; color: var(--text-main); font-size: 1.1rem;">
-                    等级 \${reward.level} 奖励
-                  </div>
-                  <div style="font-size: 0.85rem; color: #10B981; background: #ECFDF5; padding: 4px 8px; border-radius: 6px; font-weight: bold;">
-                    可领取
-                  </div>
-                </div>
-                <div style="color: var(--text-main); margin-bottom: 12px;">
-                  \${rewardData.title ? \`<div style="font-size: 0.9rem; margin-bottom: 5px;"><i class="fas fa-crown" style="color: #F59E0B;"></i> 称号：\${rewardData.title}</div>\` : ''}
-                  <div style="font-size: 0.9rem; display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-coins" style="color: #F59E0B;"></i>
-                    积分：<span style="font-weight: bold; color: #D97706;">+\${rewardData.coins}</span>
-                  </div>
-                </div>
-                <button class="btn" style="width: 100%; padding: 8px; font-size: 0.9rem;" onclick="App.claimLevelReward(\${reward.level})">
-                  <i class="fas fa-gift"></i> 领取奖励
-                </button>
-              </div>
-            \`;
-          });
-          container.innerHTML = rewardsHtml;
-        }
-        
-        document.getElementById('profileModal').classList.remove('show');
-        document.getElementById('levelRewardsModal').classList.add('show');
-      },
-      
-      async claimLevelReward(level) {
-        if (this.loading) return;
-        this.loading = true;
-        
-        try {
-          const res = await fetch('/user/claim-reward', {
-            method: 'POST',
-            headers: { 'X-User-ID': this.username },
-            body: JSON.stringify({ level: level })
-          });
-          const data = await res.json();
-          
-          if (data.error) {
-            this.toast(this.mapError(data.error), 'warn');
-          } else {
-            this.toast(\`成功领取等级 \${level} 奖励！\`, 'ok');
-            // 刷新用户信息
-            await this.fetchUserInfo();
-            // 关闭模态框
-            this.closeModals();
-            // 重新打开等级奖励列表
-            setTimeout(() => this.openLevelRewards(), 300);
-          }
-        } catch (e) {
-          this.toast('网络错误', 'warn');
-        } finally {
-          this.loading = false;
-        }
-      },
-      
       closeModals() {
         document.querySelectorAll('.modal').forEach(m => {
           m.classList.remove('show');
