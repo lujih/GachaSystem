@@ -37,12 +37,11 @@ CREATE TABLE IF NOT EXISTS logs (
 -- 等级奖励记录表 (记录用户已领取的等级奖励)
 CREATE TABLE IF NOT EXISTS level_rewards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    level INTEGER NOT NULL,
-    reward_type TEXT NOT NULL,
-    reward_value INTEGER,
-    claimed_at INTEGER,
-    UNIQUE(user_id, level, reward_type)
+    user_id INTEGER,
+    level INTEGER,
+    reward_type TEXT,
+    reward_data TEXT,
+    claimed_at INTEGER
 );
 
 -- 用户称号表

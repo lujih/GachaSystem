@@ -34,17 +34,34 @@ const CONFIG = {
       CRAFT: 50, // 合成成功获得经验
       SHOP_BUY: 20, // 商店购买获得经验
       DICE_WIN: 30, // 骰子获胜获得经验
-      DAILY_LOGIN: 50, // 每日登录获得经验
+      CHECK_IN: 50, // 每日签到获得经验
     },
     // 等级升级所需经验公式：基础值 × (等级^1.5)
     BASE_EXP: 100,
     EXP_MULTIPLIER: 1.5,
     MAX_LEVEL: 100,
+    // [新增] 签到系统配置
+    CHECK_IN: {
+      BASE_COINS: 100, // 每日签到基础金币
+      // 连续签到额外奖励 (第1天, 第2天, 第3天...)
+      STREAK_BONUS: [0, 20, 50, 100, 150, 200, 300] 
+    },
     // 等级奖励配置
     REWARDS: {
-      // 每级奖励积分
+      // 每级奖励积分 (用于升级自动发放，或者作为手动领取的基数)
       COINS_PER_LEVEL: 50,
-    }
+      
+      // [新增] 手动领取的等级礼包配置
+      // 格式: 等级: { coins: 金币数, title: '称号(可选)' }
+      MILESTONES: {
+        5: { coins: 500, title: '新手收藏家' },
+        10: { coins: 1000, title: '初级收藏家' },
+        20: { coins: 2000, title: '高级收藏家' },
+        30: { coins: 3000, title: '资深收藏家' },
+        50: { coins: 5000, title: '传说人物' },
+        100: { coins: 10000, title: '卡片之神' }
+      }
+    },
   },
   KEYS: {
     CHANGELOG: 'system:changelog',
@@ -106,6 +123,8 @@ export default {
       'POST /auth/login': () => userService.login(request),
       'GET /user/info': () => userService.getInfo(currentUser),
       'POST /user/update-profile': () => userService.updateProfile(currentUser, request),
+      'POST /user/check-in': () => userService.checkIn(currentUser),
+      'POST /user/claim-reward': () => userService.claimReward(currentUser, request),
       
       'GET /draw': () => gachaService.draw(currentUser),
       'POST /draw/limited': () => gachaService.drawLimited(currentUser),
@@ -123,6 +142,8 @@ export default {
       'POST /admin/verify': () => handleAdminVerify(request, env),
       'POST /admin/save-changelog': () => handleAdminSaveLog(request, env),
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
+      'POST /admin/update-points': () => handleAdminUpdatePoints(request, env),
+      'POST /admin/delete-user': () => handleAdminDeleteUser(request, env),
     };
 
     const handler = routes[`${method} ${url.pathname}`];
@@ -195,62 +216,194 @@ class UserService {
     }
   }
 
+  /**
+   * [新增] 用户每日签到
+   */
+  async checkIn(currentUser) {
+    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+
+    // 1. 获取用户最新状态（确保 streak 和日期是最新的）
+    const user = await this.env.DB.prepare(
+      'SELECT id, login_streak, last_login_date FROM users WHERE id = ?'
+    ).bind(currentUser.id).first();
+
+    if (!user) return jsonResponse({ error: 'User not found' }, 404);
+
+    // 2. 日期判断
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    let lastDateStr = null;
+
+    if (user.last_login_date) {
+      lastDateStr = new Date(user.last_login_date).toISOString().split('T')[0];
+    }
+
+    // 如果今天已经签到过
+    if (lastDateStr === todayStr) {
+      return jsonResponse({ error: 'Already checked in today' }, 400);
+    }
+
+    // 3. 计算连续签到天数
+    let streak = user.login_streak || 0;
+    if (lastDateStr && this.isConsecutiveDay(lastDateStr, todayStr)) {
+      streak += 1;
+    } else {
+      streak = 1; // 断签重置为1
+    }
+
+    // 4. 计算奖励
+    const streakBonusArr = CONFIG.LEVEL.CHECK_IN.STREAK_BONUS;
+    // 防止数组越界，取最大设定的奖励
+    const bonusIndex = Math.min(streak - 1, streakBonusArr.length - 1); 
+    const streakBonus = streakBonusArr[bonusIndex] || 0;
+    
+    const coinsReward = CONFIG.LEVEL.CHECK_IN.BASE_COINS + streakBonus;
+    const expReward = CONFIG.LEVEL.EXP_GAIN.CHECK_IN;
+
+    // 5. 更新数据库
+    await this.env.DB.prepare(
+      `UPDATE users 
+       SET coins = coins + ?, 
+           exp = exp + ?, 
+           total_exp = total_exp + ?, 
+           last_login_date = ?, 
+           login_streak = ? 
+       WHERE id = ?`
+    ).bind(coinsReward, expReward, expReward, now.toISOString(), streak, currentUser.id).run();
+
+    // 6. 记录日志
+    await this.env.DB.prepare(
+      'INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).bind(currentUser.id, currentUser.username, 'check_in', `Streak:${streak} Coins:${coinsReward}`, Date.now()).run();
+
+    return jsonResponse({
+      success: true,
+      checkIn: {
+        coins: coinsReward,
+        exp: expReward,
+        streak: streak,
+        streakBonus: streakBonus
+      }
+    });
+  }
+
+  /**
+   * [新增] 领取等级奖励
+   */
+  async claimReward(currentUser, request) {
+    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    
+    const { targetLevel } = await request.json();
+    const level = parseInt(targetLevel);
+    
+    // 1. 验证参数
+    if (isNaN(level) || !CONFIG.LEVEL.REWARDS.MILESTONES[level]) {
+      return jsonResponse({ error: 'Invalid reward level' }, 400);
+    }
+
+    // 2. 验证用户等级
+    const user = await this.env.DB.prepare(
+      'SELECT level FROM users WHERE id = ?'
+    ).bind(currentUser.id).first();
+
+    if (user.level < level) {
+      return jsonResponse({ error: 'Level requirement not met' }, 403);
+    }
+
+    // 3. 检查是否已领取
+    // 使用 level_rewards 表记录领取状态
+    const claimed = await this.env.DB.prepare(
+      'SELECT id FROM level_rewards WHERE user_id = ? AND level = ?'
+    ).bind(currentUser.id, level).first();
+
+    if (claimed) {
+      return jsonResponse({ error: 'Reward already claimed' }, 409);
+    }
+
+    // 4. 发放奖励
+    const rewardConfig = CONFIG.LEVEL.REWARDS.MILESTONES[level];
+    const coinsToAdd = rewardConfig.coins || 0;
+    const batch = [];
+
+    // 加金币
+    if (coinsToAdd > 0) {
+      batch.push(
+        this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?')
+          .bind(coinsToAdd, currentUser.id)
+      );
+    }
+
+    // 如果有称号，加称号
+    if (rewardConfig.title) {
+      batch.push(
+        this.env.DB.prepare(
+          'INSERT OR IGNORE INTO user_titles (user_id, title_name, unlocked_at) VALUES (?, ?, ?)'
+        ).bind(currentUser.id, rewardConfig.title, Date.now())
+      );
+    }
+
+    // 记录领取状态 (表结构: id, user_id, level, reward_type, reward_data, claimed_at)
+    // 假设 reward_type 固定为 'milestone'
+    batch.push(
+      this.env.DB.prepare(
+        'INSERT INTO level_rewards (user_id, level, reward_type, reward_data, claimed_at) VALUES (?, ?, ?, ?, ?)'
+      ).bind(currentUser.id, level, 'milestone', JSON.stringify(rewardConfig), Date.now())
+    );
+
+    await this.env.DB.batch(batch);
+
+    return jsonResponse({ 
+      success: true, 
+      reward: rewardConfig 
+    });
+  }
+
+  // 辅助函数：判断日期连续
+  isConsecutiveDay(lastDateStr, todayStr) {
+    const last = new Date(lastDateStr);
+    const current = new Date(todayStr);
+    // 重置时间为0点，确保只比较日期
+    last.setHours(0,0,0,0);
+    current.setHours(0,0,0,0);
+    const diffTime = Math.abs(current - last);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    return diffDays === 1;
+  }
+
   async login(request) {
     const { username, password } = await request.json();
     
+    // 1. 查询用户信息
+    // 仅查询构建 Session 所需的基本字段，移除了 streak 和 date 的查询需求
     const user = await this.env.DB.prepare(
-      'SELECT id, username, nickname, level, exp, total_exp, last_login_date FROM users WHERE username = ? AND password = ?'
+      'SELECT id, username, nickname, level, exp, total_exp FROM users WHERE username = ? AND password = ?'
     ).bind(username, password).first();
 
     if (!user) return jsonResponse({ error: 'Invalid Credentials' }, 403);
 
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    let expGain = 0;
-    
-    // 简化后的每日登录逻辑：只要日期不同就给固定经验，不计算连续天数
-    if (user.last_login_date) {
-      const lastLoginDate = new Date(user.last_login_date);
-      const lastLoginDay = lastLoginDate.toISOString().split('T')[0];
-      
-      if (lastLoginDay !== today) {
-        expGain = CONFIG.LEVEL.EXP_GAIN.DAILY_LOGIN;
-      }
-    } else {
-      // 首次登录
-      expGain = CONFIG.LEVEL.EXP_GAIN.DAILY_LOGIN;
-    }
-    
-    // 更新用户登录信息（移除了 login_streak 更新）
-    if (expGain > 0) {
-        await this.env.DB.prepare(
-        'UPDATE users SET last_login_date = ?, exp = exp + ?, total_exp = total_exp + ? WHERE id = ?'
-        ).bind(now.toISOString(), expGain, expGain, user.id).run();
-    } else {
-        await this.env.DB.prepare(
-        'UPDATE users SET last_login_date = ? WHERE id = ?'
-        ).bind(now.toISOString(), user.id).run();
-    }
-
+    // 2. 生成 Token
     const token = crypto.randomUUID();
+    
+    // 3. 构建 Session 数据
+    // 直接使用数据库中的原始数据，不进行任何经验值累加
     const sessionData = {
       id: user.id,
       username: user.username,
       nickname: user.nickname,
       level: user.level,
-      exp: user.exp + expGain,
-      total_exp: user.total_exp + expGain
+      exp: user.exp,
+      total_exp: user.total_exp
     };
     
+    // 4. 存入 KV 缓存
     await this.env.KV_CACHE.put(`session:${token}`, JSON.stringify(sessionData), { expirationTtl: CONFIG.TTL.SESSION });
 
+    // 5. 返回结果
+    // 移除了 daily_login_reward 字段
     return jsonResponse({
       success: true,
       token,
-      user: sessionData,
-      daily_login_reward: {
-        exp_gained: expGain
-      }
+      user: sessionData
     });
   }
 
@@ -813,6 +966,91 @@ async function handleAdminSaveLog(request, env) {
   if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
   await env.RECENT_REQUESTS.put(CONFIG.KEYS.CHANGELOG, JSON.stringify(logs));
   return jsonResponse({ success: true });
+}
+
+async function handleAdminUpdatePoints(request, env) {
+  try {
+    const { password, targetId, amount } = await request.json();
+    
+    // 1. 验证管理员权限
+    if (password !== env.admin) {
+      return jsonResponse({ error: 'Auth Failed' }, 403);
+    }
+
+    // 2. 验证参数
+    // 前端传来的 targetId 是 username
+    if (!targetId || amount === undefined || isNaN(amount)) {
+      return jsonResponse({ error: 'Invalid parameters' }, 400);
+    }
+
+    // 3. 获取用户ID
+    const user = await env.DB.prepare(
+      'SELECT id, coins FROM users WHERE username = ?'
+    ).bind(targetId).first();
+
+    if (!user) {
+      return jsonResponse({ error: 'User not found' }, 404);
+    }
+
+    // 4. 执行更新 (支持增加或减少，amount可为负数)
+    // 防止积分减为负数（可选逻辑，如果希望允许负债可去掉 Math.max）
+    // const newCoins = Math.max(0, (user.coins || 0) + parseInt(amount));
+    
+    // 目前逻辑允许直接加减
+    await env.DB.prepare(
+      'UPDATE users SET coins = coins + ? WHERE id = ?'
+    ).bind(parseInt(amount), user.id).run();
+
+    return jsonResponse({ success: true, message: 'Points updated' });
+
+  } catch (e) {
+    console.error('Update points error:', e);
+    return jsonResponse({ error: 'Internal server error' }, 500);
+  }
+}
+
+async function handleAdminDeleteUser(request, env) {
+  try {
+    const { password, targetId } = await request.json();
+
+    // 1. 验证管理员权限
+    if (password !== env.admin) {
+      return jsonResponse({ error: 'Auth Failed' }, 403);
+    }
+
+    // 2. 获取用户ID
+    // 前端传来的 targetId 是 username
+    const user = await env.DB.prepare(
+      'SELECT id FROM users WHERE username = ?'
+    ).bind(targetId).first();
+
+    if (!user) {
+      return jsonResponse({ error: 'User not found' }, 404);
+    }
+
+    // 3. 执行级联删除 (使用事务批量删除相关数据)
+    // 注意：如果有其他关联表（如 level_rewards），也应一并删除以保持数据库清洁
+    const batch = [
+      // 删除用户主数据
+      env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id),
+      // 删除背包数据
+      env.DB.prepare('DELETE FROM inventory WHERE user_id = ?').bind(user.id),
+      // 删除日志数据
+      env.DB.prepare('DELETE FROM logs WHERE user_id = ?').bind(user.id),
+      // 删除等级奖励记录
+      env.DB.prepare('DELETE FROM level_rewards WHERE user_id = ?').bind(user.id),
+      // 删除称号记录
+      env.DB.prepare('DELETE FROM user_titles WHERE user_id = ?').bind(user.id)
+    ];
+
+    await env.DB.batch(batch);
+
+    return jsonResponse({ success: true, message: 'User deleted' });
+
+  } catch (e) {
+    console.error('Delete user error:', e);
+    return jsonResponse({ error: 'Internal server error' }, 500);
+  }
 }
 
 async function updateLeaderboard(env, newItem) {
