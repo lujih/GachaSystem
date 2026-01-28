@@ -1516,6 +1516,9 @@ function getHtmlPage() {
         <button class="btn secondary" onclick="App.openDice()" style="background:#F0F9FF; border-color:#BAE6FD;">
           <i class="fas fa-dice"></i>
         </button>
+        <button class="btn secondary" onclick="App.checkIn()" style="background:#ECFDF5; border-color:#6EE7B7; color:#059669;">
+          <i class="fas fa-calendar-check"></i>
+        </button>
         <a href="/library" class="btn secondary"><i class="fas fa-th-large"></i></a>
       </div>
     </div>
@@ -1952,6 +1955,31 @@ function getHtmlPage() {
         }).catch(err => {
           this.toast('复制失败', 'warn');
         });
+      },
+      async checkIn() {
+        if(this.loading) return;
+        if(!this.username) return document.getElementById('authModal').classList.add('show');
+        
+        this.loading = true;
+        try {
+            const res = await fetch('/user/check-in', { 
+                method: 'POST', 
+                headers: { 'X-User-ID': this.username } 
+            });
+            const data = await res.json();
+            
+            if(data.success) {
+                const bonus = data.checkIn.streakBonus > 0 ? \` (连签奖励 +\${data.checkIn.streakBonus})\` : '';
+                this.toast(\`签到成功！金币 +\${data.checkIn.coins}\${bonus}\`, 'ok');
+                this.fetchUserInfo(); // 刷新金币显示
+            } else {
+                this.toast(data.error === 'Already checked in today' ? '今天已经签到过了' : data.error, 'warn');
+            }
+        } catch(e) {
+            this.toast('网络请求失败', 'warn');
+        } finally {
+            this.loading = false;
+        }
       },
       toggleTheme() {
         const currentTheme = localStorage.getItem('moe_theme') || 'light';
@@ -2498,6 +2526,12 @@ function getProfilePage() {
         </button>
     </div>
 
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+        <button class="btn" onclick="App.openLevelRewards()" style="grid-column: 1 / -1; background: linear-gradient(135deg, #F59E0B, #D97706); border:none;">
+            <i class="fas fa-gift"></i> 查看/领取等级奖励
+        </button>
+    </div>
+
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
         <button class="btn secondary" onclick="App.editProfile()"><i class="fas fa-edit"></i> 修改昵称</button>
         <button class="btn secondary" onclick="App.logout()"><i class="fas fa-sign-out-alt"></i> 注销登录</button>
@@ -2516,9 +2550,29 @@ function getProfilePage() {
     </div>
   </div>
 
+  <!-- 2. 添加等级奖励模态框 -->
+    <div id="rewardModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close-btn" onclick="document.getElementById('rewardModal').classList.remove('show')"><i class="fas fa-times"></i></button>
+            <h3>等级奖励</h3>
+            <div id="rewardList" style="text-align:left; max-height:400px; overflow-y:auto;">
+                <!-- JS 动态填充 -->
+            </div>
+        </div>
+    </div>
+
   <div id="toast-container"></div>
 
   <script>
+    // 注意：这里仅用于前端显示，实际校验在后端完成
+    const MILESTONES = {
+        5: { coins: 500, title: '新手收藏家' },
+        10: { coins: 1000, title: '初级收藏家' },
+        20: { coins: 2000, title: '高级收藏家' },
+        30: { coins: 3000, title: '资深收藏家' },
+        50: { coins: 5000, title: '传说人物' },
+        100: { coins: 10000, title: '卡片之神' }
+    };
     const App = {
       username: localStorage.getItem('moe_username'),
       
@@ -2598,6 +2652,64 @@ function getProfilePage() {
             }
         } catch(e) {
             list.innerHTML = '加载失败';
+        }
+      },
+
+      openLevelRewards() {
+        const modal = document.getElementById('rewardModal');
+        const list = document.getElementById('rewardList');
+        const currentLevel = parseInt(document.getElementById('profileLevel').innerText) || 1;
+        
+        let html = '';
+        
+        // 遍历所有奖励等级
+        for (const [lvl, reward] of Object.entries(MILESTONES)) {
+            const level = parseInt(lvl);
+            const isReached = currentLevel >= level;
+            
+            // 生成奖励描述
+            let desc = \`金币 \${reward.coins}\`;
+            if (reward.title) desc += \` + 称号 [\${reward.title}]\`;
+            
+            html += \`
+            <div style="border:1px solid #E2E8F0; padding:10px; border-radius:8px; margin-bottom:10px; background:\${isReached ? '#F0FDF4' : '#F8FAFC'}">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <span style="font-weight:bold; color:\${isReached ? '#15803d' : '#94A3B8'}">Lv.\${level}</span>
+                    \${isReached 
+                        ? \`<button class="btn" style="padding:4px 10px; font-size:0.8rem; height:auto;" onclick="App.claimReward(\${level})">领取</button>\` 
+                        : '<span style="font-size:0.8rem; color:#94A3B8">未达标</span>'
+                    }
+                </div>
+                <div style="font-size:0.85rem; color:#475569;">\${desc}</div>
+            </div>\`;
+        }
+        
+        list.innerHTML = html;
+        modal.classList.add('show');
+      },
+
+      async claimReward(level) {
+        if(!confirm(\`确定领取 Lv.\${level} 的奖励吗？\`)) return;
+        
+        try {
+            const res = await fetch('/user/claim-reward', {
+                method: 'POST',
+                headers: { 'X-User-ID': this.username },
+                body: JSON.stringify({ targetLevel: level })
+            });
+            const data = await res.json();
+            
+            if(data.success) {
+                alert('领取成功！');
+                document.getElementById('rewardModal').classList.remove('show');
+                this.fetchUserInfo(); // 刷新数据
+            } else {
+                // 简单的错误映射
+                const msg = data.error === 'Reward already claimed' ? '该奖励已经领取过了' : data.error;
+                alert(msg);
+            }
+        } catch(e) {
+            alert('网络错误');
         }
       },
 
