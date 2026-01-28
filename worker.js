@@ -125,6 +125,8 @@ export default {
       'POST /user/update-profile': () => userService.updateProfile(currentUser, request),
       'POST /user/check-in': () => userService.checkIn(currentUser),
       'POST /user/claim-reward': () => userService.claimReward(currentUser, request),
+      'GET /user/titles': () => userService.getTitles(currentUser),
+      'POST /user/equip-title': () => userService.equipTitle(currentUser, request),
       
       'GET /draw': () => gachaService.draw(currentUser),
       'POST /draw/limited': () => gachaService.drawLimited(currentUser),
@@ -337,7 +339,8 @@ class UserService {
     if (rewardConfig.title) {
       batch.push(
         this.env.DB.prepare(
-          'INSERT OR IGNORE INTO user_titles (user_id, title_name, unlocked_at) VALUES (?, ?, ?)'
+          // 注意这里使用的是 title_id 字段，与 schema.sql 对应
+          'INSERT OR IGNORE INTO user_titles (user_id, title_id, unlocked_at) VALUES (?, ?, ?)'
         ).bind(currentUser.id, rewardConfig.title, Date.now())
       );
     }
@@ -410,10 +413,11 @@ class UserService {
   async getInfo(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-    // SQL查询中移除 login_streak
-    const [userRes, invRes] = await Promise.all([
+    const [userRes, invRes, titleRes] = await Promise.all([
       this.env.DB.prepare('SELECT coins, draw_count, wins, level, exp, total_exp, last_login_date FROM users WHERE id = ?').bind(currentUser.id).first(),
-      this.env.DB.prepare('SELECT rarity, count FROM inventory WHERE user_id = ?').bind(currentUser.id).all()
+      this.env.DB.prepare('SELECT rarity, count FROM inventory WHERE user_id = ?').bind(currentUser.id).all(),
+      // 查询当前装备的称号
+      this.env.DB.prepare('SELECT title_id FROM user_titles WHERE user_id = ? AND is_equipped = 1').bind(currentUser.id).first()
     ]);
 
     if (!userRes) return jsonResponse({ error: 'User Not Found' }, 404);
@@ -430,11 +434,15 @@ class UserService {
     const levelProgress = this.calculateLevelProgress(currentExp, currentLevel);
     const expToNextLevel = Math.max(0, requiredExpForNextLevel - currentExp);
     
-    // 移除了 checkUnclaimedRewards 调用
+    // 构建称号对象
+    let currentTitle = null;
+    if (titleRes && titleRes.title_id) {
+        currentTitle = { name: titleRes.title_id }; // 简单起见，title_id 即为显示文本
+    }
 
     return jsonResponse({
       username: currentUser.username,
-      nickname: currentUser.nickname, // 确保返回的是数据库里的最新昵称（如果session没更新）
+      nickname: currentUser.nickname,
       coins: userRes.coins,
       drawCount: userRes.draw_count,
       wins: userRes.wins,
@@ -445,9 +453,52 @@ class UserService {
       required_exp_next: requiredExpForNextLevel, 
       exp_to_next_level: expToNextLevel,
       last_login_date: userRes.last_login_date,
-      inventory
-      // 移除了 unclaimed_rewards 和 level_privileges
+      inventory,
+      title: currentTitle // 返回给前端
     });
+  }
+
+  // [新增] 获取用户拥有的所有称号
+  async getTitles(currentUser) {
+    if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+    
+    const titles = await this.env.DB.prepare(
+        'SELECT title_id, is_equipped, unlocked_at FROM user_titles WHERE user_id = ? ORDER BY unlocked_at DESC'
+    ).bind(currentUser.id).all();
+    
+    return jsonResponse({ 
+        success: true, 
+        titles: titles.results || [] 
+    });
+  }
+
+  // [新增] 装备/卸下称号
+  async equipTitle(currentUser, request) {
+    if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+    const { titleId } = await request.json(); // titleId 传 null 代表卸下
+    
+    // 1. 如果是卸下称号
+    if (!titleId) {
+        await this.env.DB.prepare('UPDATE user_titles SET is_equipped = 0 WHERE user_id = ?').bind(currentUser.id).run();
+        return jsonResponse({ success: true, message: 'Title unequipped' });
+    }
+
+    // 2. 检查是否拥有该称号
+    const hasTitle = await this.env.DB.prepare(
+        'SELECT id FROM user_titles WHERE user_id = ? AND title_id = ?'
+    ).bind(currentUser.id, titleId).first();
+
+    if (!hasTitle) return jsonResponse({ error: 'Title not owned' }, 403);
+
+    // 3. 事务：先全部卸下，再装备指定的
+    const batch = [
+        this.env.DB.prepare('UPDATE user_titles SET is_equipped = 0 WHERE user_id = ?').bind(currentUser.id),
+        this.env.DB.prepare('UPDATE user_titles SET is_equipped = 1 WHERE user_id = ? AND title_id = ?').bind(currentUser.id, titleId)
+    ];
+    
+    await this.env.DB.batch(batch);
+    
+    return jsonResponse({ success: true, message: 'Title equipped', title: { name: titleId } });
   }
 
   // [新增] 修改昵称方法
@@ -1218,7 +1269,16 @@ const NEUTRAL_CSS = `
   .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
   input:checked + .slider { background-color: var(--secondary); }
   input:checked + .slider:before { transform: translateX(24px); }
-  
+  .title-list { display: grid; grid-template-columns: 1fr; gap: 8px; max-height: 300px; overflow-y: auto; margin-top: 10px; }
+  .title-item { 
+      padding: 10px; border: 1px solid #E2E8F0; border-radius: 8px; cursor: pointer; 
+      display: flex; justify-content: space-between; align-items: center; transition: 0.2s;
+  }
+  .title-item:hover { background: #F8FAFC; border-color: var(--primary); }
+  .title-item.active { background: #EFF6FF; border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+  .title-item.active i { color: var(--primary); }
+  .title-text { font-weight: bold; color: var(--text-main); }
+  .no-title-msg { text-align: center; color: #94A3B8; padding: 20px; font-size: 0.9rem; } 
   .form-row { margin-bottom: 15px; }
   .form-label { display: block; font-weight: bold; font-size: 0.9rem; color: var(--text-main); margin-bottom: 6px; }
   .form-hint { font-size: 0.75rem; color: var(--text-light); margin-top: 4px; }
@@ -2425,9 +2485,34 @@ function getProfilePage() {
       </div>
     </div>
 
+    <!-- [新增] 称号展示区 -->
+    <div style="background:white; padding:15px; border-radius:12px; border:1px solid #E2E8F0; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:4px;">当前佩戴称号</div>
+            <div id="currentTitleDisplay" style="font-weight:bold; font-size:1.1rem; color:var(--primary);">
+                <span style="color:#CBD5E1; font-weight:normal;">暂无称号</span>
+            </div>
+        </div>
+        <button class="btn secondary" style="padding:6px 12px; font-size:0.85rem;" onclick="App.openTitleManager()">
+            <i class="fas fa-crown"></i> 更换
+        </button>
+    </div>
+
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
         <button class="btn secondary" onclick="App.editProfile()"><i class="fas fa-edit"></i> 修改昵称</button>
         <button class="btn secondary" onclick="App.logout()"><i class="fas fa-sign-out-alt"></i> 注销登录</button>
+    </div>
+
+    <!-- [新增] 称号管理弹窗 -->
+    <div id="titleModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close-btn" onclick="document.getElementById('titleModal').classList.remove('show')"><i class="fas fa-times"></i></button>
+            <h3>称号管理</h3>
+            <div id="titleList" class="title-list">
+                <!-- 动态生成 -->
+            </div>
+            <button class="btn secondary" style="width:100%; margin-top:15px;" onclick="App.equipTitle(null)">卸下当前称号</button>
+        </div>
     </div>
   </div>
 
@@ -2480,6 +2565,62 @@ function getProfilePage() {
         ['N', 'R', 'SR', 'SSR', 'UR'].forEach(r => {
             document.getElementById('invCount' + r).innerText = inv[r] || 0;
         });
+
+        // [新增] 更新称号显示
+        const titleEl = document.getElementById('currentTitleDisplay');
+        if (user.title && user.title.name) {
+            titleEl.innerHTML = \`<span class="title-badge" style="background:linear-gradient(135deg, #3B82F6, #8B5CF6); font-size:1rem; padding:4px 10px;">\${user.title.name}</span>\`;
+        } else {
+            titleEl.innerHTML = '<span style="color:#CBD5E1; font-weight:normal;">暂无称号</span>';
+        }
+      },
+
+      // [新增] 打开称号管理
+      async openTitleManager() {
+        const modal = document.getElementById('titleModal');
+        const list = document.getElementById('titleList');
+        list.innerHTML = '<div style="text-align:center;">加载中...</div>';
+        modal.classList.add('show');
+
+        try {
+            const res = await fetch('/user/titles');
+            const data = await res.json();
+            
+            if (data.success && data.titles.length > 0) {
+                list.innerHTML = data.titles.map(t => \`
+                    <div class="title-item \${t.is_equipped ? 'active' : ''}" onclick="App.equipTitle('\${t.title_id}')">
+                        <span class="title-text">\${t.title_id}</span>
+                        \${t.is_equipped ? '<i class="fas fa-check-circle"></i>' : ''}
+                    </div>
+                \`).join('');
+            } else {
+                list.innerHTML = '<div class="no-title-msg">你还没有获得任何称号<br>请努力升级或完成成就！</div>';
+            }
+        } catch(e) {
+            list.innerHTML = '加载失败';
+        }
+      },
+
+      // [新增] 装备称号
+      async equipTitle(titleId) {
+        try {
+            const res = await fetch('/user/equip-title', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ titleId })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                document.getElementById('titleModal').classList.remove('show');
+                this.toast(data.message, 'ok');
+                this.fetchUserInfo(); // 刷新界面显示
+            } else {
+                this.toast(data.error || '操作失败', 'warn');
+            }
+        } catch(e) {
+            this.toast('网络错误', 'warn');
+        }
       },
 
       async editProfile() {
