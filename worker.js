@@ -2637,7 +2637,10 @@ function getProfilePage() {
         modal.classList.add('show');
 
         try {
-            const res = await fetch('/user/titles');
+            const res = await fetch('/user/titles', {
+                method: 'GET',
+                headers: { 'X-User-ID': this.username }
+            });
             const data = await res.json();
             
             if (data.success && data.titles.length > 0) {
@@ -2718,7 +2721,10 @@ function getProfilePage() {
         try {
             const res = await fetch('/user/equip-title', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-User-ID': this.username
+                },
                 body: JSON.stringify({ titleId })
             });
             const data = await res.json();
