@@ -69,7 +69,17 @@ const CONFIG = {
     LEADERBOARD: 'system:leaderboard',
     GALLERY_INDEX: 'system:gallery_index'
   },
-  TTL: { SESSION: 86400 * 7, BUFFER: 86400, CACHE: 60 * 5, LEADERBOARD: 86400 * 30, GALLERY_CACHE: 86400 * 7 },
+  TTL: { 
+    SESSION: 86400 * 7, 
+    BUFFER: 86400, 
+    CACHE: 60 * 5, 
+    LEADERBOARD: 86400 * 30, 
+    GALLERY_CACHE: 86400 * 7,
+    // [新增] 细粒度缓存配置
+    USER_INFO: 60,       // 用户信息缓存 60秒 (高频读取，写操作时强制失效)
+    PUBLIC_API: 300,     // 公共接口(如排行榜) 浏览器缓存 5分钟
+    STATIC_ASSET: 31536000 // 静态资源(图片) 1年
+  },
   R2_DOMAIN: "https://cft1.cszxorx.dpdns.org",
   DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
 };
@@ -171,6 +181,12 @@ class UserService {
     this.ctx = ctx;
   }
 
+  // [新增] 辅助方法：清除用户缓存
+  // 在 draw, checkIn, craft, shopBuy, playDice, equipTitle, updateProfile 后调用
+  async invalidateUserCache(userId) {
+    await this.env.KV_CACHE.delete(`uinfo:${userId}`);
+  }
+
   // 计算升级所需经验
   calculateRequiredExp(level) {
     const { BASE_EXP, EXP_MULTIPLIER } = CONFIG.LEVEL;
@@ -219,28 +235,30 @@ class UserService {
   }
 
   /**
-   * [新增] 用户每日签到
+   * [修改] 用户每日签到 (修复竞态条件)
+   * 使用数据库原子更新防止并发双倍领取
    */
   async checkIn(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
 
-    // 1. 获取用户最新状态（确保 streak 和日期是最新的）
+    // 1. 获取用户最新状态
     const user = await this.env.DB.prepare(
       'SELECT id, login_streak, last_login_date FROM users WHERE id = ?'
     ).bind(currentUser.id).first();
 
     if (!user) return jsonResponse({ error: 'User not found' }, 404);
 
-    // 2. 日期判断
+    // 2. 日期判断 (UTC ISO 前10位: YYYY-MM-DD)
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
+    const fullDateStr = now.toISOString();
+    
     let lastDateStr = null;
-
     if (user.last_login_date) {
       lastDateStr = new Date(user.last_login_date).toISOString().split('T')[0];
     }
 
-    // 如果今天已经签到过
+    // 内存预判 (减轻DB压力)
     if (lastDateStr === todayStr) {
       return jsonResponse({ error: 'Already checked in today' }, 400);
     }
@@ -250,33 +268,41 @@ class UserService {
     if (lastDateStr && this.isConsecutiveDay(lastDateStr, todayStr)) {
       streak += 1;
     } else {
-      streak = 1; // 断签重置为1
+      streak = 1; // 断签重置
     }
 
     // 4. 计算奖励
     const streakBonusArr = CONFIG.LEVEL.CHECK_IN.STREAK_BONUS;
-    // 防止数组越界，取最大设定的奖励
     const bonusIndex = Math.min(streak - 1, streakBonusArr.length - 1); 
     const streakBonus = streakBonusArr[bonusIndex] || 0;
     
     const coinsReward = CONFIG.LEVEL.CHECK_IN.BASE_COINS + streakBonus;
     const expReward = CONFIG.LEVEL.EXP_GAIN.CHECK_IN;
 
-    // 5. 更新数据库
-    await this.env.DB.prepare(
+    // 5. 数据库原子更新 (WHERE 子句包含日期检查，防止并发)
+    const result = await this.env.DB.prepare(
       `UPDATE users 
        SET coins = coins + ?, 
            exp = exp + ?, 
            total_exp = total_exp + ?, 
            last_login_date = ?, 
            login_streak = ? 
-       WHERE id = ?`
-    ).bind(coinsReward, expReward, expReward, now.toISOString(), streak, currentUser.id).run();
+       WHERE id = ? 
+       AND (last_login_date IS NULL OR substr(last_login_date, 1, 10) != ?)`
+    ).bind(coinsReward, expReward, expReward, fullDateStr, streak, currentUser.id, todayStr).run();
 
-    // 6. 记录日志
+    // 6. 检查是否更新成功 (meta.changes === 0 说明被并发拦截)
+    if (result.meta.changes === 0) {
+        return jsonResponse({ error: 'Already checked in today' }, 400);
+    }
+
+    // 7. 更新成功后：写日志 & 清缓存
     await this.env.DB.prepare(
       'INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)'
     ).bind(currentUser.id, currentUser.username, 'check_in', `Streak:${streak} Coins:${coinsReward}`, Date.now()).run();
+
+    // [新增] 关键：清除缓存
+    await this.invalidateUserCache(currentUser.id);
 
     return jsonResponse({
       success: true,
@@ -354,11 +380,11 @@ class UserService {
     );
 
     await this.env.DB.batch(batch);
-
-    return jsonResponse({ 
-      success: true, 
-      reward: rewardConfig 
-    });
+     
+     // [新增] 清除缓存
+     await this.invalidateUserCache(currentUser.id);
+     
+     return jsonResponse({ success: true, reward: rewardConfig });
   }
 
   // 辅助函数：判断日期连续
@@ -410,13 +436,23 @@ class UserService {
     });
   }
 
+  // [修改] getInfo 方法：增加 KV 缓存层
   async getInfo(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
 
+    const cacheKey = `uinfo:${currentUser.id}`;
+    
+    // 1. 尝试从 KV 读取缓存
+    const cachedData = await this.env.KV_CACHE.get(cacheKey, { type: 'json' });
+    if (cachedData) {
+      // 命中缓存，直接返回 (添加标识头方便调试)
+      return jsonResponse(cachedData, 200, { 'X-Cache-Status': 'HIT' });
+    }
+
+    // 2. 缓存未命中，查询数据库 (原逻辑保持不变)
     const [userRes, invRes, titleRes] = await Promise.all([
       this.env.DB.prepare('SELECT coins, draw_count, wins, level, exp, total_exp, last_login_date FROM users WHERE id = ?').bind(currentUser.id).first(),
       this.env.DB.prepare('SELECT rarity, count FROM inventory WHERE user_id = ?').bind(currentUser.id).all(),
-      // 查询当前装备的称号
       this.env.DB.prepare('SELECT title_id FROM user_titles WHERE user_id = ? AND is_equipped = 1').bind(currentUser.id).first()
     ]);
 
@@ -434,13 +470,12 @@ class UserService {
     const levelProgress = this.calculateLevelProgress(currentExp, currentLevel);
     const expToNextLevel = Math.max(0, requiredExpForNextLevel - currentExp);
     
-    // 构建称号对象
     let currentTitle = null;
     if (titleRes && titleRes.title_id) {
-        currentTitle = { name: titleRes.title_id }; // 简单起见，title_id 即为显示文本
+        currentTitle = { name: titleRes.title_id };
     }
 
-    return jsonResponse({
+    const responseData = {
       username: currentUser.username,
       nickname: currentUser.nickname,
       coins: userRes.coins,
@@ -454,8 +489,15 @@ class UserService {
       exp_to_next_level: expToNextLevel,
       last_login_date: userRes.last_login_date,
       inventory,
-      title: currentTitle // 返回给前端
-    });
+      title: currentTitle
+    };
+
+    // 3. 写入 KV 缓存 (使用 waitUntil 不阻塞响应)
+    this.ctx.waitUntil(
+      this.env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: CONFIG.TTL.USER_INFO })
+    );
+
+    return jsonResponse(responseData, 200, { 'X-Cache-Status': 'MISS' });
   }
 
   // [新增] 获取用户拥有的所有称号
@@ -497,8 +539,11 @@ class UserService {
     ];
     
     await this.env.DB.batch(batch);
-    
-    return jsonResponse({ success: true, message: 'Title equipped', title: { name: titleId } });
+     
+     // [新增] 清除缓存
+     await this.invalidateUserCache(currentUser.id);
+     
+     return jsonResponse({ success: true, message: 'Title equipped', title: { name: titleId } });
   }
 
   // [新增] 修改昵称方法
@@ -514,15 +559,15 @@ class UserService {
         await this.env.DB.prepare('UPDATE users SET nickname = ? WHERE id = ?')
             .bind(nickname, currentUser.id).run();
         
-        // 更新 Session 缓存中的昵称
-        // 注意：由于是KV缓存，这里简化处理，用户下次操作或重新登录时会完全刷新
-        // 也可以选择在这里读取并更新 KV，但前端通常会重新拉取 getInfo
+        // [新增] 清除用户缓存，确保下次 getInfo 拉取到新昵称
+        await this.invalidateUserCache(currentUser.id);
         
         return jsonResponse({ success: true, nickname });
     } catch(e) {
+        console.error('Update profile error:', e);
         return jsonResponse({ error: 'Update failed' }, 500);
     }
-  }
+  }  
 }
 
 class GachaService {
@@ -615,6 +660,10 @@ class GachaService {
     ];
 
     await this.env.DB.batch(batch);
+    
+    // [新增] 缓存失效：这里使用 waitUntil 异步执行，不阻塞响应返回
+    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+
     this.ctx.waitUntil(this.refillBuffer(currentUser.username));
     this.ctx.waitUntil(updateLeaderboard(this.env, {
         username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp
@@ -623,7 +672,6 @@ class GachaService {
         url: assetData.imageUrl, username: currentUser.username, ts: timestamp
     }));
 
-    // 检查等级提升
     await this.checkLevelUp(currentUser.id);
 
     return jsonResponse({
@@ -652,6 +700,8 @@ class GachaService {
 
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
       await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
+      // 失败退款后也建议清理缓存，以防万一
+      this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
       return jsonResponse({
         success: false,
         rarity: assetData.rarity,
@@ -660,7 +710,6 @@ class GachaService {
       });
     }
 
-    // 限定池抽卡也获得经验（使用UR的经验值，因为限定池通常是UR）
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW['UR'] || 500;
     
     await this.env.DB.batch([
@@ -674,11 +723,13 @@ class GachaService {
             .bind(currentUser.id, currentUser.username, 'draw_limited', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
 
+    // [新增] 缓存失效
+    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+
     this.ctx.waitUntil(updateGalleryIndex(this.env, {
         url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
     
-    // 检查等级提升
     await this.checkLevelUp(currentUser.id);
     
     return jsonResponse({
@@ -706,12 +757,12 @@ class GachaService {
     }
 
     const targetSource = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
-    
-    // [修改点] 明确使用 fetchAndUpload 进行直接请求，绕过 Buffer
     const assetData = await this.fetchAndUpload(currentUser.username, targetSource);
 
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
       await this.env.DB.prepare('UPDATE inventory SET count = count + 5 WHERE user_id = ? AND rarity = ?').bind(currentUser.id, costRarity).run();
+      // 失败退还也需要清理缓存
+      this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
       return jsonResponse({
         success: false,
         rarity: assetData.rarity,
@@ -733,13 +784,16 @@ class GachaService {
             .bind(currentUser.id, currentUser.username, 'craft', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
 
+    // [新增] 缓存失效
+    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+
     this.ctx.waitUntil(updateGalleryIndex(this.env, {
         url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
 
     await this.checkLevelUp(currentUser.id);
     
-    // [注意] 此处不调用 refillBuffer
+    // 返回最新的用户信息（因为缓存已删，这里会重新查库）
     return this.userService.getInfo(currentUser);
   }
 
@@ -757,12 +811,12 @@ class GachaService {
     if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
 
     const source = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
-    
-    // [修改点] 明确使用 fetchAndUpload 进行直接请求，绕过 Buffer
     const assetData = await this.fetchAndUpload(currentUser.username, source);
 
     if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
       await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(price, currentUser.id).run();
+      // 失败退还也需要清理缓存
+      this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
       return jsonResponse({
         success: false,
         rarity: assetData.rarity,
@@ -782,13 +836,15 @@ class GachaService {
              .bind(currentUser.id, currentUser.username, 'shop_buy', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
 
+    // [新增] 缓存失效
+    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+
     this.ctx.waitUntil(updateGalleryIndex(this.env, {
         url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
     }));
 
     await this.checkLevelUp(currentUser.id);
     
-    // [注意] 此处不调用 refillBuffer
     return jsonResponse({
       success: true,
       imageUrl: assetData.imageUrl,
@@ -824,7 +880,6 @@ class GachaService {
             'UPDATE users SET coins = coins + ?, wins = wins + 1, exp = exp + ?, total_exp = total_exp + ? WHERE id = ?'
         ).bind(winAmount, expGain, expGain, currentUser.id).run();
         
-        // 检查等级提升
         await this.checkLevelUp(currentUser.id);
     } else {
         await this.env.DB.prepare(
@@ -836,6 +891,10 @@ class GachaService {
         'INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)'
     ).bind(currentUser.id, currentUser.username, 'dice', `Bet:${bet} Roll:${roll} Win:${winAmount} Exp:${expGain}`, Date.now()).run();
 
+    // [新增] 缓存失效
+    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+
+    // 获取最新的金币数返回
     const user = await this.env.DB.prepare('SELECT coins FROM users WHERE id = ?').bind(currentUser.id).first();
 
     return jsonResponse({
@@ -890,7 +949,13 @@ class GachaService {
             const randomStr = Math.random().toString(36).slice(2, 6);
             const filename = `images/${base64Name}___${timestamp}___${randomStr}.jpg`;
             
-            await this.env.R2_BUCKET.put(filename, buffer, { httpMetadata: { contentType: contentType } });
+            await this.env.R2_BUCKET.put(filename, buffer, { 
+                httpMetadata: { 
+                    contentType: contentType,
+                    // 浏览器缓存 1 年 (immutable)
+                    cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable`
+                } 
+            });
             
             return { 
                 success: true, 
@@ -916,13 +981,17 @@ async function handleProfile() {
 async function handleChangelog(env) {
   if (!env.RECENT_REQUESTS) return jsonResponse(DEFAULT_CHANGELOG);
   let logs = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.CHANGELOG));
-  return jsonResponse(logs || DEFAULT_CHANGELOG);
+  return jsonResponse(logs || DEFAULT_CHANGELOG, 200, {
+      'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`
+  });
 }
 
 async function handleGetAnnouncement(env) {
   if (!env.RECENT_REQUESTS) return jsonResponse({ enabled: false });
   const data = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
-  return jsonResponse(data || { enabled: false, title: "", content: "", id: 0 });
+  return jsonResponse(data || { enabled: false }, 200, {
+      'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`
+  });
 }
 
 async function handleAdminSaveAnnouncement(request, env) {
@@ -959,7 +1028,12 @@ async function handleAdminSaveAnnouncement(request, env) {
 async function handleShowcase(env) {
     if (!env.RECENT_REQUESTS) return jsonResponse([]);
     const list = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.LEADERBOARD)) || [];
-    return jsonResponse(list.sort(() => 0.5 - Math.random()).slice(0, 6));
+    const result = list.sort(() => 0.5 - Math.random()).slice(0, 6);
+    
+    // [修改] 添加浏览器缓存头：public, max-age=300 (5分钟)
+    return jsonResponse(result, 200, {
+        'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`
+    });
 }
 
 async function handleLibrary(request, env, url) {
@@ -974,7 +1048,12 @@ async function handleLibrary(request, env, url) {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const currentPage = Math.max(1, Math.min(page, totalPages));
   const pageItems = galleryItems ? galleryItems.slice((currentPage - 1) * pageSize, currentPage * pageSize) : [];
-  return new Response(getLibraryHtml(pageItems, { currentPage, totalPages, totalItems }), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return new Response(getLibraryHtml(pageItems, { currentPage, totalPages, totalItems }), { 
+      headers: { 
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=60' 
+      } 
+  });
 }
 
 async function handleAdminVerify(request, env) {
@@ -1147,8 +1226,13 @@ async function rebuildGalleryIndexFromR2(env, indexKey) {
     return items;
 }
 
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+function jsonResponse(data, status = 200, extraHeaders = {}) {
+  const headers = { 
+    'Content-Type': 'application/json', 
+    'Access-Control-Allow-Origin': '*',
+    ...extraHeaders 
+  };
+  return new Response(JSON.stringify(data), { status, headers });
 }
 function safeJsonParse(str) { try { return JSON.parse(str); } catch { return null; } }
 
@@ -2164,7 +2248,8 @@ function getHtmlPage() {
         if(!this.username) { document.getElementById('authModal').classList.add('show'); return; }
         
         if (this.currentPool === 'ltd') {
-             const currentCoins = parseInt(document.getElementById('profileCoins').innerText) || 0;
+             // [修复] 使用 this.coins 而不是查找不存在的 DOM 元素
+             const currentCoins = this.coins;
              const cost = ${CONFIG.LIMITED.COST};
              if (currentCoins < cost) return this.toast('积分不足！', 'warn');
         }
