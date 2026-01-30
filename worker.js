@@ -437,33 +437,62 @@ class UserService {
     });
   }
 
-  // [修改] getInfo 方法：增加 KV 缓存层
+  // [优化] getInfo 方法：使用 SQL 聚合查询，1次 DB 请求获取所有数据
   async getInfo(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
 
     const cacheKey = `uinfo:${currentUser.id}`;
     
-    // 1. 尝试从 KV 读取缓存
+    // 1. 尝试从 KV 读取缓存 (保持原有的读写分离逻辑)
     const cachedData = await this.env.KV_CACHE.get(cacheKey, { type: 'json' });
     if (cachedData) {
-      // 命中缓存，直接返回 (添加标识头方便调试)
       return jsonResponse(cachedData, 200, { 'X-Cache-Status': 'HIT' });
     }
 
-    // 2. 缓存未命中，查询数据库 (原逻辑保持不变)
-    const [userRes, invRes, titleRes] = await Promise.all([
-      this.env.DB.prepare('SELECT coins, draw_count, wins, level, exp, total_exp, last_login_date FROM users WHERE id = ?').bind(currentUser.id).first(),
-      this.env.DB.prepare('SELECT rarity, count FROM inventory WHERE user_id = ?').bind(currentUser.id).all(),
-      this.env.DB.prepare('SELECT title_id FROM user_titles WHERE user_id = ? AND is_equipped = 1').bind(currentUser.id).first()
-    ]);
+    // 2. 数据库查询优化：使用子查询和 JSON 聚合
+    // 解释：
+    // - inv_json: 将 inventory 表中该用户的所有行，打包成 [{"rarity":"N","count":5}, ...] 格式的字符串
+    // - active_title: 获取当前装备的称号ID
+    const sql = `
+      SELECT 
+        u.username, u.nickname, u.coins, u.draw_count, u.wins, 
+        u.level, u.exp, u.total_exp, u.last_login_date,
+        (
+          SELECT title_id 
+          FROM user_titles 
+          WHERE user_id = u.id AND is_equipped = 1
+        ) as active_title,
+        (
+          SELECT json_group_array(json_object('rarity', rarity, 'count', count)) 
+          FROM inventory 
+          WHERE user_id = u.id
+        ) as inv_json
+      FROM users u
+      WHERE u.id = ?
+    `;
+
+    const userRes = await this.env.DB.prepare(sql).bind(currentUser.id).first();
 
     if (!userRes) return jsonResponse({ error: 'User Not Found' }, 404);
 
+    // 3. 数据处理
+    // 解析背包 JSON 数据
     const inventory = {};
-    if (invRes.results) {
-      invRes.results.forEach(row => inventory[row.rarity] = row.count);
+    if (userRes.inv_json) {
+      try {
+        const invArray = JSON.parse(userRes.inv_json);
+        // 转换数组为对象格式: { N: 10, R: 5 ... }
+        if (Array.isArray(invArray)) {
+          invArray.forEach(item => {
+            if(item.rarity) inventory[item.rarity] = item.count;
+          });
+        }
+      } catch (e) {
+        console.error('Inventory parse error', e);
+      }
     }
 
+    // 处理等级进度
     const currentLevel = userRes.level || 1;
     const currentExp = userRes.exp || 0;
     const totalExp = userRes.total_exp || 0;
@@ -471,14 +500,16 @@ class UserService {
     const levelProgress = this.calculateLevelProgress(currentExp, currentLevel);
     const expToNextLevel = Math.max(0, requiredExpForNextLevel - currentExp);
     
+    // 处理称号
     let currentTitle = null;
-    if (titleRes && titleRes.title_id) {
-        currentTitle = { name: titleRes.title_id };
+    if (userRes.active_title) {
+        currentTitle = { name: userRes.active_title };
     }
 
+    // 4. 构建响应对象
     const responseData = {
-      username: currentUser.username,
-      nickname: currentUser.nickname,
+      username: userRes.username,
+      nickname: userRes.nickname,
       coins: userRes.coins,
       drawCount: userRes.draw_count,
       wins: userRes.wins,
@@ -493,7 +524,7 @@ class UserService {
       title: currentTitle
     };
 
-    // 3. 写入 KV 缓存 (使用 waitUntil 不阻塞响应)
+    // 5. 写入 KV 缓存
     this.ctx.waitUntil(
       this.env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: CONFIG.TTL.USER_INFO })
     );
