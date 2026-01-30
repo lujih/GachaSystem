@@ -98,6 +98,13 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const method = request.method;
+    
+    // [新增] 调试日志
+    console.log(`[${method}] ${url.pathname}`);
+    console.log('Auth Headers:', {
+      'X-Session-Token': request.headers.get('X-Session-Token'),
+      'X-User-ID': request.headers.get('X-User-ID')
+    });
 
     if (method === 'OPTIONS') {
       return new Response(null, {
@@ -111,25 +118,48 @@ export default {
 
     const token = request.headers.get('X-Session-Token');
     let currentUser = null;
+    // [修复] 添加 token 验证日志
     if (token) {
+      console.log(`Trying to get session for token: ${token.substring(0, 8)}...`);
       const userDataStr = await env.KV_CACHE.get(`session:${token}`);
-      if (userDataStr) currentUser = JSON.parse(userDataStr);
-    } 
+      console.log(`Session data from KV: ${userDataStr ? 'Found' : 'Not found'}`);
+      if (userDataStr) {
+        try {
+          currentUser = JSON.parse(userDataStr);
+          console.log(`Current user from session: ${currentUser.username}`);
+        } catch (e) {
+          console.error('Error parsing session data:', e);
+        }
+      }
+    }  
     
+    // [修复] 如果 session 不存在，尝试通过 X-User-ID 查询数据库
     if (!currentUser && request.headers.get('X-User-ID')) {
-         const uidName = request.headers.get('X-User-ID');
-         const user = await env.DB.prepare('SELECT id, username, nickname FROM users WHERE username = ?').bind(uidName).first();
-         if(user) currentUser = user;
+      const uidName = request.headers.get('X-User-ID');
+      console.log(`Falling back to DB query for username: ${uidName}`);
+      try {
+        const user = await env.DB.prepare('SELECT id, username, nickname FROM users WHERE username = ?').bind(uidName).first();
+        if (user) {
+          currentUser = user;
+          console.log(`Found user in DB: ${user.username}`);
+        } else {
+          console.log(`User not found in DB: ${uidName}`);
+        }
+      } catch (dbError) {
+        console.error('Database query error:', dbError);
+      }
     }
+
+    console.log(`Final currentUser: ${currentUser ? currentUser.username : 'null'}`);
 
     const userService = new UserService(env, ctx);
     const gachaService = new GachaService(env, ctx, userService);
 
     const routes = {
       'GET /': () => handleHome(),
-
       'GET /user/profile': () => handleProfile(),
 
+      // 用户认证相关
       'POST /auth/register': () => userService.register(request),
       'POST /auth/login': () => userService.login(request),
       'GET /user/info': () => userService.getInfo(currentUser),
@@ -138,19 +168,21 @@ export default {
       'POST /user/claim-reward': () => userService.claimReward(currentUser, request),
       'GET /user/titles': () => userService.getTitles(currentUser),
       'POST /user/equip-title': () => userService.equipTitle(currentUser, request),
-      
+
+      // 抽卡相关 - 确保路径正确
       'GET /draw': () => gachaService.draw(currentUser),
       'POST /draw/limited': () => gachaService.drawLimited(currentUser),
       'POST /user/craft': () => gachaService.craft(currentUser, request),
       'POST /shop/buy': () => gachaService.shopBuy(currentUser, request),
       'POST /game/dice': () => gachaService.playDice(currentUser, request),
-      
+
+      // 其他功能
       'GET /showcase': () => handleShowcase(env),
       'GET /changelog': () => handleChangelog(env),
       'GET /announcement': () => handleGetAnnouncement(env),
-
       'GET /library': () => handleLibrary(request, env, url),
-      
+
+      // 管理员功能
       'POST /admin/users': () => handleAdminUsers(request, env),
       'POST /admin/verify': () => handleAdminVerify(request, env),
       'POST /admin/save-changelog': () => handleAdminSaveLog(request, env),
@@ -403,13 +435,18 @@ class UserService {
   async login(request) {
     const { username, password } = await request.json();
     
+    console.log(`Login attempt for user: ${username}`);
+    
     // 1. 查询用户信息
     // 仅查询构建 Session 所需的基本字段，移除了 streak 和 date 的查询需求
     const user = await this.env.DB.prepare(
       'SELECT id, username, nickname, level, exp, total_exp FROM users WHERE username = ? AND password = ?'
     ).bind(username, password).first();
 
-    if (!user) return jsonResponse({ error: 'Invalid Credentials' }, 403);
+    if (!user) {
+      console.log(`Login failed: Invalid credentials for ${username}`);
+      return jsonResponse({ error: 'Invalid Credentials' }, 403);
+    }
 
     // 2. 生成 Token
     const token = crypto.randomUUID();
@@ -1866,6 +1903,7 @@ function getHtmlPage() {
   <script>
     const App = {
       username: localStorage.getItem('moe_username'),
+      token: localStorage.getItem('moe_token'), // [新增] 保存 token
       nickname: null, loading: false, adminPwd: null, logsData: [], currentAdminTab: 'log', inventory: {},
       currentPool: 'std',
       authMode: 'login', 
@@ -1905,6 +1943,13 @@ function getHtmlPage() {
       },
       async fetchUserInfo() {
         if (!this.username) { document.getElementById('authModal').classList.add('show'); return; }
+        // [修复] 构建正确的 headers
+        const headers = {};
+        if (this.token) {
+          headers['X-Session-Token'] = this.token;
+        } else {
+          headers['X-User-ID'] = this.username;
+        }
         try {
           const res = await fetch('/user/info', { headers: { 'X-User-ID': this.username } });
           const data = await res.json();
@@ -1913,11 +1958,15 @@ function getHtmlPage() {
               this.nickname = data.nickname;
               this.updateUI(data); 
           } else { 
-              localStorage.removeItem('moe_username');
-              this.username = null;
-              document.getElementById('authModal').classList.add('show'); 
+            localStorage.removeItem('moe_username');
+            localStorage.removeItem('moe_token'); // [新增] 清除 token
+            this.username = null;
+            this.token = null;
+            document.getElementById('authModal').classList.add('show'); 
           }
-        } catch(e) {}
+        } catch(e) {
+          console.error('Fetch user info error:', e);
+        }
       },
       updateUI(user) {
         // --- 1. 更新顶部导航栏 (Header) ---
@@ -2190,7 +2239,9 @@ function getHtmlPage() {
                 const d = await res.json();
                 if(d.success) { 
                     this.username = d.user.username;
+                    this.token = d.token;
                     localStorage.setItem('moe_username', d.user.username);
+                    localStorage.setItem('moe_token', d.token);
                     this.updateUI(d.user);
                     document.getElementById('authModal').classList.remove('show');
                 } else { 
