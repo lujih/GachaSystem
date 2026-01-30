@@ -990,68 +990,6 @@ class GachaService {
 
     return jsonResponse({ success: true, roll, isWin, winAmount, expGained: expGain, newBalance: user.coins });
   }
-
-  async getOrFetchAsset(username, sourceList) {
-    const bufferKey = this.getBufferKey(username);
-    const bufferData = await this.env.KV_CACHE.get(bufferKey, { type: 'json' });
-    
-    if (bufferData && bufferData.success) {
-      this.ctx.waitUntil(this.env.KV_CACHE.delete(bufferKey));
-      return bufferData;
-    } else {
-      const source = sourceList[Math.floor(Math.random() * sourceList.length)];
-      return await this.fetchAndUpload(username, source);
-    }
-  }
-
-  async refillBuffer(username) {
-    try {
-        const key = this.getBufferKey(username);
-        const existing = await this.env.KV_CACHE.get(key);
-        if (existing) return;
-
-        const source = CONFIG.SOURCES[Math.floor(Math.random() * CONFIG.SOURCES.length)];
-        const assetData = await this.fetchAndUpload(username, source);
-        if (assetData.success) {
-            await this.env.KV_CACHE.put(key, JSON.stringify(assetData), { expirationTtl: CONFIG.TTL.BUFFER });
-        }
-    } catch(e) { console.error('Refill error', e); }
-  }
-
-  async fetchAndUpload(username, source) {
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-        const imgRes = await fetch(source.url, { signal: controller.signal });
-        clearTimeout(timeout);
-
-        if (imgRes.ok) {
-            const buffer = await imgRes.arrayBuffer();
-            const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
-            const timestamp = Date.now();
-            const base64Name = btoa(encodeURIComponent(username)).replace(/[/+=]/g, '_');
-            const randomStr = Math.random().toString(36).slice(2, 6);
-            const filename = `images/${base64Name}___${timestamp}___${randomStr}.jpg`;
-            
-            await this.env.R2_BUCKET.put(filename, buffer, { 
-                httpMetadata: { 
-                    contentType: contentType,
-                    // 浏览器缓存 1 年 (immutable)
-                    cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable`
-                } 
-            });
-            
-            return { 
-                success: true, 
-                imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`,
-                rarity: source.rarity, 
-                sourceName: source.name 
-            };
-        }
-    } catch (e) { console.error('Fetch Asset Error', e); }
-    
-    return { success: false, rarity: 'N', imageUrl: CONFIG.DEFAULT_IMG };
-  }
 }
 
 async function handleHome() {
