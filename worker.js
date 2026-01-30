@@ -67,7 +67,8 @@ const CONFIG = {
     CHANGELOG: 'system:changelog',
     ANNOUNCEMENT: 'system:announcement',
     LEADERBOARD: 'system:leaderboard',
-    GALLERY_INDEX: 'system:gallery_index'
+    GALLERY_INDEX: 'system:gallery_index',
+    BUFFER_PREFIX: 'sys:buffer:'
   },
   TTL: { 
     SESSION: 86400 * 7, 
@@ -577,6 +578,98 @@ class GachaService {
     this.userService = userService;
   }
 
+  // =================================================
+  // 核心优化：全局缓冲系统 (Global Buffer System)
+  // =================================================
+
+  /**
+   * 消费缓冲池中的资源
+   * 逻辑：尝试从 KV 读取现成图片 -> 成功则返回并触发后台补充 -> 失败则现场抓取并触发后台补充
+   */
+  async consumeGlobalBuffer(rarity, sourceList) {
+    const key = `${CONFIG.KEYS.BUFFER_PREFIX}${rarity}`;
+    
+    // 1. 尝试从 KV 读取预存的资源
+    // 优化：使用 stream 以外的方式读取，这里假设存的是 JSON 元数据
+    const cachedAsset = await this.env.KV_CACHE.get(key, { type: 'json' });
+
+    if (cachedAsset && cachedAsset.success) {
+      // [命中缓冲]：直接返回，并安排后台补充新库存（保证下一个用户也有的用）
+      this.ctx.waitUntil(this.refillGlobalBuffer(rarity, sourceList));
+      return cachedAsset;
+    }
+
+    // [缓冲未命中]：不得不进行实时同步抓取 (兜底策略)
+    console.log(`[Cache Miss] Buffer empty for ${rarity}, fetching sync...`);
+    const freshAsset = await this.fetchAndUploadRandom(sourceList);
+    
+    // 同时也安排后台补充，为下次做准备
+    this.ctx.waitUntil(this.refillGlobalBuffer(rarity, sourceList));
+    
+    return freshAsset;
+  }
+
+  /**
+   * 后台补充缓冲池
+   * 逻辑：抓取新图 -> 存入 KV供下次使用
+   */
+  async refillGlobalBuffer(rarity, sourceList) {
+    try {
+        const asset = await this.fetchAndUploadRandom(sourceList);
+        if (asset.success) {
+            const key = `${CONFIG.KEYS.BUFFER_PREFIX}${rarity}`;
+            // 存入 KV，TTL 设置为 24小时 (如果没人抽，这个图保留24小时)
+            await this.env.KV_CACHE.put(key, JSON.stringify(asset), { expirationTtl: 86400 });
+        }
+    } catch (e) {
+        console.error(`[Refill Error] Failed to refill ${rarity}:`, e);
+    }
+  }
+
+  /**
+   * 随机从源列表中抓取并上传 (基础原子操作)
+   */
+  async fetchAndUploadRandom(sourceList) {
+      // 随机选一个源
+      const source = sourceList[Math.floor(Math.random() * sourceList.length)];
+      return await this.fetchAndUpload(source);
+  }
+
+  // 具体的网络请求与上传逻辑 (保持 R2 缓存头优化)
+  async fetchAndUpload(source) {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000); // 稍微放宽超时，保证后台任务成功率
+        const imgRes = await fetch(source.url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (imgRes.ok) {
+            const buffer = await imgRes.arrayBuffer();
+            const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+            const timestamp = Date.now();
+            // 文件名使用随机字符串，不再依赖 username，因为这是全局缓冲
+            const randomStr = Math.random().toString(36).slice(2, 8);
+            const filename = `images/${source.rarity}_${timestamp}_${randomStr}.jpg`;
+            
+            await this.env.R2_BUCKET.put(filename, buffer, { 
+                httpMetadata: { 
+                    contentType: contentType,
+                    cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable`
+                } 
+            });
+            
+            return { 
+                success: true, 
+                imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`,
+                rarity: source.rarity, 
+                sourceName: source.name 
+            };
+        }
+    } catch (e) { console.error('Fetch Asset Error', e); }
+    
+    return { success: false, rarity: 'N', imageUrl: CONFIG.DEFAULT_IMG };
+  }
+
   // 检查用户是否升级并处理升级逻辑
   async checkLevelUp(userId) {
     try {
@@ -627,21 +720,22 @@ class GachaService {
     }
   }
 
-  getBufferKey(username) { return `buffer:${username}`; }
-
   async draw(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
     
-    let assetData = await this.getOrFetchAsset(currentUser.username, CONFIG.SOURCES);
+    // 1. 先决定抽到哪个稀有度/图源 (保持概率分布)
+    // 这里的逻辑是：先随机选一个 Source，然后根据这个 Source 的稀有度去取缓冲
+    // 这样既保留了原有的概率配置，又利用了缓冲
+    const targetSource = CONFIG.SOURCES[Math.floor(Math.random() * CONFIG.SOURCES.length)];
+    const targetRarity = targetSource.rarity;
 
-    if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
-      return jsonResponse({
-        success: false,
-        rarity: assetData.rarity,
-        imageUrl: assetData.imageUrl,
-        pointsEarned: 0,
-        message: '抽卡失败，获得默认图片'
-      });
+    // 2. 从全局缓冲池极速获取
+    // 注意：我们传入所有该稀有度的源，以便 refill 时能随机选取
+    const sourcesOfThisRarity = CONFIG.SOURCES.filter(s => s.rarity === targetRarity);
+    let assetData = await this.consumeGlobalBuffer(targetRarity, sourcesOfThisRarity);
+
+    if (!assetData.success) {
+      return jsonResponse({ success: false, message: '系统繁忙，请重试' });
     }
 
     const points = CONFIG.GAME.POINTS[assetData.rarity] || 5;
@@ -661,10 +755,7 @@ class GachaService {
 
     await this.env.DB.batch(batch);
     
-    // [新增] 缓存失效：这里使用 waitUntil 异步执行，不阻塞响应返回
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-
-    this.ctx.waitUntil(this.refillBuffer(currentUser.username));
     this.ctx.waitUntil(updateLeaderboard(this.env, {
         username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp
     }));
@@ -691,53 +782,32 @@ class GachaService {
         'UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ? AND coins >= ?'
     ).bind(cost, currentUser.id, cost).run();
 
-    if (deductRes.meta.changes === 0) {
-        return jsonResponse({ error: 'Not Enough Points' }, 403);
-    }
+    if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
 
-    const source = CONFIG.LIMITED.SOURCES[Math.floor(Math.random() * CONFIG.LIMITED.SOURCES.length)];
-    let assetData = await this.getOrFetchAsset(currentUser.username, CONFIG.LIMITED.SOURCES);
+    // 限定池通常只有一个稀有度或特定的源列表
+    // 假设限定池主要是 UR，我们使用 LIMITED 专用的缓冲键，防止和普通 UR 混淆
+    const limitedRarityKey = 'LIMITED_UR'; 
+    let assetData = await this.consumeGlobalBuffer(limitedRarityKey, CONFIG.LIMITED.SOURCES);
 
-    if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
+    if (!assetData.success) {
       await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
-      // 失败退款后也建议清理缓存，以防万一
       this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-      return jsonResponse({
-        success: false,
-        rarity: assetData.rarity,
-        imageUrl: assetData.imageUrl,
-        message: '限定池抽卡失败，获得默认图片，积分已退还'
-      });
+      return jsonResponse({ success: false, message: '限定池暂时空缺，积分已退还' });
     }
 
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW['UR'] || 500;
     
     await this.env.DB.batch([
-        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?')
-            .bind(expGain, expGain, currentUser.id),
-        this.env.DB.prepare(`
-            INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
-            ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1
-        `).bind(currentUser.id, assetData.rarity),
-        this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-            .bind(currentUser.id, currentUser.username, 'draw_limited', assetData.imageUrl, assetData.rarity, Date.now())
+        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?').bind(expGain, expGain, currentUser.id),
+        this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, assetData.rarity),
+        this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, 'draw_limited', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
 
-    // [新增] 缓存失效
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-
-    this.ctx.waitUntil(updateGalleryIndex(this.env, {
-        url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
-    }));
-    
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, ts: Date.now() }));
     await this.checkLevelUp(currentUser.id);
     
-    return jsonResponse({
-      success: true,
-      rarity: assetData.rarity,
-      imageUrl: assetData.imageUrl,
-      expGained: expGain
-    });
+    return jsonResponse({ success: true, rarity: assetData.rarity, imageUrl: assetData.imageUrl, expGained: expGain });
   }
 
   async craft(currentUser, request) {
@@ -752,50 +822,36 @@ class GachaService {
         'UPDATE inventory SET count = count - 5 WHERE user_id = ? AND rarity = ? AND count >= 5'
     ).bind(currentUser.id, costRarity).run();
 
-    if (deductRes.meta.changes === 0) {
-        return jsonResponse({ error: `Not enough ${costRarity} cards (Need 5)` }, 403);
-    }
+    if (deductRes.meta.changes === 0) return jsonResponse({ error: `Not enough ${costRarity} cards` }, 403);
 
-    const targetSource = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
-    const assetData = await this.fetchAndUpload(currentUser.username, targetSource);
+    // 合成直接使用对应稀有度的缓冲
+    const sources = CONFIG.SOURCES.filter(s => s.rarity === targetRarity);
+    // 如果该稀有度没有源（比如SSR只有特定源），需要做非空判断，防止 fetch 报错
+    const validSources = sources.length > 0 ? sources : CONFIG.SOURCES; 
+    
+    const assetData = await this.consumeGlobalBuffer(targetRarity, validSources);
 
-    if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
+    if (!assetData.success) {
       await this.env.DB.prepare('UPDATE inventory SET count = count + 5 WHERE user_id = ? AND rarity = ?').bind(currentUser.id, costRarity).run();
-      // 失败退还也需要清理缓存
       this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-      return jsonResponse({
-        success: false,
-        rarity: assetData.rarity,
-        imageUrl: assetData.imageUrl,
-        message: '卡片合成失败，消耗的卡片已返还'
-      });
+      return jsonResponse({ success: false, message: '合成失败，素材已退还' });
     }
 
     const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT;
     
     await this.env.DB.batch([
-        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?')
-            .bind(expGain, expGain, currentUser.id),
-        this.env.DB.prepare(`
-            INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
-            ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1
-        `).bind(currentUser.id, assetData.rarity),
-        this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-            .bind(currentUser.id, currentUser.username, 'craft', assetData.imageUrl, assetData.rarity, Date.now())
+        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?').bind(expGain, expGain, currentUser.id),
+        this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, assetData.rarity),
+        this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, 'craft', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
 
-    // [新增] 缓存失效
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-
-    this.ctx.waitUntil(updateGalleryIndex(this.env, {
-        url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
-    }));
-
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, ts: Date.now() }));
     await this.checkLevelUp(currentUser.id);
     
-    // 返回最新的用户信息（因为缓存已删，这里会重新查库）
     return this.userService.getInfo(currentUser);
   }
+
 
   // 2. 商店购买：同样使用 fetchAndUpload 直接获取
   async shopBuy(currentUser, request) {
@@ -804,67 +860,44 @@ class GachaService {
     const price = CONFIG.GAME.SHOP[targetRarity];
     if (!price) return jsonResponse({ error: 'Invalid Pack' }, 400);
 
-    const deductRes = await this.env.DB.prepare(
-        'UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?'
-    ).bind(price, currentUser.id, price).run();
-
+    const deductRes = await this.env.DB.prepare('UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?').bind(price, currentUser.id, price).run();
     if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
 
-    const source = CONFIG.SOURCES.find(s => s.rarity === targetRarity) || CONFIG.SOURCES[0];
-    const assetData = await this.fetchAndUpload(currentUser.username, source);
+    // 商店购买直接使用缓冲
+    const sources = CONFIG.SOURCES.filter(s => s.rarity === targetRarity);
+    const validSources = sources.length > 0 ? sources : CONFIG.SOURCES;
 
-    if (!assetData.success || assetData.imageUrl === CONFIG.DEFAULT_IMG) {
+    const assetData = await this.consumeGlobalBuffer(targetRarity, validSources);
+
+    if (!assetData.success) {
       await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(price, currentUser.id).run();
-      // 失败退还也需要清理缓存
       this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-      return jsonResponse({
-        success: false,
-        rarity: assetData.rarity,
-        imageUrl: assetData.imageUrl,
-        message: '商店购买失败，积分已退还'
-      });
+      return jsonResponse({ success: false, message: '购买失败，积分已退还' });
     }
 
     const expGain = CONFIG.LEVEL.EXP_GAIN.SHOP_BUY;
-    
     await this.env.DB.batch([
-        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?')
-            .bind(expGain, expGain, currentUser.id),
-         this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`)
-             .bind(currentUser.id, assetData.rarity),
-         this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-             .bind(currentUser.id, currentUser.username, 'shop_buy', assetData.imageUrl, assetData.rarity, Date.now())
+        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?').bind(expGain, expGain, currentUser.id),
+         this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, assetData.rarity),
+         this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, 'shop_buy', assetData.imageUrl, assetData.rarity, Date.now())
     ]);
 
-    // [新增] 缓存失效
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-
-    this.ctx.waitUntil(updateGalleryIndex(this.env, {
-        url: assetData.imageUrl, username: currentUser.username, ts: Date.now()
-    }));
-
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, ts: Date.now() }));
     await this.checkLevelUp(currentUser.id);
     
-    return jsonResponse({
-      success: true,
-      imageUrl: assetData.imageUrl,
-      rarity: assetData.rarity,
-      expGained: expGain
-    });
+    return jsonResponse({ success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain });
   }
 
+  // 骰子逻辑不需要缓冲，但需要保持缓存失效逻辑
   async playDice(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
     const { betAmount, prediction } = await request.json();
-    
     const bet = parseInt(betAmount);
     if (isNaN(bet) || bet < 10 || bet > 1000) return jsonResponse({ error: 'Invalid Bet' }, 400);
     if (!['small', 'big'].includes(prediction)) return jsonResponse({ error: 'Invalid Prediction' }, 400);
 
-    const deductRes = await this.env.DB.prepare(
-        'UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?'
-    ).bind(bet, currentUser.id, bet).run();
-
+    const deductRes = await this.env.DB.prepare('UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?').bind(bet, currentUser.id, bet).run();
     if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
 
     const roll = Math.floor(Math.random() * 6) + 1;
@@ -876,35 +909,18 @@ class GachaService {
     if (isWin) {
         winAmount = bet * 2;
         expGain = CONFIG.LEVEL.EXP_GAIN.DICE_WIN;
-        await this.env.DB.prepare(
-            'UPDATE users SET coins = coins + ?, wins = wins + 1, exp = exp + ?, total_exp = total_exp + ? WHERE id = ?'
-        ).bind(winAmount, expGain, expGain, currentUser.id).run();
-        
+        await this.env.DB.prepare('UPDATE users SET coins = coins + ?, wins = wins + 1, exp = exp + ?, total_exp = total_exp + ? WHERE id = ?').bind(winAmount, expGain, expGain, currentUser.id).run();
         await this.checkLevelUp(currentUser.id);
     } else {
-        await this.env.DB.prepare(
-            'UPDATE users SET wins = wins WHERE id = ?'
-        ).bind(currentUser.id).run();
+        await this.env.DB.prepare('UPDATE users SET wins = wins WHERE id = ?').bind(currentUser.id).run();
     }
 
-    await this.env.DB.prepare(
-        'INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).bind(currentUser.id, currentUser.username, 'dice', `Bet:${bet} Roll:${roll} Win:${winAmount} Exp:${expGain}`, Date.now()).run();
+    await this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, 'dice', `Bet:${bet} Roll:${roll} Win:${winAmount} Exp:${expGain}`, Date.now()).run();
 
-    // [新增] 缓存失效
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-
-    // 获取最新的金币数返回
     const user = await this.env.DB.prepare('SELECT coins FROM users WHERE id = ?').bind(currentUser.id).first();
 
-    return jsonResponse({
-        success: true,
-        roll,
-        isWin,
-        winAmount,
-        expGained: expGain,
-        newBalance: user.coins
-    });
+    return jsonResponse({ success: true, roll, isWin, winAmount, expGained: expGain, newBalance: user.coins });
   }
 
   async getOrFetchAsset(username, sourceList) {
