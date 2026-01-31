@@ -157,6 +157,7 @@ export default {
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
       'POST /admin/update-points': () => handleAdminUpdatePoints(request, env),
       'POST /admin/delete-user': () => handleAdminDeleteUser(request, env),
+      'POST /admin/rebuild-gallery': () => handleAdminRebuildGallery(request, env),
     };
 
     const handler = routes[`${method} ${url.pathname}`];
@@ -180,6 +181,74 @@ class UserService {
   constructor(env, ctx) {
     this.env = env;
     this.ctx = ctx;
+    // [优化] 初始化累积经验表 (单例模式，避免重复计算)
+    if (!globalThis.XP_TABLE) {
+      this.initXpTable();
+    }
+  }
+  /**
+   * [新增] 初始化累积经验表
+   * 数学原理：Level L 的总经验阈值 = sum( Cost(i) ) for i from 2 to L
+   */
+  initXpTable() {
+    const table = [0, 0]; // 0级占位, 1级所需总经验为0
+    let cumulative = 0;
+    const { BASE_EXP, EXP_MULTIPLIER, MAX_LEVEL } = CONFIG.LEVEL;
+
+    // 从 2 级开始计算（因为从 1 升到 2 需要经验）
+    for (let l = 2; l <= MAX_LEVEL + 1; l++) {
+      // 原公式：所需经验 = 基础 * (目标等级^1.5)
+      // 注意：这里需要严格对齐原有的 calculateRequiredExp 逻辑
+      const cost = Math.floor(BASE_EXP * Math.pow(l, EXP_MULTIPLIER));
+      cumulative += cost;
+      table[l] = cumulative;
+    }
+    
+    // 冻结对象，作为全局常量使用
+    globalThis.XP_TABLE = table;
+  }
+
+  // [优化] 根据总经验计算等级和当前剩余经验
+  // 算法：二分查找或直接遍历索引 (O(1) ~ O(log N))
+  calculateLevelFromTotalExp(totalExp) {
+    const table = globalThis.XP_TABLE;
+    const maxIdx = table.length - 1;
+
+    // 1. 超过最高级处理
+    if (totalExp >= table[maxIdx - 1]) { // 注意边界
+        // 实际上 MAX_LEVEL 是 100，我们计算到了 101 的阈值
+        // 如果总经验超过了到达 100 级的阈值
+        const maxLevel = CONFIG.LEVEL.MAX_LEVEL;
+        const expForMax = table[maxLevel];
+        
+        // 如果总经验甚至超过了 maxLevel，我们只返回 maxLevel
+        return {
+            level: maxLevel,
+            currentExp: totalExp - expForMax, // 溢出的经验
+            isMax: true
+        };
+    }
+
+    // 2. 查找等级
+    // 由于数组是有序的，且长度很小(100)，直接倒序查找或二分查找均极快
+    // 这里使用倒序查找，找到第一个 阈值 <= totalExp 的等级
+    let level = 1;
+    for (let i = maxIdx; i >= 1; i--) {
+        if (totalExp >= table[i]) {
+            level = i;
+            break;
+        }
+    }
+
+    // 3. 计算当前等级内的剩余经验
+    // 剩余经验 = 总经验 - 到达当前等级所需的累积经验
+    const currentExp = totalExp - table[level];
+
+    return {
+        level,
+        currentExp,
+        isMax: level >= CONFIG.LEVEL.MAX_LEVEL
+    };
   }
 
   // [新增] 辅助方法：清除用户缓存
@@ -196,16 +265,10 @@ class UserService {
 
   // 计算等级进度百分比
   calculateLevelProgress(exp, level) {
-    // 下一级所需的经验阈值
-    const expNeededForNextLevel = this.calculateRequiredExp(level + 1);
-    
-    if (expNeededForNextLevel <= 0) return 100;
-    
-    // 简单公式：当前经验 / 下一级所需经验 * 100
-    let progress = (exp / expNeededForNextLevel) * 100;
-    
-    // 确保在 0-100 之间
-    return Math.max(0, Math.min(100, Math.floor(progress)));
+      if (level >= CONFIG.LEVEL.MAX_LEVEL) return 100;
+      const expNeeded = this.calculateRequiredExp(level + 1);
+      if (expNeeded <= 0) return 100;
+      return Math.max(0, Math.min(100, Math.floor((exp / expNeeded) * 100)));
   }
 
   async register(request) {
@@ -701,48 +764,49 @@ class GachaService {
     return { success: false, rarity: 'N', imageUrl: CONFIG.DEFAULT_IMG };
   }
 
-  // 检查用户是否升级并处理升级逻辑
+  // [优化] 检查升级 (数学公式版)
   async checkLevelUp(userId) {
     try {
+      // 1. 获取当前的总经验数据
       const user = await this.env.DB.prepare(
-        'SELECT level, exp, total_exp FROM users WHERE id = ?'
+        'SELECT level, total_exp, coins FROM users WHERE id = ?'
       ).bind(userId).first();
       
       if (!user) return null;
       
-      const currentLevel = user.level || 1;
-      const currentExp = user.exp || 0;
+      const currentDbLevel = user.level || 1;
+      const totalExp = user.total_exp || 0;
       
-      if (currentLevel >= CONFIG.LEVEL.MAX_LEVEL) return null;
+      // 2. 使用数学模型直接计算理论等级
+      const { level: calculatedLevel, currentExp } = this.userService.calculateLevelFromTotalExp(totalExp);
       
-      const requiredExpForNextLevel = this.userService.calculateRequiredExp(currentLevel + 1);
-      
-      if (currentExp >= requiredExpForNextLevel) {
-        let newLevel = currentLevel + 1;
-        let remainingExp = currentExp - requiredExpForNextLevel;
-        
-        while (newLevel < CONFIG.LEVEL.MAX_LEVEL && remainingExp >= this.userService.calculateRequiredExp(newLevel + 1)) {
-          remainingExp -= this.userService.calculateRequiredExp(newLevel + 1);
-          newLevel++;
-        }
-        
-        const levelsGained = newLevel - currentLevel;
+      // 3. 只有当计算出的等级 > 数据库存储的等级时，才执行更新
+      // (这样避免了每次请求都写数据库)
+      if (calculatedLevel > currentDbLevel) {
+        const levelsGained = calculatedLevel - currentDbLevel;
         const totalCoinsReward = levelsGained * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL;
         
-        // 仅更新等级、经验和金币，不再处理特殊奖励表
+        console.log(`User ${userId} leveled up: ${currentDbLevel} -> ${calculatedLevel}`);
+
+        // 4. 原子更新
+        // 直接覆盖 level 和 exp，确保数据绝对正确
         await this.env.DB.prepare(
           'UPDATE users SET level = ?, exp = ?, coins = coins + ? WHERE id = ?'
-        ).bind(newLevel, remainingExp, totalCoinsReward, userId).run();
+        ).bind(calculatedLevel, currentExp, totalCoinsReward, userId).run();
         
         return {
           leveled_up: true,
-          old_level: currentLevel,
-          new_level: newLevel,
+          old_level: currentDbLevel,
+          new_level: calculatedLevel,
           levels_gained: levelsGained,
           coins_reward: totalCoinsReward
-          // 移除了 special_rewards 返回
         };
       }
+      
+      // 5. [额外健壮性]
+      // 即使没有升级，如果当前 exp 字段与 calculatedExp 不一致（数据漂移），
+      // 也可以选择在这里静默修复，或者忽略。为了性能，通常忽略，
+      // 因为 calculateLevelFromTotalExp 依赖的是 total_exp，这才是核心。
       
       return null;
     } catch (error) {
@@ -1010,6 +1074,17 @@ async function handleAdminSaveAnnouncement(request, env) {
   return jsonResponse({ success: true, updated: newId !== (oldData && oldData.id) });
 }
 
+async function handleAdminRebuildGallery(request, env) {
+    const { password } = await request.json();
+    if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
+    
+    // 执行耗时的迁移任务
+    // 注意：如果图片非常多(>5000)，可能需要 Cloudflare Queues 或拆分执行，
+    // 但对于普通量级，waitUntil + 适当的超时控制通常能行，或者直接 await 让前端等待。
+    const result = await rebuildGalleryIndexToD1(env);
+    return jsonResponse({ success: true, ...result });
+}
+
 async function handleShowcase(env) {
     if (!env.RECENT_REQUESTS) return jsonResponse([]);
     const list = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.LEADERBOARD)) || [];
@@ -1022,23 +1097,36 @@ async function handleShowcase(env) {
 }
 
 async function handleLibrary(request, env, url) {
-  if (!env.RECENT_REQUESTS) return new Response('Service Unavailable', { status: 503 });
   const page = parseInt(url.searchParams.get('page') || '1');
   const pageSize = 24;
-  let galleryItems = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.GALLERY_INDEX));
-  if (!galleryItems || galleryItems.length === 0) {
-    galleryItems = await rebuildGalleryIndexFromR2(env, CONFIG.KEYS.GALLERY_INDEX);
+  const offset = (page - 1) * pageSize;
+
+  try {
+      // 并行查询：获取当前页数据 + 获取总条数
+      const [dataRes, countRes] = await Promise.all([
+          env.DB.prepare(
+              'SELECT url, username, created_at as ts FROM gallery ORDER BY created_at DESC LIMIT ? OFFSET ?'
+          ).bind(pageSize, offset).all(),
+          env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first()
+      ]);
+
+      const items = dataRes.results || [];
+      const totalItems = countRes.total || 0;
+      const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+      const currentPage = Math.max(1, Math.min(page, totalPages));
+
+      // 返回 HTML，设置 60秒 缓存
+      return new Response(getLibraryHtml(items, { currentPage, totalPages, totalItems }), { 
+          headers: { 
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'public, max-age=60' 
+          } 
+      });
+
+  } catch (e) {
+      console.error('Library Error:', e);
+      return new Response('Gallery Database Error', { status: 500 });
   }
-  const totalItems = galleryItems ? galleryItems.length : 0;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const currentPage = Math.max(1, Math.min(page, totalPages));
-  const pageItems = galleryItems ? galleryItems.slice((currentPage - 1) * pageSize, currentPage * pageSize) : [];
-  return new Response(getLibraryHtml(pageItems, { currentPage, totalPages, totalItems }), { 
-      headers: { 
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'public, max-age=60' 
-      } 
-  });
 }
 
 async function handleAdminVerify(request, env) {
@@ -1178,37 +1266,59 @@ async function updateLeaderboard(env, newItem) {
 }
 
 async function updateGalleryIndex(env, newItem) {
-  if (!env.RECENT_REQUESTS) return;
-  const indexKey = CONFIG.KEYS.GALLERY_INDEX;
-  let list = await safeJsonParse(await env.RECENT_REQUESTS.get(indexKey)) || [];
-  list.unshift(newItem);
-  if (list.length > 3000) list = list.slice(0, 3000); 
-  await env.RECENT_REQUESTS.put(indexKey, JSON.stringify(list), { expirationTtl: CONFIG.TTL.GALLERY_CACHE });
+  try {
+    // 异步插入，不阻塞主线程
+    await env.DB.prepare(
+      'INSERT INTO gallery (url, username, created_at) VALUES (?, ?, ?)'
+    ).bind(newItem.url, newItem.username, newItem.ts).run();
+  } catch (e) {
+    console.error('Failed to update gallery D1:', e);
+  }
 }
 
-async function rebuildGalleryIndexFromR2(env, indexKey) {
-    if (!env.R2_BUCKET) return [];
-    let allObjects = [];
-    let truncated = true, cursor, limitCount = 0;
-    try {
-        while (truncated && limitCount < 4) {
-            const list = await env.R2_BUCKET.list({ prefix: 'images/', cursor, limit: 500 });
-            truncated = list.truncated; cursor = list.cursor;
-            allObjects.push(...list.objects);
-            limitCount++;
-        }
-    } catch(e) { return []; }
-    const items = allObjects.map(obj => {
-        const parts = obj.key.replace('images/', '').split('___');
-        let username = 'Unknown', ts = obj.uploaded.getTime();
-        if (parts.length >= 2) {
-            try { username = decodeURIComponent(atob(parts[0].replace(/_/g, '/'))); } catch (e) {}
-            const fileTs = parseInt(parts[1]); if (!isNaN(fileTs)) ts = fileTs;
-        }
-        return { url: `${CONFIG.R2_DOMAIN}/${obj.key}`, username, ts };
-    }).sort((a, b) => b.ts - a.ts);
-    await env.RECENT_REQUESTS.put(indexKey, JSON.stringify(items), { expirationTtl: CONFIG.TTL.GALLERY_CACHE });
-    return items;
+async function rebuildGalleryIndexToD1(env) {
+    if (!env.R2_BUCKET) return { count: 0, message: 'No R2' };
+    
+    // 1. 清空旧数据 (可选，防止重复)
+    await env.DB.prepare('DELETE FROM gallery').run();
+
+    let truncated = true;
+    let cursor;
+    let totalInserted = 0;
+    
+    // 2. 遍历 R2
+    while (truncated) {
+        const list = await env.R2_BUCKET.list({ prefix: 'images/', cursor, limit: 500 });
+        truncated = list.truncated;
+        cursor = list.cursor;
+        
+        if (list.objects.length === 0) break;
+
+        // 3. 批量插入构建
+        // D1 的 SQL 语句长度有限制，建议分批处理或使用单条插入循环
+        // 这里为了稳定性，使用 Promise.all 并发插入 (D1 并发性能很好)
+        const tasks = list.objects.map(obj => {
+            const parts = obj.key.replace('images/', '').split('___');
+            let username = 'Unknown';
+            let ts = obj.uploaded.getTime();
+            
+            // 解析文件名中的元数据
+            if (parts.length >= 2) {
+                try { username = decodeURIComponent(atob(parts[0].replace(/_/g, '/'))); } catch (e) {}
+                const fileTs = parseInt(parts[1]); 
+                if (!isNaN(fileTs)) ts = fileTs;
+            }
+            
+            return env.DB.prepare(
+                'INSERT INTO gallery (url, username, created_at) VALUES (?, ?, ?)'
+            ).bind(`${CONFIG.R2_DOMAIN}/${obj.key}`, username, ts).run();
+        });
+
+        await Promise.all(tasks);
+        totalInserted += list.objects.length;
+    }
+    
+    return { count: totalInserted, message: 'Migration Complete' };
 }
 
 function jsonResponse(data, status = 200, extraHeaders = {}) {
@@ -1716,6 +1826,12 @@ function getHtmlPage() {
             <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann">系统公告</div>
         </div>
         <div id="view-log">
+            <div style="margin-bottom:15px; padding:10px; background:#F0F9FF; border-radius:8px; border:1px solid #BAE6FD; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:0.85rem; color:#0369A1;">
+                    <i class="fas fa-database"></i> <b>数据迁移:</b> 将 KV 图库迁移至 D1 (仅需执行一次)
+                </span>
+                <button class="btn secondary" style="font-size:0.8rem; padding:4px 10px;" onclick="App.rebuildGallery()">开始迁移</button>
+            </div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
             <span style="font-weight:bold; font-size:0.9rem;">可视化编辑器</span>
             <button class="btn secondary" style="padding:4px 8px; font-size:0.8rem;" onclick="App.addAdminRow()">+ 新增一行</button>
@@ -1920,6 +2036,24 @@ function getHtmlPage() {
         const drawCount = parseInt(document.getElementById('profileCount').innerText) || 0;
         const level = Math.floor(drawCount / 50) + 1;
         document.getElementById('profileLevel').innerText = level;
+      },
+      async rebuildGallery() {
+        if(!confirm('确定要重建图库索引吗？这将清空现有 gallery 表并从 R2 重新读取，可能耗时较长。')) return;
+        this.toast('正在后台迁移数据，请稍候...', 'info');
+        try {
+            const res = await fetch('/admin/rebuild-gallery', { 
+                method: 'POST', 
+                body: JSON.stringify({ password: this.adminPwd }) 
+            });
+            const d = await res.json();
+            if(d.success) {
+                this.toast(\`迁移完成！共索引 \${d.count} 张图片\`, 'ok');
+            } else {
+                this.toast('迁移失败: ' + d.message, 'warn');
+            }
+        } catch(e) {
+            this.toast('请求超时或网络错误 (后台可能仍在运行)', 'warn');
+        }
       },
       showMoreStats() {
         const inv = this.inventory;

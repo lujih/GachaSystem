@@ -15,6 +15,14 @@ CREATE TABLE IF NOT EXISTS users (
     created_at INTEGER
 );
 
+-- 图库表 (替代原有的 KV JSON 索引)
+CREATE TABLE IF NOT EXISTS gallery (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    username TEXT,
+    created_at INTEGER
+);
+
 -- 背包表 (使用联合主键防止重复)
 CREATE TABLE IF NOT EXISTS inventory (
     user_id INTEGER NOT NULL,
@@ -59,3 +67,4 @@ CREATE INDEX IF NOT EXISTS idx_inv_user ON inventory(user_id);
 CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_level_rewards_user ON level_rewards(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_titles_user ON user_titles(user_id);
+CREATE INDEX IF NOT EXISTS idx_gallery_created_at ON gallery(created_at DESC);
