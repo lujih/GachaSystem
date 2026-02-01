@@ -910,7 +910,12 @@ class GachaService {
     }));
     await this.checkLevelUp(currentUser.id);
     
-    return jsonResponse({ success: true, rarity: assetData.rarity, imageUrl: assetData.imageUrl, expGained: expGain });
+    return jsonResponse({ 
+        success: true, 
+        imageUrl: assetData.imageUrl, 
+        rarity: assetData.rarity, 
+        expGained: expGain 
+    });
   }
 
   async craft(currentUser, request) {
