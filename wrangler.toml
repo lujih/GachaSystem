@@ -14,7 +14,7 @@ id = "6a528fb7939f49d684331fac2a19e6df"
 [[d1_databases]]
 binding = "DB"
 database_name = "chouka"
-database_id = "9b7f6b2c-81ab-4658-8adf-ce524f3715da"
+database_id = "e3551f09-570f-4806-ac28-3a927b8d330e"
 
 [[r2_buckets]]
 binding = "R2_BUCKET"

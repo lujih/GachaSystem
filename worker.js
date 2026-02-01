@@ -855,7 +855,10 @@ class GachaService {
         username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp
     }));
     this.ctx.waitUntil(updateGalleryIndex(this.env, {
-        url: assetData.imageUrl, username: currentUser.username, ts: timestamp
+        url: assetData.imageUrl, 
+        username: currentUser.username, 
+        userId: currentUser.id, // 新增
+        ts: timestamp
     }));
 
     await this.checkLevelUp(currentUser.id);
@@ -899,7 +902,12 @@ class GachaService {
     ]);
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, ts: Date.now() }));
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { 
+        url: assetData.imageUrl, 
+        username: currentUser.username, 
+        userId: currentUser.id, // 新增
+        ts: Date.now() 
+    }));
     await this.checkLevelUp(currentUser.id);
     
     return jsonResponse({ success: true, rarity: assetData.rarity, imageUrl: assetData.imageUrl, expGained: expGain });
@@ -941,7 +949,12 @@ class GachaService {
     ]);
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, ts: Date.now() }));
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { 
+        url: assetData.imageUrl, 
+        username: currentUser.username, 
+        userId: currentUser.id, // 新增
+        ts: Date.now() 
+    }));
     await this.checkLevelUp(currentUser.id);
     
     return this.userService.getInfo(currentUser);
@@ -978,7 +991,12 @@ class GachaService {
     ]);
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, ts: Date.now() }));
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { 
+        url: assetData.imageUrl, 
+        username: currentUser.username, 
+        userId: currentUser.id, // 新增
+        ts: Date.now() 
+    }));
     await this.checkLevelUp(currentUser.id);
     
     return jsonResponse({ success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain });
@@ -1216,13 +1234,11 @@ async function handleAdminDeleteUser(request, env) {
   try {
     const { password, targetId } = await request.json();
 
-    // 1. 验证管理员权限
     if (password !== env.admin) {
       return jsonResponse({ error: 'Auth Failed' }, 403);
     }
 
-    // 2. 获取用户ID
-    // 前端传来的 targetId 是 username
+    // 获取用户ID
     const user = await env.DB.prepare(
       'SELECT id FROM users WHERE username = ?'
     ).bind(targetId).first();
@@ -1231,24 +1247,14 @@ async function handleAdminDeleteUser(request, env) {
       return jsonResponse({ error: 'User not found' }, 404);
     }
 
-    // 3. 执行级联删除 (使用事务批量删除相关数据)
-    // 注意：如果有其他关联表（如 level_rewards），也应一并删除以保持数据库清洁
-    const batch = [
-      // 删除用户主数据
-      env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id),
-      // 删除背包数据
-      env.DB.prepare('DELETE FROM inventory WHERE user_id = ?').bind(user.id),
-      // 删除日志数据
-      env.DB.prepare('DELETE FROM logs WHERE user_id = ?').bind(user.id),
-      // 删除等级奖励记录
-      env.DB.prepare('DELETE FROM level_rewards WHERE user_id = ?').bind(user.id),
-      // 删除称号记录
-      env.DB.prepare('DELETE FROM user_titles WHERE user_id = ?').bind(user.id)
-    ];
+    // [优化] 利用 ON DELETE CASCADE
+    // 只需删除 users 表中的记录，数据库会自动删除 inventory, logs, gallery, titles 等关联数据
+    await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id).run();
 
-    await env.DB.batch(batch);
+    // 可以在这里显式清理 KV 缓存
+    // await env.KV_CACHE.delete(`uinfo:${user.id}`); // 如果能获取到 ID
 
-    return jsonResponse({ success: true, message: 'User deleted' });
+    return jsonResponse({ success: true, message: 'User and associated data deleted' });
 
   } catch (e) {
     console.error('Delete user error:', e);
@@ -1268,9 +1274,10 @@ async function updateLeaderboard(env, newItem) {
 async function updateGalleryIndex(env, newItem) {
   try {
     // 异步插入，不阻塞主线程
+    // 同时也存入 username 作为快照/冗余，方便前端读取时无需 JOIN
     await env.DB.prepare(
-      'INSERT INTO gallery (url, username, created_at) VALUES (?, ?, ?)'
-    ).bind(newItem.url, newItem.username, newItem.ts).run();
+      'INSERT INTO gallery (url, user_id, username, created_at) VALUES (?, ?, ?, ?)'
+    ).bind(newItem.url, newItem.userId, newItem.username, newItem.ts).run();
   } catch (e) {
     console.error('Failed to update gallery D1:', e);
   }
@@ -1279,14 +1286,22 @@ async function updateGalleryIndex(env, newItem) {
 async function rebuildGalleryIndexToD1(env) {
     if (!env.R2_BUCKET) return { count: 0, message: 'No R2' };
     
-    // 1. 清空旧数据 (可选，防止重复)
+    // 1. 清空旧数据
     await env.DB.prepare('DELETE FROM gallery').run();
+
+    // 2. 预加载用户映射表 (优化性能，避免循环内查询 DB)
+    // 注意：如果用户量极大(>10万)，需改为分批查询或缓存策略
+    const usersResult = await env.DB.prepare('SELECT id, username FROM users').all();
+    const userMap = new Map();
+    if (usersResult.results) {
+        usersResult.results.forEach(u => userMap.set(u.username, u.id));
+    }
 
     let truncated = true;
     let cursor;
     let totalInserted = 0;
     
-    // 2. 遍历 R2
+    // 3. 遍历 R2
     while (truncated) {
         const list = await env.R2_BUCKET.list({ prefix: 'images/', cursor, limit: 500 });
         truncated = list.truncated;
@@ -1294,24 +1309,31 @@ async function rebuildGalleryIndexToD1(env) {
         
         if (list.objects.length === 0) break;
 
-        // 3. 批量插入构建
-        // D1 的 SQL 语句长度有限制，建议分批处理或使用单条插入循环
-        // 这里为了稳定性，使用 Promise.all 并发插入 (D1 并发性能很好)
+        // 4. 批量插入构建
         const tasks = list.objects.map(obj => {
             const parts = obj.key.replace('images/', '').split('___');
             let username = 'Unknown';
             let ts = obj.uploaded.getTime();
+            let userId = null;
             
             // 解析文件名中的元数据
             if (parts.length >= 2) {
-                try { username = decodeURIComponent(atob(parts[0].replace(/_/g, '/'))); } catch (e) {}
+                try { 
+                    username = decodeURIComponent(atob(parts[0].replace(/_/g, '/'))); 
+                    // 从映射表中查找 user_id
+                    if (userMap.has(username)) {
+                        userId = userMap.get(username);
+                    }
+                } catch (e) {}
+                
                 const fileTs = parseInt(parts[1]); 
                 if (!isNaN(fileTs)) ts = fileTs;
             }
             
+            // 即使找不到 userId (用户已删除)，也保留图片记录(userId 为 NULL)
             return env.DB.prepare(
-                'INSERT INTO gallery (url, username, created_at) VALUES (?, ?, ?)'
-            ).bind(`${CONFIG.R2_DOMAIN}/${obj.key}`, username, ts).run();
+                'INSERT INTO gallery (url, user_id, username, created_at) VALUES (?, ?, ?, ?)'
+            ).bind(`${CONFIG.R2_DOMAIN}/${obj.key}`, userId, username, ts).run();
         });
 
         await Promise.all(tasks);
