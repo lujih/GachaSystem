@@ -23,8 +23,7 @@ const CONFIG = {
     POINTS: { 'N': 5, 'R': 10, 'SR': 30, 'SSR': 100, 'UR': 500 },
     CRAFT_COST: 5,
     SHOP: { 'R': 100, 'SR': 500, 'SSR': 2000, 'UR': 8000 },
-    DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2 },
-    PRELOAD: { ENABLED: true }
+    DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2 }
   },
   // 等级系统配置
   LEVEL: {
@@ -67,7 +66,6 @@ const CONFIG = {
     CHANGELOG: 'system:changelog',
     ANNOUNCEMENT: 'system:announcement',
     LEADERBOARD: 'system:leaderboard',
-    GALLERY_INDEX: 'system:gallery_index',
     BUFFER_PREFIX: 'sys:buffer:'
   },
   TTL: { 
@@ -75,7 +73,6 @@ const CONFIG = {
     BUFFER: 86400, 
     CACHE: 60 * 5, 
     LEADERBOARD: 86400 * 30, 
-    GALLERY_CACHE: 86400 * 7,
     // [新增] 细粒度缓存配置
     USER_INFO: 60,       // 用户信息缓存 60秒 (高频读取，写操作时强制失效)
     PUBLIC_API: 300,     // 公共接口(如排行榜) 浏览器缓存 5分钟
@@ -157,7 +154,6 @@ export default {
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
       'POST /admin/update-points': () => handleAdminUpdatePoints(request, env),
       'POST /admin/delete-user': () => handleAdminDeleteUser(request, env),
-      'POST /admin/rebuild-gallery': () => handleAdminRebuildGallery(request, env),
     };
 
     const handler = routes[`${method} ${url.pathname}`];
@@ -1097,17 +1093,6 @@ async function handleAdminSaveAnnouncement(request, env) {
   return jsonResponse({ success: true, updated: newId !== (oldData && oldData.id) });
 }
 
-async function handleAdminRebuildGallery(request, env) {
-    const { password } = await request.json();
-    if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
-    
-    // 执行耗时的迁移任务
-    // 注意：如果图片非常多(>5000)，可能需要 Cloudflare Queues 或拆分执行，
-    // 但对于普通量级，waitUntil + 适当的超时控制通常能行，或者直接 await 让前端等待。
-    const result = await rebuildGalleryIndexToD1(env);
-    return jsonResponse({ success: true, ...result });
-}
-
 async function handleShowcase(env) {
     if (!env.RECENT_REQUESTS) return jsonResponse([]);
     const list = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.LEADERBOARD)) || [];
@@ -1286,66 +1271,6 @@ async function updateGalleryIndex(env, newItem) {
   } catch (e) {
     console.error('Failed to update gallery D1:', e);
   }
-}
-
-async function rebuildGalleryIndexToD1(env) {
-    if (!env.R2_BUCKET) return { count: 0, message: 'No R2' };
-    
-    // 1. 清空旧数据
-    await env.DB.prepare('DELETE FROM gallery').run();
-
-    // 2. 预加载用户映射表 (优化性能，避免循环内查询 DB)
-    // 注意：如果用户量极大(>10万)，需改为分批查询或缓存策略
-    const usersResult = await env.DB.prepare('SELECT id, username FROM users').all();
-    const userMap = new Map();
-    if (usersResult.results) {
-        usersResult.results.forEach(u => userMap.set(u.username, u.id));
-    }
-
-    let truncated = true;
-    let cursor;
-    let totalInserted = 0;
-    
-    // 3. 遍历 R2
-    while (truncated) {
-        const list = await env.R2_BUCKET.list({ prefix: 'images/', cursor, limit: 500 });
-        truncated = list.truncated;
-        cursor = list.cursor;
-        
-        if (list.objects.length === 0) break;
-
-        // 4. 批量插入构建
-        const tasks = list.objects.map(obj => {
-            const parts = obj.key.replace('images/', '').split('___');
-            let username = 'Unknown';
-            let ts = obj.uploaded.getTime();
-            let userId = null;
-            
-            // 解析文件名中的元数据
-            if (parts.length >= 2) {
-                try { 
-                    username = decodeURIComponent(atob(parts[0].replace(/_/g, '/'))); 
-                    // 从映射表中查找 user_id
-                    if (userMap.has(username)) {
-                        userId = userMap.get(username);
-                    }
-                } catch (e) {}
-                
-                const fileTs = parseInt(parts[1]); 
-                if (!isNaN(fileTs)) ts = fileTs;
-            }
-            
-            // 即使找不到 userId (用户已删除)，也保留图片记录(userId 为 NULL)
-            return env.DB.prepare(
-                'INSERT INTO gallery (url, user_id, username, created_at) VALUES (?, ?, ?, ?)'
-            ).bind(`${CONFIG.R2_DOMAIN}/${obj.key}`, userId, username, ts).run();
-        });
-
-        await Promise.all(tasks);
-        totalInserted += list.objects.length;
-    }
-    
-    return { count: totalInserted, message: 'Migration Complete' };
 }
 
 function jsonResponse(data, status = 200, extraHeaders = {}) {
@@ -1853,12 +1778,6 @@ function getHtmlPage() {
             <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann">系统公告</div>
         </div>
         <div id="view-log">
-            <div style="margin-bottom:15px; padding:10px; background:#F0F9FF; border-radius:8px; border:1px solid #BAE6FD; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:0.85rem; color:#0369A1;">
-                    <i class="fas fa-database"></i> <b>数据迁移:</b> 将 KV 图库迁移至 D1 (仅需执行一次)
-                </span>
-                <button class="btn secondary" style="font-size:0.8rem; padding:4px 10px;" onclick="App.rebuildGallery()">开始迁移</button>
-            </div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
             <span style="font-weight:bold; font-size:0.9rem;">可视化编辑器</span>
             <button class="btn secondary" style="padding:4px 8px; font-size:0.8rem;" onclick="App.addAdminRow()">+ 新增一行</button>
@@ -2033,18 +1952,6 @@ function getHtmlPage() {
         
         const elProfileCount = document.getElementById('profileCount');
         if (elProfileCount) elProfileCount.innerText = user.drawCount || 0;
-
-        // 如果首页还有未读消息提示等
-        const unclaimedRewardsAlert = document.getElementById('unclaimedRewardsAlert');
-        if (unclaimedRewardsAlert && user.unclaimed_rewards) {
-           if (user.unclaimed_rewards.length > 0) {
-             unclaimedRewardsAlert.style.display = 'block';
-             const cnt = document.getElementById('unclaimedRewardsCount');
-             if(cnt) cnt.innerText = user.unclaimed_rewards.length;
-           } else {
-             unclaimedRewardsAlert.style.display = 'none';
-           }
-        }
         
         // 更新合成状态
         this.updateCraftStates();
@@ -2063,24 +1970,6 @@ function getHtmlPage() {
         const drawCount = parseInt(document.getElementById('profileCount').innerText) || 0;
         const level = Math.floor(drawCount / 50) + 1;
         document.getElementById('profileLevel').innerText = level;
-      },
-      async rebuildGallery() {
-        if(!confirm('确定要重建图库索引吗？这将清空现有 gallery 表并从 R2 重新读取，可能耗时较长。')) return;
-        this.toast('正在后台迁移数据，请稍候...', 'info');
-        try {
-            const res = await fetch('/admin/rebuild-gallery', { 
-                method: 'POST', 
-                body: JSON.stringify({ password: this.adminPwd }) 
-            });
-            const d = await res.json();
-            if(d.success) {
-                this.toast(\`迁移完成！共索引 \${d.count} 张图片\`, 'ok');
-            } else {
-                this.toast('迁移失败: ' + d.message, 'warn');
-            }
-        } catch(e) {
-            this.toast('请求超时或网络错误 (后台可能仍在运行)', 'warn');
-        }
       },
       showMoreStats() {
         const inv = this.inventory;
