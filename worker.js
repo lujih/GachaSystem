@@ -2497,46 +2497,257 @@ function getHtmlPage() {
 }
 
 function getLibraryHtml(items, pager) {
+  // 定义瀑布流和懒加载的专用 CSS
+  const LIBRARY_CSS = `
+  <style>
+    :root {
+      --gap: 16px;
+      --bg-color: #F8FAFC;
+    }
+    body { 
+      padding-top: 70px; 
+      background-color: var(--bg-color);
+      /* 隐藏滚动条但允许滚动 (可选) */
+      scrollbar-width: thin;
+    }
+    
+    /* 导航栏样式微调 */
+    .nav { 
+      position: fixed; top: 0; left: 0; right: 0; height: 60px; 
+      background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); 
+      border-bottom: 1px solid rgba(0,0,0,0.05); z-index: 100; 
+      padding: 0 20px; display: grid; grid-template-columns: 80px 1fr 80px; align-items: center; 
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* --- 瀑布流核心布局 (Masonry via CSS Columns) --- */
+    .masonry-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+      /* 关键：多列布局 */
+      column-count: 2; 
+      column-gap: var(--gap);
+    }
+    
+    /* 响应式列数 */
+    @media (min-width: 640px) { .masonry-container { column-count: 3; } }
+    @media (min-width: 1024px) { .masonry-container { column-count: 4; } }
+    @media (min-width: 1280px) { .masonry-container { column-count: 5; } }
+
+    /* 卡片样式 */
+    .item {
+      /* 关键：防止元素被分割到两列 */
+      break-inside: avoid; 
+      margin-bottom: var(--gap);
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #E2E8F0;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      cursor: zoom-in;
+      position: relative;
+    }
+    
+    .item:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+      border-color: var(--primary);
+      z-index: 2;
+    }
+
+    /* 图片容器与懒加载效果 */
+    .img-wrapper {
+      width: 100%;
+      min-height: 150px; /* 最小高度占位，减少布局抖动 */
+      background: #F1F5F9; /* 加载前的灰色背景 */
+      position: relative;
+    }
+
+    .item img {
+      width: 100%;
+      height: auto; /* 自动高度，保持原比例 */
+      display: block;
+      opacity: 0; /* 初始透明 */
+      transition: opacity 0.6s ease; /* 淡入动画 */
+      object-fit: cover;
+    }
+
+    .item img.loaded {
+      opacity: 1;
+    }
+
+    /* 用户名标签 */
+    .item-user {
+      padding: 10px 12px;
+      background: white;
+      font-size: 0.85rem;
+      color: var(--text-main);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid #F1F5F9;
+    }
+    .user-tag {
+      font-weight: bold;
+      color: #64748B;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    /* 分页器样式 */
+    .pager { display: flex; justify-content: center; gap: 15px; padding: 40px 0 60px; }
+    .page-btn { 
+      width: 44px; height: 44px; border-radius: 12px; background: white; 
+      display: flex; align-items: center; justify-content: center; 
+      color: var(--text-main); font-weight: bold; text-decoration: none; 
+      border: 1px solid #E2E8F0; transition: 0.2s; 
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .page-btn:hover { border-color: var(--primary); color: white; background: var(--primary); }
+    .page-info { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; }
+    .page-current { font-weight: 800; font-size: 1rem; color: var(--text-main); }
+    .page-total { font-size: 0.75rem; color: #94A3B8; }
+
+    /* 返回顶部按钮 */
+    #backToTop {
+      position: fixed; bottom: 30px; right: 30px;
+      width: 50px; height: 50px; border-radius: 50%;
+      background: var(--primary); color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; cursor: pointer;
+      box-shadow: 0 10px 25px rgba(59, 130, 246, 0.4);
+      opacity: 0; pointer-events: none; transition: 0.3s;
+      z-index: 90;
+      border: none;
+    }
+    #backToTop.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+    #backToTop:active { transform: scale(0.95); }
+
+    /* 空状态 */
+    .empty-state { text-align: center; padding: 100px 20px; color: #94A3B8; grid-column: 1/-1; }
+    .empty-state i { font-size: 4rem; margin-bottom: 20px; color: #E2E8F0; }
+  </style>
+  `;
+
   return `
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>图库</title>
+  <title>图库 - 第 ${pager.currentPage} 页</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   ${NEUTRAL_CSS}
-  <style>
-    body { padding-top: 70px; }
-    .nav { position: fixed; top: 0; left: 0; right: 0; height: 60px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-bottom: 1px solid #E2E8F0; z-index: 100; padding: 0 20px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); grid-auto-rows: 140px; grid-auto-flow: dense; gap: 12px; padding: 15px; max-width: 1000px; margin: 0 auto; min-height: calc(140px * 4); align-items: stretch; justify-items: stretch; }
-    .item { position: relative; border-radius: 8px; overflow: hidden; background: #F1F5F9; cursor: zoom-in; border: 1px solid #E2E8F0; transition: 0.2s; height: 100%; width: 100%; }
-    .item:hover { transform: translateY(-3px); border-color: var(--primary); }
-    .item img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .item-user { position: absolute; bottom: 0; width: 100%; padding: 15px 10px 4px; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); color: white; font-size: 0.75rem; text-align: center; pointer-events: none; }
-    .pager { display: flex; justify-content: center; gap: 15px; padding: 30px; }
-    .page-btn { width: 40px; height: 40px; border-radius: 8px; background: white; display: flex; align-items: center; justify-content: center; color: var(--text-main); font-weight: bold; text-decoration: none; border: 1px solid #E2E8F0; transition: 0.2s; }
-    .page-btn:hover { border-color: var(--primary); color: var(--primary); }
-  </style>
+  ${LIBRARY_CSS}
 </head>
 <body>
   <nav class="nav">
-    <div style="text-align:left;"><a href="/" class="btn secondary" style="padding: 8px 16px; font-size:0.9rem;"><i class="fas fa-arrow-left"></i> <span>返回</span></a></div>
-    <div style="text-align:center; font-weight:bold; color:var(--text-main)">第 ${pager.currentPage} 页 / 共 ${pager.totalPages} 页</div>
-    <div style="text-align:right;"></div>
+    <div style="text-align:left;">
+      <a href="/" class="btn secondary" style="padding: 8px 16px; font-size:0.9rem; border-radius:10px;">
+        <i class="fas fa-arrow-left"></i> <span style="display:none; display:inline-block @media(min-width:400px);">返回</span>
+      </a>
+    </div>
+    <div class="page-info">
+      <div class="page-current">第 ${pager.currentPage} 页</div>
+      <div class="page-total">共 ${pager.totalPages} 页</div>
+    </div>
+    <div style="text-align:right;">
+        <!-- 预留右侧按钮位置 -->
+    </div>
   </nav>
-  <div class="grid">
-    ${items.map(item => `<div class="item" onclick="show('${item.url}')"><img data-src="${item.url}" class="lazy"><div class="item-user">@${item.username}</div></div>`).join('')}
+
+  <div class="masonry-container">
+    ${items.length === 0 ? `
+      <div class="empty-state">
+        <i class="fas fa-images"></i>
+        <h3>暂无图片</h3>
+        <p>快去首页抽取卡片吧！</p>
+      </div>
+    ` : ''}
+
+    ${items.map(item => `
+      <div class="item" onclick="show('${item.url}')">
+        <div class="img-wrapper">
+          <img data-src="${item.url}" class="lazy" alt="Image by ${item.username}">
+        </div>
+        <div class="item-user">
+          <div class="user-tag"><i class="fas fa-user-circle"></i> ${item.username}</div>
+          <div style="font-size:0.7rem; color:#CBD5E1;">${new Date(item.ts).toLocaleDateString()}</div>
+        </div>
+      </div>
+    `).join('')}
   </div>
+
   <div class="pager">
-    ${pager.currentPage > 1 ? `<a href="?page=${pager.currentPage-1}" class="page-btn"><i class="fas fa-chevron-left"></i></a>` : ''}
-    ${pager.currentPage < pager.totalPages ? `<a href="?page=${pager.currentPage+1}" class="page-btn"><i class="fas fa-chevron-right"></i></a>` : ''}
+    ${pager.currentPage > 1 ? `<a href="?page=${pager.currentPage-1}" class="page-btn"><i class="fas fa-chevron-left"></i></a>` : '<span class="page-btn" style="opacity:0.5; cursor:not-allowed;"><i class="fas fa-chevron-left"></i></span>'}
+    
+    ${pager.currentPage < pager.totalPages ? `<a href="?page=${pager.currentPage+1}" class="page-btn"><i class="fas fa-chevron-right"></i></a>` : '<span class="page-btn" style="opacity:0.5; cursor:not-allowed;"><i class="fas fa-chevron-right"></i></span>'}
   </div>
-  <div id="imgModal" class="modal" onclick="this.classList.remove('show')"><img id="bigImg" style="max-width:95%; max-height:90vh; border-radius:8px;"></div>
+
+  <!-- 返回顶部按钮 -->
+  <button id="backToTop" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+    <i class="fas fa-arrow-up"></i>
+  </button>
+
+  <!-- 大图查看模态框 -->
+  <div id="imgModal" class="modal" onclick="this.classList.remove('show')">
+    <img id="bigImg" style="max-width:95%; max-height:90vh; border-radius:8px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+  </div>
+
   <script>
-    const observer = new IntersectionObserver(es => es.forEach(e => { if(e.isIntersecting) { e.target.src = e.target.dataset.src; observer.unobserve(e.target); } }));
-    document.querySelectorAll('.lazy').forEach(i => observer.observe(i));
-    function show(u) { document.getElementById('bigImg').src=u; document.getElementById('imgModal').classList.add('show'); }
+    // 1. 优化后的懒加载逻辑
+    document.addEventListener("DOMContentLoaded", function() {
+      const lazyImages = [].slice.call(document.querySelectorAll("img.lazy"));
+
+      if ("IntersectionObserver" in window) {
+        let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
+          entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+              let lazyImage = entry.target;
+              
+              // 图片加载完成后才显示，避免显示破损图标
+              lazyImage.onload = () => {
+                 lazyImage.classList.add("loaded");
+                 // 图片加载后，去除父级的固定高度限制（虽然 CSS 已经是 auto，但这是为了保险）
+                 lazyImage.parentElement.style.minHeight = 'auto'; 
+              };
+              
+              lazyImage.src = lazyImage.dataset.src;
+              observer.unobserve(lazyImage);
+            }
+          });
+        }, {
+            rootMargin: "200px 0px" // 提前200px开始加载，体验更流畅
+        });
+
+        lazyImages.forEach(function(lazyImage) {
+          lazyImageObserver.observe(lazyImage);
+        });
+      } else {
+        // 降级处理：直接加载
+        lazyImages.forEach(function(lazyImage) {
+            lazyImage.src = lazyImage.dataset.src;
+            lazyImage.classList.add('loaded');
+        });
+      }
+    });
+
+    // 2. 大图显示
+    function show(u) { 
+        const img = document.getElementById('bigImg');
+        img.src = u; 
+        document.getElementById('imgModal').classList.add('show'); 
+    }
+
+    // 3. 返回顶部按钮控制
+    window.addEventListener('scroll', () => {
+        const btn = document.getElementById('backToTop');
+        if (window.scrollY > 300) btn.classList.add('show');
+        else btn.classList.remove('show');
+    });
   </script>
 </body>
 </html>
