@@ -1252,7 +1252,7 @@ async function handleAdminDeleteUser(request, env) {
     await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id).run();
 
     // 可以在这里显式清理 KV 缓存
-    // await env.KV_CACHE.delete(`uinfo:${user.id}`); // 如果能获取到 ID
+    await env.KV_CACHE.delete(`uinfo:${user.id}`); // 如果能获取到 ID
 
     return jsonResponse({ success: true, message: 'User and associated data deleted' });
 
