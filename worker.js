@@ -2014,6 +2014,23 @@ function getHtmlPage() {
     </div>
   </div>
 
+    <!-- 上传模态框 -->
+  <div id="uploadModal" class="modal">
+    <div class="modal-content">
+      <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
+      <h3>上传图片</h3>
+      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px;">分享你的图片到社区池！每天限上传5张。</p>
+      <div style="border:2px dashed #CBD5E1; border-radius:12px; padding:30px; text-align:center; margin-bottom:20px; background:#F8FAFC;">
+        <i class="fas fa-cloud-upload-alt" style="font-size:3rem; color:#94A3B8; margin-bottom:10px;"></i>
+        <p style="color:#64748B; margin-bottom:15px;">选择要上传的图片 (Max 2MB)</p>
+        <input type="file" id="uploadFile" accept="image/*" style="display:none;">
+        <button class="btn secondary" onclick="document.getElementById('uploadFile').click()">选择文件</button>
+        <p id="uploadFileName" style="margin-top:10px; font-size:0.85rem; color:#3B82F6;"></p>
+      </div>
+      <button class="btn" style="width:100%;" onclick="App.doUpload()">确认上传</button>
+    </div>
+  </div>
+
   <div id="imgModal" class="modal" onclick="this.classList.remove('show')">
     <img id="bigImg" style="max-width:95%; max-height:90vh; border-radius:8px;">
   </div>
@@ -2033,7 +2050,7 @@ function getHtmlPage() {
         this.loadChangelog();
         this.checkAnnouncement();
       },
-            switchPool(pool) {
+      switchPool(pool) {
         if(this.loading) return;
         this.currentPool = pool;
         
