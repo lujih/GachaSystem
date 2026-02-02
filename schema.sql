@@ -79,6 +79,21 @@ CREATE TABLE IF NOT EXISTS user_titles (
         REFERENCES users(id) ON DELETE CASCADE
 ) STRICT;
 
+-- 7. 用户上传/自制卡片表
+CREATE TABLE IF NOT EXISTS user_uploads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    r2_key TEXT NOT NULL,    -- R2 中的文件名
+    url TEXT NOT NULL,       -- 公网访问地址
+    rarity TEXT DEFAULT 'N', -- 审核时确定稀有度
+    status TEXT DEFAULT 'pending', -- pending(待审), approved(通过), rejected(拒绝)
+    created_at INTEGER NOT NULL,
+    reviewed_at INTEGER,
+    CONSTRAINT fk_upload_user FOREIGN KEY (user_id) 
+        REFERENCES users(id) ON DELETE CASCADE
+) STRICT;
+
 -- =========================================
 -- 索引优化
 -- =========================================
@@ -100,3 +115,6 @@ CREATE INDEX IF NOT EXISTS idx_user_titles_user ON user_titles(user_id);
 CREATE INDEX IF NOT EXISTS idx_gallery_created_at ON gallery(created_at DESC);
 -- gallery: 个人主页查看自己的图库
 CREATE INDEX IF NOT EXISTS idx_gallery_user ON gallery(user_id, created_at DESC);
+
+-- 索引：抽卡时需要快速随机获取已通过的卡片
+CREATE INDEX IF NOT EXISTS idx_uploads_pool ON user_uploads(status, rarity);
