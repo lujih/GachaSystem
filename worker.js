@@ -135,14 +135,12 @@ export default {
       'POST /user/claim-reward': () => userService.claimReward(currentUser, request),
       'GET /user/titles': () => userService.getTitles(currentUser),
       'POST /user/equip-title': () => userService.equipTitle(currentUser, request),
-      'POST /upload/submit': () => userService.submitUpload(currentUser, request),
       
       'GET /draw': () => gachaService.draw(currentUser),
       'POST /draw/limited': () => gachaService.drawLimited(currentUser),
       'POST /user/craft': () => gachaService.craft(currentUser, request),
       'POST /shop/buy': () => gachaService.shopBuy(currentUser, request),
       'POST /game/dice': () => gachaService.playDice(currentUser, request),
-      'POST /draw/community': () => gachaService.drawCommunity(currentUser),
       
       'GET /showcase': () => handleShowcase(env),
       'GET /changelog': () => handleChangelog(env),
@@ -156,8 +154,6 @@ export default {
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
       'POST /admin/update-points': () => handleAdminUpdatePoints(request, env),
       'POST /admin/delete-user': () => handleAdminDeleteUser(request, env),
-      'GET /admin/uploads/pending': () => handleAdminGetPendingUploads(request, env),
-      'POST /admin/uploads/audit': () => handleAdminAuditUpload(request, env),
     };
 
     const handler = routes[`${method} ${url.pathname}`];
@@ -663,44 +659,6 @@ class UserService {
         return jsonResponse({ error: 'Update failed' }, 500);
     }
   }  
-  // 处理用户上传
-  async submitUpload(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
-    
-    // 简单限制：每天只能传5张 (防止滥用)
-    const todayStart = new Date().setHours(0,0,0,0);
-    const count = await this.env.DB.prepare('SELECT COUNT(*) as c FROM user_uploads WHERE user_id = ? AND created_at > ?').bind(currentUser.id, todayStart).first();
-    if (count.c >= 5) return jsonResponse({ error: 'Daily upload limit reached (5/5)' }, 429);
-
-    const formData = await request.formData();
-    const file = formData.get('file');
-
-    if (!file || !file.type.startsWith('image/')) {
-        return jsonResponse({ error: 'Invalid image file' }, 400);
-    }
-    
-    // 限制大小 2MB
-    if (file.size > 2 * 1024 * 1024) {
-        return jsonResponse({ error: 'File too large (Max 2MB)' }, 400);
-    }
-
-    const ext = file.type.split('/')[1] || 'jpg';
-    const filename = `uploads/pending/${currentUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    
-    // 存入 R2
-    await this.env.R2_BUCKET.put(filename, file.stream(), {
-        httpMetadata: { contentType: file.type }
-    });
-
-    const url = `${CONFIG.R2_DOMAIN}/${filename}`;
-
-    // 写入数据库
-    await this.env.DB.prepare(
-        'INSERT INTO user_uploads (user_id, username, r2_key, url, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).bind(currentUser.id, currentUser.username, filename, url, Date.now()).run();
-
-    return jsonResponse({ success: true, message: 'Upload successful, waiting for review.' });
-  }
 }
 
 class GachaService {
@@ -953,56 +911,6 @@ class GachaService {
         imageUrl: assetData.imageUrl, 
         rarity: assetData.rarity, 
         expGained: expGain 
-    });
-  }
-
-  // 抽取社区池 (Community Pool)
-  async drawCommunity(currentUser) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
-    
-    const cost = 200; // 社区池消耗
-    const deduct = await this.env.DB.prepare('UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ? AND coins >= ?').bind(cost, currentUser.id, cost).run();
-    
-    if (deduct.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
-
-    // 从 approved 状态的上传中随机取一张
-    // SQLite 的 ORDER BY RANDOM() 在数据量极大时性能一般，但在万级以下没问题
-    const card = await this.env.DB.prepare(
-        'SELECT url, rarity, username as author FROM user_uploads WHERE status = "approved" ORDER BY RANDOM() LIMIT 1'
-    ).first();
-
-    if (!card) {
-        // 退款
-        await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
-        return jsonResponse({ success: false, message: '社区池暂时是空的，快去贡献图片吧！' });
-    }
-
-    const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[card.rarity] || 10;
-    
-    // 记录结果
-    await this.env.DB.batch([
-        this.env.DB.prepare('UPDATE users SET exp = exp + ?, total_exp = total_exp + ? WHERE id = ?').bind(expGain, expGain, currentUser.id),
-        this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, card.rarity),
-        this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, 'draw_community', card.url, card.rarity, Date.now())
-    ]);
-    
-    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-    this.ctx.waitUntil(updateGalleryIndex(this.env, { 
-        url: card.url, 
-        username: currentUser.username, 
-        userId: currentUser.id, 
-        ts: Date.now() 
-    }));
-    await this.checkLevelUp(currentUser.id);
-
-    return jsonResponse({ 
-        success: true, 
-        rarity: card.rarity, 
-        imageUrl: card.url, 
-        pointsEarned: 0, 
-        expGained: expGain,
-        isCommunity: true,
-        author: card.author // 返回作者名用于前端展示
     });
   }
 
@@ -1342,62 +1250,6 @@ async function handleAdminDeleteUser(request, env) {
     console.error('Delete user error:', e);
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
-}
-
-async function handleAdminGetPendingUploads(request, env) {
-    // 鉴权逻辑复用 handleAdminVerify 的思路，但这里是独立接口
-    let password;
-    try {
-        const body = await request.json();
-        password = body.password;
-    } catch (e) {
-        return jsonResponse({ error: 'Invalid JSON' }, 400);
-    }
-
-    if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
-    
-    // 查询 status 为 pending 的记录
-    const list = await env.DB.prepare('SELECT * FROM user_uploads WHERE status = "pending" ORDER BY created_at DESC LIMIT 50').all();
-    return jsonResponse({ success: true, list: list.results || [] });
-}
-
-async function handleAdminAuditUpload(request, env) {
-    let body;
-    try { body = await request.json(); } catch(e) { return jsonResponse({error:'Invalid JSON'}, 400); }
-    
-    const { password, id, action, rarity } = body; // action: 'approve' | 'reject'
-    
-    if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
-    if (!id || !action) return jsonResponse({ error: 'Missing fields' }, 400);
-
-    if (action === 'reject') {
-        // 拒绝逻辑
-        const record = await env.DB.prepare('SELECT r2_key FROM user_uploads WHERE id = ?').bind(id).first();
-        
-        // 只有当记录存在且有 key 时才删除 R2 文件
-        if(record && record.r2_key) {
-            try { await env.R2_BUCKET.delete(record.r2_key); } catch(e) { console.error('R2 delete failed', e); }
-        }
-        
-        // 更新数据库状态
-        await env.DB.prepare('UPDATE user_uploads SET status = "rejected", reviewed_at = ? WHERE id = ?').bind(Date.now(), id).run();
-    
-    } else if (action === 'approve') {
-        // 通过逻辑
-        await env.DB.prepare('UPDATE user_uploads SET status = "approved", rarity = ?, reviewed_at = ? WHERE id = ?').bind(rarity || 'R', Date.now(), id).run();
-        
-        // 给上传者发奖励 (100积分)
-        const uploader = await env.DB.prepare('SELECT user_id FROM user_uploads WHERE id = ?').bind(id).first();
-        if(uploader) {
-             await env.DB.prepare('UPDATE users SET coins = coins + 100 WHERE id = ?').bind(uploader.user_id).run();
-             // 可选：清除该用户的缓存，让他能看到积分变化
-             // await env.KV_CACHE.delete(`uinfo:${uploader.user_id}`);
-        }
-    } else {
-        return jsonResponse({ error: 'Invalid action' }, 400);
-    }
-
-    return jsonResponse({ success: true });
 }
 
 async function updateLeaderboard(env, newItem) {
@@ -1773,10 +1625,6 @@ function getHtmlPage() {
             <span>限定池</span>
             <span class="pool-info-tag" id="ltdCostDisplay">500pts</span>
         </div>
-        <div class="banner-tab" id="tab-community" onclick="App.switchPool('community')" style="color:#10B981">
-            <span>社区共创</span>
-            <span class="pool-info-tag">200pts</span>
-        </div>
       </div>
       <div class="stage" id="stage">
         <div id="rarityTag" class="rarity-tag">SSR</div>
@@ -1798,9 +1646,6 @@ function getHtmlPage() {
         </button>
         <button class="btn secondary" onclick="App.openDice()" style="background:#F0F9FF; border-color:#BAE6FD;">
           <i class="fas fa-dice"></i>
-        </button>
-        <button class="btn secondary" onclick="App.openUploadModal()" style="background:#F0FDF4; border-color:#86EFAC; color:#15803d;">
-          <i class="fas fa-cloud-upload-alt"></i>
         </button>
         <button class="btn secondary" onclick="App.checkIn()" style="background:#ECFDF5; border-color:#6EE7B7; color:#059669;">
           <i class="fas fa-calendar-check"></i>
@@ -2014,23 +1859,6 @@ function getHtmlPage() {
     </div>
   </div>
 
-    <!-- 上传模态框 -->
-  <div id="uploadModal" class="modal">
-    <div class="modal-content">
-      <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
-      <h3>上传图片</h3>
-      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px;">分享你的图片到社区池！每天限上传5张。</p>
-      <div style="border:2px dashed #CBD5E1; border-radius:12px; padding:30px; text-align:center; margin-bottom:20px; background:#F8FAFC;">
-        <i class="fas fa-cloud-upload-alt" style="font-size:3rem; color:#94A3B8; margin-bottom:10px;"></i>
-        <p style="color:#64748B; margin-bottom:15px;">选择要上传的图片 (Max 2MB)</p>
-        <input type="file" id="uploadFile" accept="image/*" style="display:none;">
-        <button class="btn secondary" onclick="document.getElementById('uploadFile').click()">选择文件</button>
-        <p id="uploadFileName" style="margin-top:10px; font-size:0.85rem; color:#3B82F6;"></p>
-      </div>
-      <button class="btn" style="width:100%;" onclick="App.doUpload()">确认上传</button>
-    </div>
-  </div>
-
   <div id="imgModal" class="modal" onclick="this.classList.remove('show')">
     <img id="bigImg" style="max-width:95%; max-height:90vh; border-radius:8px;">
   </div>
@@ -2054,69 +1882,20 @@ function getHtmlPage() {
         if(this.loading) return;
         this.currentPool = pool;
         
-        // 1. 重置所有 Tab 的样式
         document.querySelectorAll('.banner-tab').forEach(el => el.classList.remove('active', 'limited'));
+        document.getElementById('tab-' + pool).classList.add('active');
         
-        // 2. 激活当前点击的 Tab
-        const activeTab = document.getElementById('tab-' + pool);
-        if (activeTab) activeTab.classList.add('active');
-        
-        // 3. 更新按钮样式和文字
         const btn = document.getElementById('drawBtn');
-        
-        // 重置基础样式，防止样式残留
-        btn.className = 'btn'; 
-        btn.style.background = ''; 
-        btn.style.border = '';
-        btn.style.color = '';
+        const costConfig = ${CONFIG.LIMITED.COST};
 
         if (pool === 'ltd') {
-            // --- 限定池逻辑 ---
-            document.getElementById('tab-ltd').classList.add('limited'); // 保持红色文字高亮
-            btn.className = 'btn limited-btn'; // 使用 CSS 中定义的渐变
-            // 这里的 500 是限定池价格，建议与 CONFIG.LIMITED.COST 保持一致
-            btn.innerHTML = '<i class="fas fa-star"></i> 召唤 <small>(500 积分)</small>';
-        } else if (pool === 'community') {
-            // --- 社区池逻辑 ---
-            // 自定义绿色到蓝色的渐变
-            btn.style.background = 'linear-gradient(135deg, #10B981, #3B82F6)';
-            btn.style.border = 'none';
-            btn.innerHTML = '<i class="fas fa-users"></i> 社区召唤 <small>(200 积分)</small>';
+            document.getElementById('tab-ltd').classList.add('limited');
+            btn.className = 'btn limited-btn';
+            btn.innerHTML = \`<i class="fas fa-star"></i> 召唤 <small>(\${costConfig} 积分)</small>\`;
         } else {
-            // --- 常驻池逻辑 ---
-            btn.innerHTML = '<i class="fas fa-bolt"></i> 召唤';
+            btn.className = 'btn';
+            btn.innerHTML = \`<i class="fas fa-bolt"></i> 召唤\`;
         }
-      },
-      openUploadModal() {
-          if(!this.username) return document.getElementById('authModal').classList.add('show');
-          document.getElementById('uploadModal').classList.add('show');
-      },
-      async doUpload() {
-          const fileInput = document.getElementById('uploadFile');
-          const file = fileInput.files[0];
-          if(!file) return this.toast('请选择图片', 'warn');
-          
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          this.toast('正在上传...', 'info');
-          try {
-              const res = await fetch('/upload/submit', {
-                  method: 'POST',
-                  headers: { 'X-User-ID': this.username }, // 注意：fetch上传FormData不需要设置Content-Type，浏览器会自动设置
-                  body: formData
-              });
-              const data = await res.json();
-              if(data.success) {
-                  this.toast('投稿成功！请等待审核', 'ok');
-                  this.closeModals();
-                  fileInput.value = ''; // 清空
-              } else {
-                  this.toast(data.error, 'warn');
-              }
-          } catch(e) {
-              this.toast('上传失败', 'warn');
-          }
       },
       switchAuth(mode) {
         this.authMode = mode;
@@ -2525,8 +2304,6 @@ function getHtmlPage() {
           if (this.currentPool === 'ltd') {
               url = '/draw/limited';
               method = 'POST';
-          } else if (this.currentPool === 'community') {
-              url = '/draw/community'; method = 'POST'; // 新增
           }
 
           const res = await fetch(url, { method: method, headers: { 'X-User-ID': this.username } });
@@ -2670,6 +2447,14 @@ function getHtmlPage() {
             } 
         } catch(e) {}
         if(btn) setTimeout(() => btn.classList.remove('refresh-spin'), 800);
+      },
+      openAdmin() { this.closeModals(); document.getElementById('adminModal').classList.add('show'); },
+      async verifyAdmin() {
+        const pwd = document.getElementById('adminPass').value;
+        try {
+            const res = await fetch('/admin/verify', { method: 'POST', body: JSON.stringify({password: pwd}) }); const d = await res.json();
+            if(d.success) { this.adminPwd = pwd; document.getElementById('adminLogin').style.display = 'none'; document.getElementById('adminPanel').style.display = 'block'; this.switchAdminTab('log'); this.renderAdminTable(); } else { this.toast('密码错误', 'warn'); }
+        } catch(e) { this.toast('网络错误', 'warn'); }
       },
       switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'ann') this.loadAdminAnnouncement();},
       async loadAdminUsers() {
