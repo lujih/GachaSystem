@@ -76,7 +76,8 @@ const CONFIG = {
     // [新增] 细粒度缓存配置
     USER_INFO: 60,       // 用户信息缓存 60秒 (高频读取，写操作时强制失效)
     PUBLIC_API: 300,     // 公共接口(如排行榜) 浏览器缓存 5分钟
-    STATIC_ASSET: 31536000 // 静态资源(图片) 1年
+    STATIC_ASSET: 31536000, // 静态资源(图片) 1年
+    BUFFER_SLOTS: 10        // [新增] 缓冲池槽位数量，越大并发性能越好
   },
   R2_DOMAIN: "https://cft1.cszxorx.dpdns.org",
   DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
@@ -130,8 +131,9 @@ export default {
       'POST /auth/register': () => userService.register(request),
       'POST /auth/login': () => userService.login(request),
       'GET /user/info': () => userService.getInfo(currentUser),
+      'GET /user/inventory': () => userService.getInventory(currentUser), 
       'POST /user/update-profile': () => userService.updateProfile(currentUser, request),
-      'POST /user/check-in': () => userService.checkIn(currentUser),
+      'POST /user/check-in': () => userService.checkIn(currentUser, request),
       'POST /user/claim-reward': () => userService.claimReward(currentUser, request),
       'GET /user/titles': () => userService.getTitles(currentUser),
       'POST /user/equip-title': () => userService.equipTitle(currentUser, request),
@@ -247,10 +249,10 @@ class UserService {
     };
   }
 
-  // [新增] 辅助方法：清除用户缓存
-  // 在 draw, checkIn, craft, shopBuy, playDice, equipTitle, updateProfile 后调用
+  // [修改] 清除缓存：同时清除 info 和 inventory
   async invalidateUserCache(userId) {
     await this.env.KV_CACHE.delete(`uinfo:${userId}`);
+    await this.env.KV_CACHE.delete(`uinv:${userId}`); // 新增
   }
 
   // 计算升级所需经验
@@ -297,8 +299,9 @@ class UserService {
   /**
    * [修改] 用户每日签到 (修复竞态条件)
    * 使用数据库原子更新防止并发双倍领取
+   * 支持用户本地时区
    */
-  async checkIn(currentUser) {
+  async checkIn(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
 
     // 1. 获取用户最新状态
@@ -308,14 +311,18 @@ class UserService {
 
     if (!user) return jsonResponse({ error: 'User not found' }, 404);
 
-    // 2. 日期判断 (UTC ISO 前10位: YYYY-MM-DD)
+    // 2. 获取用户时区偏移 (分钟)
+    const timezoneOffset = this.parseTimezoneOffset(request);
+    
+    // 3. 日期判断 (使用用户本地时区)
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const fullDateStr = now.toISOString();
+    const todayStr = this.getLocalDateString(now, timezoneOffset);
+    const fullDateStr = now.toISOString(); // 数据库仍存储 UTC 时间
     
     let lastDateStr = null;
     if (user.last_login_date) {
-      lastDateStr = new Date(user.last_login_date).toISOString().split('T')[0];
+      const lastDate = new Date(user.last_login_date);
+      lastDateStr = this.getLocalDateString(lastDate, timezoneOffset);
     }
 
     // 内存预判 (减轻DB压力)
@@ -323,7 +330,7 @@ class UserService {
       return jsonResponse({ error: 'Already checked in today' }, 400);
     }
 
-    // 3. 计算连续签到天数
+    // 4. 计算连续签到天数 (使用本地时区日期)
     let streak = user.login_streak || 0;
     if (lastDateStr && this.isConsecutiveDay(lastDateStr, todayStr)) {
       streak += 1;
@@ -331,35 +338,38 @@ class UserService {
       streak = 1; // 断签重置
     }
 
-    // 4. 计算奖励
+    // 5. 计算奖励
     const streakBonusArr = CONFIG.LEVEL.CHECK_IN.STREAK_BONUS;
-    const bonusIndex = Math.min(streak - 1, streakBonusArr.length - 1); 
+    const bonusIndex = Math.min(streak - 1, streakBonusArr.length - 1);
     const streakBonus = streakBonusArr[bonusIndex] || 0;
     
     const coinsReward = CONFIG.LEVEL.CHECK_IN.BASE_COINS + streakBonus;
     const expReward = CONFIG.LEVEL.EXP_GAIN.CHECK_IN;
 
-    // 5. 数据库原子更新 (WHERE 子句包含日期检查，防止并发)
+    // 6. 数据库原子更新 (WHERE 子句包含日期检查，防止并发)
+    // 注意：这里仍然使用 UTC 日期进行比较，因为数据库存储的是 UTC
+    // 但我们需要将用户本地日期转换为 UTC 日期进行比较
+    const utcTodayStr = now.toISOString().split('T')[0];
     const result = await this.env.DB.prepare(
-      `UPDATE users 
-       SET coins = coins + ?, 
-           exp = exp + ?, 
-           total_exp = total_exp + ?, 
-           last_login_date = ?, 
-           login_streak = ? 
-       WHERE id = ? 
+      `UPDATE users
+       SET coins = coins + ?,
+           exp = exp + ?,
+           total_exp = total_exp + ?,
+           last_login_date = ?,
+           login_streak = ?
+       WHERE id = ?
        AND (last_login_date IS NULL OR substr(last_login_date, 1, 10) != ?)`
-    ).bind(coinsReward, expReward, expReward, fullDateStr, streak, currentUser.id, todayStr).run();
+    ).bind(coinsReward, expReward, expReward, fullDateStr, streak, currentUser.id, utcTodayStr).run();
 
-    // 6. 检查是否更新成功 (meta.changes === 0 说明被并发拦截)
+    // 7. 检查是否更新成功 (meta.changes === 0 说明被并发拦截)
     if (result.meta.changes === 0) {
         return jsonResponse({ error: 'Already checked in today' }, 400);
     }
 
-    // 7. 更新成功后：写日志 & 清缓存
+    // 8. 更新成功后：写日志 & 清缓存
     await this.env.DB.prepare(
       'INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).bind(currentUser.id, currentUser.username, 'check_in', `Streak:${streak} Coins:${coinsReward}`, Date.now()).run();
+    ).bind(currentUser.id, currentUser.username, 'check_in', `Streak:${streak} Coins:${coinsReward} Timezone:${timezoneOffset}`, Date.now()).run();
 
     // [新增] 关键：清除缓存
     await this.invalidateUserCache(currentUser.id);
@@ -370,7 +380,9 @@ class UserService {
         coins: coinsReward,
         exp: expReward,
         streak: streak,
-        streakBonus: streakBonus
+        streakBonus: streakBonus,
+        timezoneOffset: timezoneOffset,
+        localDate: todayStr
       }
     });
   }
@@ -455,8 +467,39 @@ class UserService {
     last.setHours(0,0,0,0);
     current.setHours(0,0,0,0);
     const diffTime = Math.abs(current - last);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays === 1;
+  }
+
+  // 获取用户本地时区的日期字符串 (YYYY-MM-DD)
+  // timezoneOffset: 时区偏移分钟数 (如 +480 表示 UTC+8)
+  getLocalDateString(date, timezoneOffset = 0) {
+    // 将 UTC 时间转换为本地时间
+    const localTime = new Date(date.getTime() + timezoneOffset * 60000);
+    const year = localTime.getUTCFullYear();
+    const month = String(localTime.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(localTime.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // 从请求头解析时区偏移 (分钟)
+  parseTimezoneOffset(request) {
+    const tzHeader = request.headers.get('X-User-Timezone');
+    if (!tzHeader) return 0; // 默认 UTC
+    
+    // 格式可以是 "+08:00" 或 "480" (分钟)
+    if (tzHeader.includes(':')) {
+      const match = tzHeader.match(/^([+-]?)(\d{1,2}):(\d{2})$/);
+      if (match) {
+        const sign = match[1] === '-' ? -1 : 1;
+        const hours = parseInt(match[2], 10);
+        const minutes = parseInt(match[3], 10);
+        return sign * (hours * 60 + minutes);
+      }
+    }
+    
+    const offset = parseInt(tzHeader, 10);
+    return isNaN(offset) ? 0 : offset;
   }
 
   async login(request) {
@@ -496,22 +539,17 @@ class UserService {
     });
   }
 
-  // [优化] getInfo 方法：使用 SQL 聚合查询，1次 DB 请求获取所有数据
+  // [修改] getInfo: 移除 inventory 子查询，轻量化
   async getInfo(currentUser) {
     if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
 
     const cacheKey = `uinfo:${currentUser.id}`;
-    
-    // 1. 尝试从 KV 读取缓存 (保持原有的读写分离逻辑)
     const cachedData = await this.env.KV_CACHE.get(cacheKey, { type: 'json' });
     if (cachedData) {
       return jsonResponse(cachedData, 200, { 'X-Cache-Status': 'HIT' });
     }
 
-    // 2. 数据库查询优化：使用子查询和 JSON 聚合
-    // 解释：
-    // - inv_json: 将 inventory 表中该用户的所有行，打包成 [{"rarity":"N","count":5}, ...] 格式的字符串
-    // - active_title: 获取当前装备的称号ID
+    // 优化后的 SQL：移除 inv_json 子查询
     const sql = `
       SELECT 
         u.username, u.nickname, u.coins, u.draw_count, u.wins, 
@@ -520,44 +558,19 @@ class UserService {
           SELECT title_id 
           FROM user_titles 
           WHERE user_id = u.id AND is_equipped = 1
-        ) as active_title,
-        (
-          SELECT json_group_array(json_object('rarity', rarity, 'count', count)) 
-          FROM inventory 
-          WHERE user_id = u.id
-        ) as inv_json
+        ) as active_title
       FROM users u
       WHERE u.id = ?
     `;
 
     const userRes = await this.env.DB.prepare(sql).bind(currentUser.id).first();
-
     if (!userRes) return jsonResponse({ error: 'User Not Found' }, 404);
 
-    // 3. 数据处理
-    // 解析背包 JSON 数据
-    const inventory = {};
-    if (userRes.inv_json) {
-      try {
-        const invArray = JSON.parse(userRes.inv_json);
-        // 转换数组为对象格式: { N: 10, R: 5 ... }
-        if (Array.isArray(invArray)) {
-          invArray.forEach(item => {
-            if(item.rarity) inventory[item.rarity] = item.count;
-          });
-        }
-      } catch (e) {
-        console.error('Inventory parse error', e);
-      }
-    }
-
-    // 处理等级进度
+    // 计算等级相关 (保持不变)
     const currentLevel = userRes.level || 1;
     const currentExp = userRes.exp || 0;
-    const totalExp = userRes.total_exp || 0;
     const requiredExpForNextLevel = this.calculateRequiredExp(currentLevel + 1);
     const levelProgress = this.calculateLevelProgress(currentExp, currentLevel);
-    const expToNextLevel = Math.max(0, requiredExpForNextLevel - currentExp);
     
     // 处理称号
     let currentTitle = null;
@@ -565,7 +578,7 @@ class UserService {
         currentTitle = { name: userRes.active_title };
     }
 
-    // 4. 构建响应对象
+    // 响应中不再包含 inventory
     const responseData = {
       username: userRes.username,
       nickname: userRes.nickname,
@@ -574,21 +587,47 @@ class UserService {
       wins: userRes.wins,
       level: currentLevel,
       exp: currentExp,
-      total_exp: totalExp,
       level_progress: levelProgress,
       required_exp_next: requiredExpForNextLevel, 
-      exp_to_next_level: expToNextLevel,
-      last_login_date: userRes.last_login_date,
-      inventory,
       title: currentTitle
     };
 
-    // 5. 写入 KV 缓存
     this.ctx.waitUntil(
       this.env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: CONFIG.TTL.USER_INFO })
     );
 
     return jsonResponse(responseData, 200, { 'X-Cache-Status': 'MISS' });
+  }
+
+  // [新增] 专门获取库存的方法
+  async getInventory(currentUser) {
+    if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+    
+    const cacheKey = `uinv:${currentUser.id}`;
+    const cached = await this.env.KV_CACHE.get(cacheKey, { type: 'json' });
+    if (cached) return jsonResponse(cached, 200, { 'X-Cache-Status': 'HIT' });
+
+    // 简单的查询，不涉及 JOIN，速度快
+    const results = await this.env.DB.prepare(
+        'SELECT rarity, count FROM inventory WHERE user_id = ?'
+    ).bind(currentUser.id).all();
+    
+    const inventory = {};
+    // 初始化所有稀有度为 0
+    ['N', 'R', 'SR', 'SSR', 'UR'].forEach(r => inventory[r] = 0);
+    
+    if (results.results) {
+        results.results.forEach(row => {
+            inventory[row.rarity] = row.count;
+        });
+    }
+
+    // 缓存 60秒
+    this.ctx.waitUntil(
+        this.env.KV_CACHE.put(cacheKey, JSON.stringify(inventory), { expirationTtl: 60 })
+    );
+    
+    return jsonResponse(inventory, 200, { 'X-Cache-Status': 'MISS' });
   }
 
   // [新增] 获取用户拥有的所有称号
@@ -673,46 +712,56 @@ class GachaService {
   // =================================================
 
   /**
-   * 消费缓冲池中的资源
-   * 逻辑：尝试从 KV 读取现成图片 -> 成功则返回并触发后台补充 -> 失败则现场抓取并触发后台补充
+   * [优化] 消费缓冲池中的资源 (多槽位 + Immutable 优化)
+   * 逻辑：随机选择一个槽位尝试读取 -> 成功则返回并触发后台补充 -> 失败则现场抓取并触发后台补充
    */
   async consumeGlobalBuffer(rarity, sourceList) {
-    const key = `${CONFIG.KEYS.BUFFER_PREFIX}${rarity}`;
+    // 1. 随机选择一个缓冲槽位 (0 到 BUFFER_SLOTS - 1)
+    // 这能有效分散高并发下的读写压力，防止热点 Key 阻塞
+    const slotIndex = Math.floor(Math.random() * CONFIG.TTL.BUFFER_SLOTS);
+    const key = `${CONFIG.KEYS.BUFFER_PREFIX}${rarity}:${slotIndex}`;
     
-    // 1. 尝试从 KV 读取预存的资源
-    // 优化：使用 stream 以外的方式读取，这里假设存的是 JSON 元数据
+    // 2. 尝试从 KV 读取预存的资源
     const cachedAsset = await this.env.KV_CACHE.get(key, { type: 'json' });
 
     if (cachedAsset && cachedAsset.success) {
-      // [命中缓冲]：直接返回，并安排后台补充新库存（保证下一个用户也有的用）
-      this.ctx.waitUntil(this.refillGlobalBuffer(rarity, sourceList));
+      // [命中缓冲]：直接返回
+      // 关键优化：因为 R2 资源是 Immutable 的，KV 里的链接只要不被覆盖就永远有效。
+      // 我们消耗了这个槽位（逻辑上），所以立即安排后台任务去覆盖这个槽位，补充新库存。
+      this.ctx.waitUntil(this.refillGlobalBuffer(rarity, sourceList, slotIndex));
       return cachedAsset;
     }
 
     // [缓冲未命中]：不得不进行实时同步抓取 (兜底策略)
-    console.log(`[Cache Miss] Buffer empty for ${rarity}, fetching sync...`);
+    console.log(`[Cache Miss] Buffer slot ${slotIndex} empty for ${rarity}, fetching sync...`);
     const freshAsset = await this.fetchAndUploadRandom(sourceList);
     
-    // 同时也安排后台补充，为下次做准备
-    this.ctx.waitUntil(this.refillGlobalBuffer(rarity, sourceList));
+    // 同时也安排后台补充该槽位，为下次做准备
+    this.ctx.waitUntil(this.refillGlobalBuffer(rarity, sourceList, slotIndex));
     
     return freshAsset;
   }
 
   /**
-   * 后台补充缓冲池
-   * 逻辑：抓取新图 -> 存入 KV供下次使用
+   * [优化] 后台补充缓冲池
+   * 逻辑：抓取新图 -> 存入 KV 指定槽位
+   * 优化点：TTL 设置为 STATIC_ASSET (1年)，充分利用 R2 的不可变特性
    */
-  async refillGlobalBuffer(rarity, sourceList) {
+  async refillGlobalBuffer(rarity, sourceList, slotIndex) {
     try {
         const asset = await this.fetchAndUploadRandom(sourceList);
         if (asset.success) {
-            const key = `${CONFIG.KEYS.BUFFER_PREFIX}${rarity}`;
-            // 存入 KV，TTL 设置为 24小时 (如果没人抽，这个图保留24小时)
-            await this.env.KV_CACHE.put(key, JSON.stringify(asset), { expirationTtl: 86400 });
+            // 如果 slotIndex 未传 (兼容旧代码)，则随机选一个
+            const idx = slotIndex !== undefined ? slotIndex : Math.floor(Math.random() * CONFIG.TTL.BUFFER_SLOTS);
+            const key = `${CONFIG.KEYS.BUFFER_PREFIX}${rarity}:${idx}`;
+            
+            // [关键修改] R2 资源是 Immutable 的，KV 指针也应该长久有效。
+            // 只有当新的图片被上传并覆盖此 Key 时，它才会变。
+            // 这样即使 24小时没人抽卡，缓冲池里的图片也不会因为 TTL 过期而消失。
+            await this.env.KV_CACHE.put(key, JSON.stringify(asset), { expirationTtl: CONFIG.TTL.STATIC_ASSET });
         }
     } catch (e) {
-        console.error(`[Refill Error] Failed to refill ${rarity}:`, e);
+        console.error(`[Refill Error] Failed to refill ${rarity} slot ${slotIndex}:`, e);
     }
   }
 
@@ -1039,18 +1088,36 @@ class GachaService {
 }
 
 async function handleHome() {
-  return new Response(getHtmlPage(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return new Response(getHtmlPage(), { 
+    headers: { 
+      'Content-Type': 'text/html; charset=utf-8',
+      // 浏览器缓存 1分钟 (避免本地卡死)
+      'Cache-Control': 'public, max-age=60',
+      // Cloudflare 边缘缓存 1小时，且允许在过期后的 1天内先返回旧页面，后台更新
+      'CDN-Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
+    } 
+  });
 }
 
 async function handleProfile() {
-  return new Response(getProfilePage(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return new Response(getProfilePage(), { 
+    headers: { 
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'public, max-age=60',
+      // 个人页骨架也是静态的，同样利用 SWR 加速首屏
+      'CDN-Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
+    } 
+  });
 }
 
 async function handleChangelog(env) {
   if (!env.RECENT_REQUESTS) return jsonResponse(DEFAULT_CHANGELOG);
   let logs = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.CHANGELOG));
   return jsonResponse(logs || DEFAULT_CHANGELOG, 200, {
-      'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`
+      // 浏览器缓存 5分钟
+      'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`,
+      // CDN 缓存 1小时，允许过期后后台更新 (SWR)
+      'CDN-Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
   });
 }
 
@@ -1058,7 +1125,9 @@ async function handleGetAnnouncement(env) {
   if (!env.RECENT_REQUESTS) return jsonResponse({ enabled: false });
   const data = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
   return jsonResponse(data || { enabled: false }, 200, {
-      'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`
+      'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`,
+      // 公告不需要每秒都查，CDN 缓存 10分钟
+      'CDN-Cache-Control': 'public, max-age=600, stale-while-revalidate=86400'
   });
 }
 
@@ -1098,9 +1167,12 @@ async function handleShowcase(env) {
     const list = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.LEADERBOARD)) || [];
     const result = list.sort(() => 0.5 - Math.random()).slice(0, 6);
     
-    // [修改] 添加浏览器缓存头：public, max-age=300 (5分钟)
     return jsonResponse(result, 200, {
-        'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`
+        // 浏览器缓存 5分钟
+        'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`,
+        // CDN 缓存 5分钟，但允许 SWR。
+        // 这样高并发下 KV 只需要每 5 分钟被读取一次，其余时间全走 CDN 内存
+        'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=600'
     });
 }
 
@@ -1123,11 +1195,15 @@ async function handleLibrary(request, env, url) {
       const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
       const currentPage = Math.max(1, Math.min(page, totalPages));
 
-      // 返回 HTML，设置 60秒 缓存
+      // 返回 HTML，应用 CDN 缓存策略
       return new Response(getLibraryHtml(items, { currentPage, totalPages, totalItems }), { 
           headers: { 
               'Content-Type': 'text/html; charset=utf-8',
-              'Cache-Control': 'public, max-age=60' 
+              // 浏览器端：短缓存 (1分钟)，避免用户本地看到太旧的数据
+              'Cache-Control': 'public, max-age=60',
+              // Cloudflare 端：缓存 5分钟，过期后允许使用“陈旧数据”服务 1小时 (SWR)
+              // 效果：高频访问时 D1 数据库每 5 分钟只会被读取一次，极大降低数据库费用
+              'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=3600'
           } 
       });
 
@@ -1874,6 +1950,7 @@ function getHtmlPage() {
       async init() {
         this.initTheme();
         await this.fetchUserInfo();
+        this.fetchInventory(); 
         this.loadShowcase();
         this.loadChangelog();
         this.checkAnnouncement();
@@ -1911,6 +1988,7 @@ function getHtmlPage() {
           if (data && data.username) { 
               this.username = data.username; 
               this.nickname = data.nickname;
+              this.coins = data.coins || 0; // 更新本地状态
               this.updateUI(data); 
           } else { 
               localStorage.removeItem('moe_username');
@@ -1918,6 +1996,18 @@ function getHtmlPage() {
               document.getElementById('authModal').classList.add('show'); 
           }
         } catch(e) {}
+      },
+      async fetchInventory() {
+          if (!this.username) return;
+          try {
+              const res = await fetch('/user/inventory', { headers: { 'X-User-ID': this.username } });
+              const data = await res.json();
+              if (data) {
+                  this.inventory = data; // 更新内存中的库存
+                  this.updateProfileStats(); // 如果个人资料页开着，更新数字
+                  this.updateCraftStates();  // 如果合成页开着，更新按钮状态
+              }
+          } catch(e) { console.error('Inv load failed', e); }
       },
       updateUI(user) {
         // --- 1. 更新顶部导航栏 (Header) ---
