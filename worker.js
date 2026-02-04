@@ -1489,6 +1489,30 @@ const NEUTRAL_CSS = `
   .form-row { margin-bottom: 15px; }
   .form-label { display: block; font-weight: bold; font-size: 0.9rem; color: var(--text-main); margin-bottom: 6px; }
   .form-hint { font-size: 0.75rem; color: var(--text-light); margin-top: 4px; }
+  .skeleton {
+    background: #E2E8F0;
+    background: linear-gradient(90deg, #E2E8F0 25%, #F1F5F9 37%, #E2E8F0 63%);
+    background-size: 400% 100%;
+    animation: skeleton-loading 1.4s ease infinite;
+    border-radius: 8px;
+  }
+  @keyframes skeleton-loading {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+  }
+  .anim-shake { animation: shake-x 0.4s ease-in-out; }
+  .anim-pop { animation: pop-scale 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+  
+  @keyframes shake-x {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+  }
+  @keyframes pop-scale {
+    0% { transform: scale(0.95); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
 
   @media (max-width: 480px) {
     .modal-content { width: 95%; padding: 16px; max-width: none; }
@@ -1640,7 +1664,7 @@ function getHtmlPage() {
     .grid-item img { width: 100%; height: 100%; object-fit: cover; }
     .input-group input { width: 100%; padding: 12px; border: 2px solid #E2E8F0; border-radius: 10px; font-family: var(--font); font-size: 1rem; text-align: center; color: var(--text-main); margin-bottom: 20px; outline: none; background: #F8FAFC; }
     .input-group input:focus { border-color: var(--primary); background: white; }
-    .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #1E293B; color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; }
+    .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #1E293B; color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; backdrop-filter: blur(8px); background: rgba(30, 41, 59, 0.9); border: 1px solid rgba(255,255,255,0.1); }
     @keyframes slideDown { from { transform: translate(-50%, -50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
     .log-container { padding: 20px; text-align: left; }
     .log-header { font-size: 1rem; font-weight: 800; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: var(--primary); }
@@ -1947,6 +1971,26 @@ function getHtmlPage() {
       authMode: 'login', 
       coins: 0,
       
+      vibrate(type) {
+        if (!navigator.vibrate) return;
+        const patterns = {
+          tap: 10,               // 普通点击
+          success: [10, 30, 10], // 成功/抽到卡
+          failure: [30, 50, 30], // 失败/报错
+          heavy: 50              // 重要操作
+        };
+        try { navigator.vibrate(patterns[type] || 10); } catch(e){}
+      },
+      animate(elId, type) {
+        const el = document.getElementById(elId);
+        if(!el) return;
+        const cls = type === 'error' ? 'anim-shake' : 'anim-pop';
+        el.classList.remove('anim-shake', 'anim-pop');
+        void el.offsetWidth; // 触发重绘
+        el.classList.add(cls);
+        // 动画结束后移除类，以便下次触发
+        setTimeout(() => el.classList.remove(cls), 400);
+      },
       async init() {
         this.initTheme();
         await this.fetchUserInfo();
@@ -2472,7 +2516,7 @@ function getHtmlPage() {
              document.getElementById('placeholder').style.display = 'none'; 
              this.loading = false; 
              
-             // [优化] 合并判断逻辑：根据卡池类型动态决定图标
+             // 按钮恢复逻辑 (保持你之前的合并优化)
              const icon = this.currentPool === 'ltd' ? 'fa-star' : 'fa-bolt';
              btn.innerHTML = \`<i class="fas \${icon}"></i> 再召唤\`;
 
@@ -2483,6 +2527,10 @@ function getHtmlPage() {
              }
              
              if(data.success) { 
+                 // [优化] 成功反馈：震动 + 按钮弹跳动画
+                 this.vibrate('success');
+                 this.animate('drawBtn', 'success'); 
+                 
                  this.toast(isSpecial || this.currentPool === 'ltd' ? '合成/召唤成功！' : '召唤成功', 'ok'); 
                  if(data.inventory) this.inventory = data.inventory; 
                  if(data.userCoins !== undefined) {
@@ -2490,13 +2538,14 @@ function getHtmlPage() {
                     const pCoins = document.getElementById('profileCoins');
                     if(pCoins) pCoins.innerText = data.userCoins;
                  }
-                 // 兼容延迟加载逻辑
                  if(typeof this.fetchInventory === 'function') {
                      this.fetchInventory();
                  } else {
                      this.updateCraftStates();
                  }
              } else { 
+                 // [优化] 失败反馈：长震动
+                 this.vibrate('failure');
                  this.toast('连接失败', 'warn'); 
              }
              
@@ -2507,6 +2556,9 @@ function getHtmlPage() {
               img.onload = onImageLoad; 
               img.onerror = () => { 
                   this.loading = false; 
+                  // [优化] 错误反馈：震动 + 按钮抖动
+                  this.vibrate('failure');
+                  this.animate('drawBtn', 'error');
                   this.switchPool(this.currentPool); 
                   this.toast('图片加载失败', 'warn'); 
               }; 
@@ -2544,41 +2596,98 @@ function getHtmlPage() {
       },
       openDice() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('diceModal').classList.add('show'); document.getElementById('diceIcon').className = 'fas fa-dice-d6'; document.getElementById('diceMsg').innerText = ''; },
       async playDice(prediction) {
-        if(this.loading) return; const bet = parseInt(document.getElementById('betInput').value); if(!bet || bet < 10) return this.toast('最小下注为 10', 'warn');
-        this.loading = true; const icon = document.getElementById('diceIcon'); const msg = document.getElementById('diceMsg'); 
-        icon.classList.add('dice-result-anim'); msg.innerText = '加载中...';
+        if(this.loading) return; 
+        const bet = parseInt(document.getElementById('betInput').value); 
+        if(!bet || bet < 10) {
+            // [优化] 输入错误反馈
+            this.vibrate('failure');
+            this.animate('betInput', 'error');
+            return this.toast('最小下注为 10', 'warn');
+        }
+
+        this.loading = true; 
+        this.vibrate('tap'); // 点击反馈
+
+        const icon = document.getElementById('diceIcon'); 
+        const msg = document.getElementById('diceMsg'); 
+        
+        icon.classList.add('dice-result-anim'); 
+        msg.innerText = '骰子转动中...';
+        
         try {
           const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           setTimeout(() => {
-             this.loading = false; icon.classList.remove('dice-result-anim');
-             if(data.error) { msg.innerText = this.mapError(data.error); return; }
-             const diceIcons = ['one', 'two', 'three', 'four', 'five', 'six']; icon.className = \`fas fa-dice-\${diceIcons[data.roll - 1]}\`;
-             if(data.isWin) { msg.innerText = \`你赢了！ (+\${data.winAmount})\`; msg.style.color = '#10B981'; this.toast('你赢了！', 'ok'); } else { msg.innerText = '你输了'; msg.style.color = '#EF4444'; }
+             this.loading = false; 
+             icon.classList.remove('dice-result-anim');
+             
+             if(data.error) { 
+                 this.vibrate('failure');
+                 msg.innerText = this.mapError(data.error); 
+                 return; 
+             }
+             
+             const diceIcons = ['one', 'two', 'three', 'four', 'five', 'six']; 
+             icon.className = \`fas fa-dice-\${diceIcons[data.roll - 1]}\`;
+             
+             // [优化] 胜负反馈动画与震动
+             if(data.isWin) { 
+                 this.vibrate('success');
+                 this.animate('diceIcon', 'success'); // 图标弹跳
+                 msg.innerText = \`你赢了！ (+\${data.winAmount})\`; 
+                 msg.style.color = '#10B981'; 
+                 this.toast('运气爆棚！', 'ok'); 
+             } else { 
+                 this.vibrate('failure');
+                 this.animate('diceIcon', 'error'); // 图标抖动
+                 msg.innerText = '你输了'; 
+                 msg.style.color = '#EF4444'; 
+             }
+             
              this.coins = data.newBalance;
              const pCoins = document.getElementById('profileCoins');
              if(pCoins) pCoins.innerText = data.newBalance;
           }, 600);
-        } catch(e) { this.loading = false; icon.classList.remove('dice-result-anim'); this.toast('网络错误', 'warn'); }
+        } catch(e) { 
+            this.loading = false; 
+            icon.classList.remove('dice-result-anim'); 
+            this.vibrate('failure');
+            this.toast('网络错误', 'warn'); 
+        }
       },
       async loadShowcase() {
         const grid = document.getElementById('showcaseGrid'); 
         const btn = document.getElementById('refreshBtn');
         
+        // [交互] 点击刷新时的反馈
         if(btn) {
+            this.vibrate('tap');
             btn.classList.remove('refresh-spin');
             void btn.offsetWidth;
             btn.classList.add('refresh-spin');
         }
 
+        // [优化] 渲染骨架屏：生成6个占位方块，不再显示简单的"加载中"
+        // 保持高度与实际图片一致 (aspect-ratio: 1)
+        const skeletonHtml = Array(6).fill(0).map(() => 
+            \`<div class="grid-item skeleton" style="aspect-ratio:1; border:none;"></div>\`
+        ).join('');
+        grid.innerHTML = skeletonHtml;
+
         try { 
-            // 修改处：添加时间戳参数，强制避开浏览器缓存
             const res = await fetch('/showcase?t=' + Date.now()); 
             const data = await res.json(); 
             if(data.length) { 
-                grid.innerHTML = data.map(item => \`<div class="grid-item" onclick="App.preview('\${item.imageUrl}')"><img src="\${item.imageUrl}" loading="lazy"></div>\`).join(''); 
-            } 
-        } catch(e) {}
+                // 图片加载后渐显效果已在原有CSS (.grid-item img) 中定义
+                grid.innerHTML = data.map(item => 
+                    \`<div class="grid-item anim-pop" onclick="App.preview('\${item.imageUrl}')"><img src="\${item.imageUrl}" loading="lazy"></div>\`
+                ).join(''); 
+            } else {
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#94A3B8;">暂无数据</div>';
+            }
+        } catch(e) {
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#EF4444;">加载失败</div>';
+        }
         if(btn) setTimeout(() => btn.classList.remove('refresh-spin'), 800);
       },
       openAdmin() { this.closeModals(); document.getElementById('adminModal').classList.add('show'); },
@@ -2591,8 +2700,30 @@ function getHtmlPage() {
       },
       switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'ann') this.loadAdminAnnouncement();},
       async loadAdminUsers() {
-        const tbody = document.getElementById('userTbody'); tbody.innerHTML = \`<tr><td colspan="4" style="text-align:center;">加载中...</td></tr>\`; 
-        try { const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); const data = await res.json(); if(data.success && data.users.length) { tbody.innerHTML = data.users.map(u => \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">删</button></td></tr>\`).join(''); } else { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Empty</td></tr>'; } } catch(e) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Err</td></tr>'; }
+        const tbody = document.getElementById('userTbody'); 
+        
+        // [优化] 表格骨架屏：生成5行，每行显示灰色条状
+        const skeletonRow = \`
+            <tr>
+                <td><div class="skeleton" style="height:20px; width:80%; margin-bottom:4px;"></div><div class="skeleton" style="height:12px; width:50%;"></div></td>
+                <td><div class="skeleton" style="height:20px; width:40%;"></div></td>
+                <td><div class="skeleton" style="height:20px; width:60%;"></div></td>
+                <td><div class="skeleton" style="height:24px; width:40px;"></div></td>
+            </tr>
+        \`;
+        tbody.innerHTML = Array(5).fill(skeletonRow).join('');
+
+        try { 
+            const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); 
+            const data = await res.json(); 
+            if(data.success && data.users.length) { 
+                tbody.innerHTML = data.users.map(u => \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">删</button></td></tr>\`).join(''); 
+            } else { 
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">暂无用户</td></tr>'; 
+            } 
+        } catch(e) { 
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">加载失败</td></tr>'; 
+        }
       },
       async adminEditPoints(userId) { const val = prompt('输入要增加或减少的积分:'); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
       async deleteUser(id) { if(!confirm('确定删除该用户吗？此操作不可逆。')) return; try { const res = await fetch('/admin/delete-user', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: id }) }); const d = await res.json(); if(d.success) { this.toast('用户已删除', 'ok'); this.loadAdminUsers(); } else { this.toast('Error', 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
