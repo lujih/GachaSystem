@@ -1958,21 +1958,20 @@ function getHtmlPage() {
       switchPool(pool) {
         if(this.loading) return;
         this.currentPool = pool;
+        const isLtd = pool === 'ltd';
         
+        // 1. 更新标签页样式
         document.querySelectorAll('.banner-tab').forEach(el => el.classList.remove('active', 'limited'));
-        document.getElementById('tab-' + pool).classList.add('active');
+        const activeTab = document.getElementById('tab-' + pool);
+        activeTab.classList.add('active');
+        if (isLtd) activeTab.classList.add('limited');
         
+        // 2. 更新按钮样式与图标 (合并逻辑)
         const btn = document.getElementById('drawBtn');
-        const costConfig = ${CONFIG.LIMITED.COST};
-
-        if (pool === 'ltd') {
-            document.getElementById('tab-ltd').classList.add('limited');
-            btn.className = 'btn limited-btn';
-            btn.innerHTML = \`<i class="fas fa-star"></i> 召唤 <small>(\${costConfig} 积分)</small>\`;
-        } else {
-            btn.className = 'btn';
-            btn.innerHTML = \`<i class="fas fa-bolt"></i> 召唤\`;
-        }
+        const icon = isLtd ? 'fa-star' : 'fa-bolt';
+        
+        btn.className = isLtd ? 'btn limited-btn' : 'btn';
+        btn.innerHTML = \`<i class="fas \${icon}"></i> 召唤\`;
       },
       switchAuth(mode) {
         this.authMode = mode;
@@ -2467,19 +2466,22 @@ function getHtmlPage() {
       },
       handleDrawResult(data, img, tag, btn, isSpecial = false) {
           img.src = data.imageUrl;
+          
           const onImageLoad = () => {
              img.classList.add('show'); 
              document.getElementById('placeholder').style.display = 'none'; 
              this.loading = false; 
              
-             if (this.currentPool === 'ltd') {
-                 const cost = ${CONFIG.LIMITED.COST};
-                 btn.innerHTML = \`<i class="fas fa-star"></i> 再召唤 <small>(\${cost} 积分)</small>\`;
-             } else {
-                 btn.innerHTML = '<i class="fas fa-bolt"></i> 再召唤';
-             }
+             // [优化] 合并判断逻辑：根据卡池类型动态决定图标
+             const icon = this.currentPool === 'ltd' ? 'fa-star' : 'fa-bolt';
+             btn.innerHTML = \`<i class="fas \${icon}"></i> 再召唤\`;
 
-             if (data.rarity) { tag.innerText = data.rarity; tag.className = 'rarity-tag r-' + data.rarity.toLowerCase(); tag.classList.add('show'); }
+             if (data.rarity) { 
+                 tag.innerText = data.rarity; 
+                 tag.className = 'rarity-tag r-' + data.rarity.toLowerCase(); 
+                 tag.classList.add('show'); 
+             }
+             
              if(data.success) { 
                  this.toast(isSpecial || this.currentPool === 'ltd' ? '合成/召唤成功！' : '召唤成功', 'ok'); 
                  if(data.inventory) this.inventory = data.inventory; 
@@ -2488,12 +2490,19 @@ function getHtmlPage() {
                     const pCoins = document.getElementById('profileCoins');
                     if(pCoins) pCoins.innerText = data.userCoins;
                  }
-                 this.updateCraftStates(); 
+                 // 兼容延迟加载逻辑
+                 if(typeof this.fetchInventory === 'function') {
+                     this.fetchInventory();
+                 } else {
+                     this.updateCraftStates();
+                 }
              } else { 
                  this.toast('连接失败', 'warn'); 
              }
+             
              setTimeout(() => this.fetchUserInfo(), 500);
           };
+          
           if (img.complete) onImageLoad(); else { 
               img.onload = onImageLoad; 
               img.onerror = () => { 
