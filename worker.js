@@ -2023,7 +2023,8 @@ function getHtmlPage() {
           if (user.title) { 
             navTitle.innerHTML = user.title.name; 
             navTitle.className = 'title-badge'; 
-            navTitle.style.backgroundColor = user.title.color; 
+            // 如果后端返回了颜色则使用，否则默认
+            navTitle.style.backgroundColor = user.title.color || '#3B82F6'; 
           } else { 
             navTitle.innerHTML = ''; 
             navTitle.className = 'user-title';
@@ -2031,20 +2032,53 @@ function getHtmlPage() {
           }
         }
 
-        // --- 2. 更新内存数据 (用于商店等功能) ---
+        // --- 2. 更新本地状态 (仅基础数据) ---
+        // 注意：库存数据(this.inventory)不再此处更新，改为由 fetchInventory 独立处理
         this.coins = user.coins || 0;
-        this.inventory = user.inventory || {};
 
-        // --- 3. 尝试更新可能存在的其他元素 (安全更新) ---
-        // 只有当元素存在时才更新，避免 null 报错
+        // --- 3. 更新个人资料页的基础信息 (如果DOM存在) ---
+        // 即使个人页模态框未打开，这些元素也可能存在于 DOM 中，安全起见都尝试更新
         const elProfileCoins = document.getElementById('profileCoins');
         if (elProfileCoins) elProfileCoins.innerText = this.coins;
-        
+
+        const elProfileLevel = document.getElementById('profileLevel');
+        if (elProfileLevel) elProfileLevel.innerText = user.level || 1;
+
         const elProfileCount = document.getElementById('profileCount');
         if (elProfileCount) elProfileCount.innerText = user.drawCount || 0;
         
-        // 更新合成状态
-        this.updateCraftStates();
+        const elProfileNick = document.getElementById('profileNickname');
+        if (elProfileNick) elProfileNick.innerText = user.nickname || user.username;
+        
+        const elProfileUser = document.getElementById('profileUsername');
+        if (elProfileUser) elProfileUser.innerText = user.username;
+
+        // --- 4. 更新经验条 ---
+        const exp = user.exp || 0;
+        const next = user.required_exp_next || 100;
+        const progress = user.level_progress || 0;
+
+        const elExp = document.getElementById('profileExp');
+        if (elExp) elExp.innerText = exp;
+        
+        const elExpNext = document.getElementById('profileExpNext');
+        if (elExpNext) elExpNext.innerText = next;
+        
+        const elProgText = document.getElementById('profileLevelProgress');
+        if (elProgText) elProgText.innerText = progress + '%';
+        
+        const elProgBar = document.getElementById('profileExpBar');
+        if (elProgBar) elProgBar.style.width = progress + '%';
+
+        // --- 5. 更新个人页称号显示 ---
+        const titleEl = document.getElementById('currentTitleDisplay');
+        if (titleEl) {
+            if (user.title && user.title.name) {
+                titleEl.innerHTML = \`<span class="title-badge" style="background:linear-gradient(135deg, #3B82F6, #8B5CF6); font-size:1rem; padding:4px 10px;">\${user.title.name}</span>\`;
+            } else {
+                titleEl.innerHTML = \'<span style="color:#CBD5E1; font-weight:normal;">暂无称号</span>\';
+            }
+        }
       },
       updateProfileStats() {
         const inv = this.inventory;
