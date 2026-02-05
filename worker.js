@@ -707,6 +707,53 @@ class GachaService {
     this.userService = userService;
   }
 
+  /**
+ * 检查 KV 写入配额是否充足
+ */
+  async checkKVQuota() {
+      const today = new Date().toISOString().slice(0, 10);
+      const quotaKey = `stats:kv_writes:${today}`;
+      const current = parseInt(await this.env.KV_CACHE.get(quotaKey) || '0');
+
+      // 免费档 1000/天，预留 100 给关键操作
+      if (current >= 900) {
+          console.warn(`KV quota nearly exhausted: ${current}/1000`);
+          return false;
+      }
+
+      // 异步增加计数（不 await，不阻塞主流程）
+      this.ctx.waitUntil(
+          this.env.KV_CACHE.put(quotaKey, (current + 1).toString(), { expirationTtl: 86400 })
+      );
+      return true;
+  }
+
+  /**
+   * 安全的缓冲池补充（带配额检查）
+   */
+  async safeRefillGlobalBuffer(rarity, sourceList, slotIndex) {
+      // 检查配额
+      const hasQuota = await this.checkKVQuota();
+      if (!hasQuota) {
+          console.log(`KV quota limit reached, skipping buffer refill for ${rarity}`);
+          return;
+      }
+
+      // 添加随机延迟，打散写入压力（0-3秒）
+      await new Promise(r => setTimeout(r, Math.random() * 3000));
+
+      try {
+          const asset = await this.fetchAndUploadRandom(sourceList);
+          if (asset.success) {
+              const idx = slotIndex !== undefined ? slotIndex : Math.floor(Math.random() * CONFIG.TTL.BUFFER_SLOTS);
+              const key = `${CONFIG.KEYS.BUFFER_PREFIX}${rarity}:${idx}`;
+              await this.env.KV_CACHE.put(key, JSON.stringify(asset), { expirationTtl: CONFIG.TTL.STATIC_ASSET });
+          }
+      } catch (e) {
+          console.error(`[Safe Refill Error] ${rarity}:`, e);
+      }
+  }
+
   // --- 缓冲系统保持不变 ---
   async consumeGlobalBuffer(rarity, sourceList) {
     const slotIndex = Math.floor(Math.random() * CONFIG.TTL.BUFFER_SLOTS);
@@ -714,24 +761,13 @@ class GachaService {
     const cachedAsset = await this.env.KV_CACHE.get(key, { type: 'json' });
 
     if (cachedAsset && cachedAsset.success) {
-      this.ctx.waitUntil(this.refillGlobalBuffer(rarity, sourceList, slotIndex));
+      this.ctx.waitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, slotIndex));
       return cachedAsset;
     }
 
     const freshAsset = await this.fetchAndUploadRandom(sourceList);
-    this.ctx.waitUntil(this.refillGlobalBuffer(rarity, sourceList, slotIndex));
+    this.ctx.waitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, slotIndex));
     return freshAsset;
-  }
-
-  async refillGlobalBuffer(rarity, sourceList, slotIndex) {
-    try {
-        const asset = await this.fetchAndUploadRandom(sourceList);
-        if (asset.success) {
-            const idx = slotIndex !== undefined ? slotIndex : Math.floor(Math.random() * CONFIG.TTL.BUFFER_SLOTS);
-            const key = `${CONFIG.KEYS.BUFFER_PREFIX}${rarity}:${idx}`;
-            await this.env.KV_CACHE.put(key, JSON.stringify(asset), { expirationTtl: CONFIG.TTL.STATIC_ASSET });
-        }
-    } catch (e) { console.error(`Refill Error ${rarity}`, e); }
   }
 
   async fetchAndUploadRandom(sourceList) {
@@ -1049,42 +1085,33 @@ class GachaService {
     const batch = [];
     let logDetail = `Bet:${bet} Roll:${roll} `;
 
+    // 替换第 1057-1082 行
     if (isWin) {
         winAmount = bet * 2;
         expGain = CONFIG.LEVEL.EXP_GAIN.DICE_WIN;
-        
+
         // 内存计算升级
         const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
-        
-        let userSql = 'UPDATE users SET coins = coins + ?, wins = wins + 1, exp = exp + ?, total_exp = total_exp + ?';
-        let userParams = [winAmount, expGain, expGain];
-        
+
+        let userSql, userParams;
+
         if (levelUpInfo.hasLevelUp) {
-             userSql += ', level = ?, coins = coins + ?'; // 注意这里 coins 参数顺序
-             // 参数顺序：基础赢钱, 经验, 总经验, 新等级, 升级奖励
-             userParams = [winAmount, expGain, expGain, levelUpInfo.newLevel, levelUpInfo.coinsReward];
-             // 由于SQL参数绑定位置问题，上面写法有两个 coins 更新，需要合并
-             // 修正：UPDATE users SET coins = coins + ? (win + reward)
-             userSql = 'UPDATE users SET coins = coins + ?, wins = wins + 1, exp = exp + ?, total_exp = total_exp + ?, level = ?';
-             userParams = [winAmount + levelUpInfo.coinsReward, expGain, expGain, levelUpInfo.newLevel];
-             
-             // 更新内存金币以返回给前端
-             currentUser.coins += (winAmount + levelUpInfo.coinsReward);
+            // 升级时：金币 = 当前 + 赢钱 + 升级奖励
+            const totalCoinsAdd = winAmount + levelUpInfo.coinsReward;
+            userSql = 'UPDATE users SET coins = coins + ?, wins = wins + 1, exp = exp + ?, total_exp = total_exp + ?, level = ? WHERE id = ?';
+            userParams = [totalCoinsAdd, expGain, expGain, levelUpInfo.newLevel, currentUser.id];
+            currentUser.coins += totalCoinsAdd;
         } else {
-             currentUser.coins += winAmount;
+            // 未升级时：金币 = 当前 + 赢钱
+            userSql = 'UPDATE users SET coins = coins + ?, wins = wins + 1, exp = exp + ?, total_exp = total_exp + ? WHERE id = ?';
+            userParams = [winAmount, expGain, expGain, currentUser.id];
+            currentUser.coins += winAmount;
         }
-        userSql += ' WHERE id = ?';
-        userParams.push(currentUser.id);
+
         batch.push(this.env.DB.prepare(userSql).bind(...userParams));
         logDetail += `Win:${winAmount} Exp:${expGain}`;
     } else {
-        // 输了只更新 wins (保持0变动? 其实不用更，但为了逻辑统一或者记录连败可扩展)
-        // 既然不加经验也不加钱，就不需要 User Update 了？
-        // 只需要记录 Log 即可。但为了 invalidate cache 保持一致性...
-        // 这里可以优化：如果输了，只记录 Log，不需要 Update User (因为已经扣费了)
-        // 但是为了记录 'wins' 字段？原逻辑：UPDATE users SET wins = wins ... 
-        // 输了 wins 不变。
-        // 所以输了只需要 Log。
+        // 输了只记录日志，不更新用户数据（已提前扣款）
         logDetail += `Lose`;
     }
 
@@ -1093,7 +1120,7 @@ class GachaService {
     await this.env.DB.batch(batch);
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
-    return jsonResponse({ success: true, roll, isWin, winAmount, expGained: expGain, newBalance: currentUser.coins });
+    return jsonResponse({ success: true, roll, isWin, winAmount, expGained: expGain, userCoins: currentUser.coins });
   }
 }
 
@@ -2542,8 +2569,9 @@ function getHtmlPage() {
                  this.toast(isSpecial || this.currentPool === 'ltd' ? '召唤成功！' : '召唤成功', 'ok'); 
 
                  // 2. [关键优化] 直接使用后端返回的数据更新 UI，不再发起 fetch
-                 if (data.userCoins !== undefined) {
-                    this.coins = data.userCoins; // 更新内存变量
+                 const newCoins = data.userCoins !== undefined ? data.userCoins : data.newBalance;
+                 if (newCoins !== undefined) {
+                    this.coins = newCoins;
                     const pCoins = document.getElementById('profileCoins');
                     if (pCoins) pCoins.innerText = this.coins;
                  }
@@ -2574,11 +2602,14 @@ function getHtmlPage() {
                  }
                  // 合成操作 (后端返回了 craftResult 最好，如果没有则全量刷新)
                  else if (isSpecial && data.craftResult) {
-                      if (this.inventory) {
-                          this.inventory[data.craftResult.consumed] -= 5;
-                          this.inventory[data.craftResult.gained] += 1;
-                          this.updateCraftStates(); // 立即更新合成按钮状态
-                      }
+                       if (this.inventory) {
+                           this.inventory[data.craftResult.consumed] = Math.max(0, (this.inventory[data.craftResult.consumed] || 0) - 5);
+                           this.inventory[data.craftResult.gained] = (this.inventory[data.craftResult.gained] || 0) + 1;
+                           this.updateCraftStates();
+                           
+                           // 3秒后后台同步，确保数据一致性
+                           setTimeout(() => this.fetchInventory(), 3000);
+                       }
                  }
                  // 兜底：如果是复杂操作且没有详细数据，稍微延迟后刷新一次
                  else if (isSpecial) {
