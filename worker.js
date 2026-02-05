@@ -2092,6 +2092,19 @@ function getHtmlPage() {
               }
           } catch(e) { console.error('Inv load failed', e); }
       },
+      updateAllCoinDisplays() {
+          // 导航栏
+          const navCoins = document.getElementById('navCoins'); // 如果有
+          if (navCoins) navCoins.innerText = this.coins;
+          
+          // 个人资料页
+          const profileCoins = document.getElementById('profileCoins');
+          if (profileCoins) profileCoins.innerText = this.coins;
+
+          // 商店模态框
+          const shopBalance = document.getElementById('shopBalance');
+          if (shopBalance) shopBalance.innerText = this.coins;
+      },
       updateUI(user) {
         // --- 1. 更新顶部导航栏 (Header) ---
         // 必须做非空检查，防止报错中断代码执行
@@ -2288,16 +2301,22 @@ function getHtmlPage() {
         
         this.loading = true;
         try {
+            // 传递时区信息
+            const offset = -(new Date().getTimezoneOffset());
             const res = await fetch('/user/check-in', { 
                 method: 'POST', 
-                headers: { 'X-User-ID': this.username } 
+                headers: { 'X-User-ID': this.username, 'X-User-Timezone': offset.toString() } 
             });
             const data = await res.json();
             
             if(data.success) {
                 const bonus = data.checkIn.streakBonus > 0 ? \` (连签奖励 +\${data.checkIn.streakBonus})\` : '';
                 this.toast(\`签到成功！金币 +\${data.checkIn.coins}\${bonus}\`, 'ok');
-                this.fetchUserInfo(); // 刷新金币显示
+                
+                // [优化] 本地累加金币，不重新请求
+                this.coins += data.checkIn.coins;
+                this.updateAllCoinDisplays();
+                
             } else {
                 this.toast(data.error === 'Already checked in today' ? '今天已经签到过了' : data.error, 'warn');
             }
@@ -2533,6 +2552,8 @@ function getHtmlPage() {
       async doCraft(target) {
         if(this.loading) return;
         if(!this.username) { document.getElementById('authModal').classList.add('show'); return; }
+        
+        // 本地预检查
         const costMap = { 'R': 'N', 'SR': 'R', 'SSR': 'SR', 'UR': 'SSR' };
         if ((this.inventory[costMap[target]] || 0) < 5) return this.toast('需要 5 张 ' + costMap[target], 'warn');
         
@@ -2541,12 +2562,21 @@ function getHtmlPage() {
         this.loading = true; this.closeModals();
         const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag'); 
         btn.innerHTML = '<i class="fas fa-flask fa-spin"></i>'; img.classList.remove('show'); tag.classList.remove('show');
+        
         try {
           const res = await fetch('/user/craft', { method: 'POST', body: JSON.stringify({ targetRarity: target }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           if(data.error) throw new Error(this.mapError(data.error));
+          // 传递 isSpecial=true，触发 handleDrawResult 中的库存扣除逻辑
           this.handleDrawResult(data, img, tag, btn, true);
-        } catch(e) { this.loading = false; this.switchPool(this.currentPool); this.toast(e.message, 'warn'); this.fetchUserInfo(); }
+        } catch(e) { 
+          this.loading = false; 
+          this.switchPool(this.currentPool); 
+          this.toast(e.message, 'warn'); 
+          // 只有出错时才重新同步数据以纠正状态
+          this.fetchUserInfo(); 
+          this.fetchInventory();
+        }
       },
       handleDrawResult(data, img, tag, btn, isSpecial = false) {
           img.src = data.imageUrl;
@@ -2574,10 +2604,7 @@ function getHtmlPage() {
                  // 2. [关键优化] 直接使用后端返回的数据更新 UI，不再发起 fetch
                  if (data.newBalance !== undefined) {
                       this.coins = data.newBalance;
-                      const pCoins = document.getElementById('profileCoins');
-                      if(pCoins) pCoins.innerText = this.coins;
-                      const shopBal = document.getElementById('shopBalance');
-                      if(shopBal) shopBal.innerText = this.coins;
+                      this.updateAllCoinDisplays(); // 统一更新所有显示金币的地方
                   }
                  
                  // 3. 处理升级信息
@@ -2609,14 +2636,11 @@ function getHtmlPage() {
                        if (this.inventory) {
                            this.inventory[data.craftResult.consumed] = Math.max(0, (this.inventory[data.craftResult.consumed] || 0) - 5);
                            this.inventory[data.craftResult.gained] = (this.inventory[data.craftResult.gained] || 0) + 1;
-                           this.updateCraftStates();
-                           
-                           // 3秒后后台同步，确保数据一致性
-                           setTimeout(() => this.fetchInventory(), 3000);
+                           this.updateCraftStates(); // 立即更新合成按钮状态
                        }
                  }
                  // 兜底：如果是复杂操作且没有详细数据，稍微延迟后刷新一次
-                 else if (isSpecial) {
+                 else if (isSpecial && !data.craftResult) {
                      setTimeout(() => this.fetchInventory(), 500);
                  }
 
@@ -2637,27 +2661,15 @@ function getHtmlPage() {
               }; 
           }
       },
-      updateAllCoinDisplays() {
-          // 导航栏（如果有显示积分）
-          const navCoins = document.getElementById('navCoins');
-          if (navCoins) navCoins.innerText = this.coins;
-
-          // 个人资料页
-          const profileCoins = document.getElementById('profileCoins');
-          if (profileCoins) profileCoins.innerText = this.coins;
-
-          // 商店模态框（如果打开）
-          const shopBalance = document.getElementById('shopBalance');
-          if (shopBalance) shopBalance.innerText = this.coins;
-      }
       openCraft() { if(!this.username) return document.getElementById('authModal').classList.add('show'); this.updateCraftStates(); document.getElementById('craftModal').classList.add('show'); },
       openRules() { document.getElementById('profileModal').classList.remove('show'); document.getElementById('rulesModal').classList.add('show'); },
       closeRulesToProfile() { document.getElementById('rulesModal').classList.remove('show'); document.getElementById('profileModal').classList.add('show'); },
       openShop() {
         if(!this.username) return document.getElementById('authModal').classList.add('show');
-        await this.fetchUserInfo();  // ← 确保 this.coins 是最新的
+        // [优化] 移除 await this.fetchUserInfo(); 使用本地 this.coins
         const balance = this.coins;
         if(document.getElementById('shopBalance')) document.getElementById('shopBalance').innerText = balance;
+        
         const packs = [{ id: 'R', color: '#3B82F6', price: 100 }, { id: 'SR', color: '#8B5CF6', price: 500 }, { id: 'SSR', color: '#F59E0B', price: 2000 }, { id: 'UR', color: '#EF4444', price: 8000 }];
         const container = document.getElementById('shopContent');
         if(container) {
@@ -2686,14 +2698,13 @@ function getHtmlPage() {
         if(this.loading) return; 
         const bet = parseInt(document.getElementById('betInput').value); 
         if(!bet || bet < 10) {
-            // [优化] 输入错误反馈
             this.vibrate('failure');
             this.animate('betInput', 'error');
             return this.toast('最小下注为 10', 'warn');
         }
 
         this.loading = true; 
-        this.vibrate('tap'); // 点击反馈
+        this.vibrate('tap');
 
         const icon = document.getElementById('diceIcon'); 
         const msg = document.getElementById('diceMsg'); 
@@ -2704,6 +2715,7 @@ function getHtmlPage() {
         try {
           const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
+          
           setTimeout(() => {
              this.loading = false; 
              icon.classList.remove('dice-result-anim');
@@ -2717,27 +2729,25 @@ function getHtmlPage() {
              const diceIcons = ['one', 'two', 'three', 'four', 'five', 'six']; 
              icon.className = \`fas fa-dice-\${diceIcons[data.roll - 1]}\`;
              
-             // [优化] 胜负反馈动画与震动
              if(data.isWin) { 
                  this.vibrate('success');
-                 this.animate('diceIcon', 'success'); // 图标弹跳
+                 this.animate('diceIcon', 'success'); 
                  msg.innerText = \`你赢了！ (+\${data.winAmount})\`; 
                  msg.style.color = '#10B981'; 
                  this.toast('运气爆棚！', 'ok'); 
              } else { 
                  this.vibrate('failure');
-                 this.animate('diceIcon', 'error'); // 图标抖动
+                 this.animate('diceIcon', 'error');
                  msg.innerText = '你输了'; 
                  msg.style.color = '#EF4444'; 
              }
              
-             this.coins = data.newBalance;
-             const pCoins = document.getElementById('profileCoins');
+             // [优化] 更新本地余额并刷新 UI
              if (data.newBalance !== undefined) {
                   this.coins = data.newBalance;
-                  this.updateAllCoinDisplays();  // ← 统一更新所有显示位置
+                  this.updateAllCoinDisplays();
               }
-          }, 600);
+          }, 600); // 这里的延时是为了配合 CSS 动画，不能完全移除
         } catch(e) { 
             this.loading = false; 
             icon.classList.remove('dice-result-anim'); 
