@@ -891,7 +891,7 @@ class GachaService {
         pointsEarned: points,
         expGained: expGain,
         // 返回预测的最新金币数
-        userCoins: (currentUser.coins || 0) + totalCoinsToAdd,
+        newBalance: (currentUser.coins || 0) + totalCoinsToAdd,
         levelUp: levelUpInfo.hasLevelUp ? { newLevel: levelUpInfo.newLevel, reward: levelUpInfo.coinsReward } : null
     });
   }
@@ -950,8 +950,11 @@ class GachaService {
     this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now() }));
     
     return jsonResponse({ 
-        success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain,
-        userCoins: currentUser.coins + levelUpInfo.coinsReward
+        success: true, 
+        imageUrl: assetData.imageUrl, 
+        rarity: assetData.rarity, 
+        expGained: expGain,
+        newBalance: currentUser.coins + levelUpInfo.coinsReward  // ← 改为 newBalance
     });
   }
 
@@ -1010,7 +1013,7 @@ class GachaService {
 
     return jsonResponse({
         success: true, rarity: assetData.rarity, imageUrl: assetData.imageUrl, expGained: expGain,
-        userCoins: (currentUser.coins || 0) + levelUpInfo.coinsReward,
+        newBalance: (currentUser.coins || 0) + levelUpInfo.coinsReward,
         // 告知前端本次消耗和获得，以便前端自行更新，无需 fetch
         craftResult: { consumed: costRarity, gained: assetData.rarity }
     });
@@ -1059,7 +1062,7 @@ class GachaService {
     
     return jsonResponse({ 
         success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain,
-        userCoins: currentUser.coins + levelUpInfo.coinsReward
+        newBalance: currentUser.coins + levelUpInfo.coinsReward
     });
   }
 
@@ -1120,7 +1123,7 @@ class GachaService {
     await this.env.DB.batch(batch);
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
-    return jsonResponse({ success: true, roll, isWin, winAmount, expGained: expGain, userCoins: currentUser.coins });
+    return jsonResponse({ success: true, roll, isWin, winAmount, expGained: expGain, newBalance: currentUser.coins });
   }
 }
 
@@ -2569,12 +2572,13 @@ function getHtmlPage() {
                  this.toast(isSpecial || this.currentPool === 'ltd' ? '召唤成功！' : '召唤成功', 'ok'); 
 
                  // 2. [关键优化] 直接使用后端返回的数据更新 UI，不再发起 fetch
-                 const newCoins = data.userCoins !== undefined ? data.userCoins : data.newBalance;
-                 if (newCoins !== undefined) {
-                    this.coins = newCoins;
-                    const pCoins = document.getElementById('profileCoins');
-                    if (pCoins) pCoins.innerText = this.coins;
-                 }
+                 if (data.newBalance !== undefined) {
+                      this.coins = data.newBalance;
+                      const pCoins = document.getElementById('profileCoins');
+                      if(pCoins) pCoins.innerText = this.coins;
+                      const shopBal = document.getElementById('shopBalance');
+                      if(shopBal) shopBal.innerText = this.coins;
+                  }
                  
                  // 3. 处理升级信息
                  if (data.levelUp) {
@@ -2633,11 +2637,25 @@ function getHtmlPage() {
               }; 
           }
       },
+      updateAllCoinDisplays() {
+          // 导航栏（如果有显示积分）
+          const navCoins = document.getElementById('navCoins');
+          if (navCoins) navCoins.innerText = this.coins;
+
+          // 个人资料页
+          const profileCoins = document.getElementById('profileCoins');
+          if (profileCoins) profileCoins.innerText = this.coins;
+
+          // 商店模态框（如果打开）
+          const shopBalance = document.getElementById('shopBalance');
+          if (shopBalance) shopBalance.innerText = this.coins;
+      }
       openCraft() { if(!this.username) return document.getElementById('authModal').classList.add('show'); this.updateCraftStates(); document.getElementById('craftModal').classList.add('show'); },
       openRules() { document.getElementById('profileModal').classList.remove('show'); document.getElementById('rulesModal').classList.add('show'); },
       closeRulesToProfile() { document.getElementById('rulesModal').classList.remove('show'); document.getElementById('profileModal').classList.add('show'); },
       openShop() {
         if(!this.username) return document.getElementById('authModal').classList.add('show');
+        await this.fetchUserInfo();  // ← 确保 this.coins 是最新的
         const balance = this.coins;
         if(document.getElementById('shopBalance')) document.getElementById('shopBalance').innerText = balance;
         const packs = [{ id: 'R', color: '#3B82F6', price: 100 }, { id: 'SR', color: '#8B5CF6', price: 500 }, { id: 'SSR', color: '#F59E0B', price: 2000 }, { id: 'UR', color: '#EF4444', price: 8000 }];
@@ -2715,7 +2733,10 @@ function getHtmlPage() {
              
              this.coins = data.newBalance;
              const pCoins = document.getElementById('profileCoins');
-             if(pCoins) pCoins.innerText = data.newBalance;
+             if (data.newBalance !== undefined) {
+                  this.coins = data.newBalance;
+                  this.updateAllCoinDisplays();  // ← 统一更新所有显示位置
+              }
           }, 600);
         } catch(e) { 
             this.loading = false; 
