@@ -1,9 +1,13 @@
 /**
  * =========================================
- * 1. 配置区域 (CONFIG)
+ * 1. 分层配置区域 (LAYERED CONFIG)
  * =========================================
  */
-const CONFIG = {
+
+/**
+ * 业务配置层 - 游戏逻辑相关配置
+ */
+const BUSINESS_CONFIG = {
   // 图源配置
   SOURCES: [
     { name: 'Random Anime', url: 'https://api.anosu.top/img', rarity: 'N' },
@@ -12,6 +16,8 @@ const CONFIG = {
     { name: 'Stockings', url: 'https://api.anosu.top/img?sort=setu', rarity: 'SSR' },
     { name: 'Absolute Territory', url: 'https://moe.jitsu.top/api?sort=r18', rarity: 'UR' }
   ],
+  
+  // 限定池配置
   LIMITED: {
     COST: 500,
     NAME: "Limited Festival",
@@ -19,39 +25,37 @@ const CONFIG = {
       { name: 'Genshin Impact', url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
     ]
   },
+  
+  // 游戏数值配置
   GAME: {
     POINTS: { 'N': 5, 'R': 10, 'SR': 30, 'SSR': 100, 'UR': 500 },
     CRAFT_COST: 5,
     SHOP: { 'R': 100, 'SR': 500, 'SSR': 2000, 'UR': 8000 },
     DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2 }
   },
+  
   // 等级系统配置
   LEVEL: {
     // 经验获取配置
     EXP_GAIN: {
-      DRAW: { 'N': 5, 'R': 10, 'SR': 30, 'SSR': 100, 'UR': 500 }, // 抽卡获得经验（与积分相同）
-      CRAFT: 50, // 合成成功获得经验
-      SHOP_BUY: 20, // 商店购买获得经验
-      DICE_WIN: 30, // 骰子获胜获得经验
-      CHECK_IN: 50, // 每日签到获得经验
+      DRAW: { 'N': 5, 'R': 10, 'SR': 30, 'SSR': 100, 'UR': 500 },
+      CRAFT: 50,
+      SHOP_BUY: 20,
+      DICE_WIN: 30,
+      CHECK_IN: 50,
     },
     // 等级升级所需经验公式：基础值 × (等级^1.5)
     BASE_EXP: 100,
     EXP_MULTIPLIER: 1.5,
     MAX_LEVEL: 100,
-    // [新增] 签到系统配置
+    // 签到系统配置
     CHECK_IN: {
-      BASE_COINS: 100, // 每日签到基础金币
-      // 连续签到额外奖励 (第1天, 第2天, 第3天...)
-      STREAK_BONUS: [0, 20, 50, 100, 150, 200, 300] 
+      BASE_COINS: 100,
+      STREAK_BONUS: [0, 20, 50, 100, 150, 200, 300]
     },
     // 等级奖励配置
     REWARDS: {
-      // 每级奖励积分 (用于升级自动发放，或者作为手动领取的基数)
       COINS_PER_LEVEL: 50,
-      
-      // [新增] 手动领取的等级礼包配置
-      // 格式: 等级: { coins: 金币数, title: '称号(可选)' }
       MILESTONES: {
         5: { coins: 500, title: '新手收藏家' },
         10: { coins: 1000, title: '初级收藏家' },
@@ -62,35 +66,67 @@ const CONFIG = {
       }
     },
   },
+};
+
+/**
+ * 技术配置层 - 系统实现相关配置
+ */
+const TECHNICAL_CONFIG = {
+  // 存储键名配置
   KEYS: {
     CHANGELOG: 'system:changelog',
     ANNOUNCEMENT: 'system:announcement',
     LEADERBOARD: 'system:leaderboard',
     BUFFER_PREFIX: 'sys:buffer:'
   },
-  TTL: { 
-    SESSION: 86400 * 7, 
-    BUFFER: 86400, 
-    CACHE: 60 * 5, 
-    LEADERBOARD: 86400 * 30, 
-    // [新增] 细粒度缓存配置
-    USER_INFO: 60,       // 用户信息缓存 60秒 (高频读取，写操作时强制失效)
-    PUBLIC_API: 300,     // 公共接口(如排行榜) 浏览器缓存 5分钟
-    STATIC_ASSET: 31536000, // 静态资源(图片) 1年
-    BUFFER_SLOTS: 10        // [新增] 缓冲池槽位数量，越大并发性能越好
+  
+  // 缓存时间配置（秒）
+  TTL: {
+    SESSION: 86400 * 7,           // 会话缓存 7天
+    BUFFER: 86400,                // 缓冲池缓存 1天
+    CACHE: 60 * 5,                // 通用缓存 5分钟
+    LEADERBOARD: 86400 * 30,      // 排行榜缓存 30天
+    USER_INFO: 60,                // 用户信息缓存 60秒
+    PUBLIC_API: 300,              // 公共接口缓存 5分钟
+    STATIC_ASSET: 31536000,       // 静态资源缓存 1年
+    BUFFER_SLOTS: 10              // 缓冲池槽位数量
   },
-  // 图片压缩配置
+  
+  // 图片压缩配置（技术参数）
   IMAGE_COMPRESSION: {
-    ENABLED: true, // 是否启用图片压缩
-    MAX_DIMENSION: 1920, // 最大尺寸（像素）
-    MAX_FILE_SIZE: 20 * 1024 * 1024, // 最大文件大小（20MB），超过此大小不压缩
-    QUALITY: 0.85, // 压缩质量 (0-1)
-    TIMEOUT: 5000, // 压缩超时（毫秒）
-    SKIP_GIF: true, // 跳过GIF动画
-    MIN_SIZE_FOR_COMPRESSION: 50 * 1024 // 最小压缩大小（50KB），小于此值不压缩
+    ENABLED: true,
+    MAX_DIMENSION: 1920,
+    MAX_FILE_SIZE: 20 * 1024 * 1024,
+    QUALITY: 0.85,
+    TIMEOUT: 5000,
+    SKIP_GIF: true,
+    MIN_SIZE_FOR_COMPRESSION: 50 * 1024
   },
-  R2_DOMAIN: "https://cft1.cszxorx.dpdns.org",
-  DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
+  
+  // 基础设施配置
+  INFRASTRUCTURE: {
+    R2_DOMAIN: "https://cft1.cszxorx.dpdns.org",
+    DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
+  }
+};
+
+/**
+ * 统一配置对象 - 向后兼容的 CONFIG 对象
+ * 通过合并业务配置和技术配置提供统一接口
+ */
+const CONFIG = {
+  // 业务配置（直接引用）
+  ...BUSINESS_CONFIG,
+  
+  // 技术配置（扁平化合并）
+  ...TECHNICAL_CONFIG,
+  
+  // 向后兼容的扁平化属性
+  KEYS: TECHNICAL_CONFIG.KEYS,
+  TTL: TECHNICAL_CONFIG.TTL,
+  IMAGE_COMPRESSION: TECHNICAL_CONFIG.IMAGE_COMPRESSION,
+  R2_DOMAIN: TECHNICAL_CONFIG.INFRASTRUCTURE.R2_DOMAIN,
+  DEFAULT_IMG: TECHNICAL_CONFIG.INFRASTRUCTURE.DEFAULT_IMG
 };
 
 const DEFAULT_CHANGELOG = [
@@ -1592,209 +1628,13 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
 }
 function safeJsonParse(str) { try { return JSON.parse(str); } catch { return null; } }
 
+const EXTERNAL_CSS_URL = 'https://raw.githubusercontent.com/lujih/GachaSystem/main/styles.css';
+
 const NEUTRAL_CSS = `
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --primary: #3B82F6; --primary-dark: #2563EB; --secondary: #10B981;
-    --bg-color: #F8FAFC; --card-bg: rgba(255, 255, 255, 0.95);
-    --text-main: #334155; --text-light: #94A3B8; --danger: #EF4444;
-    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --radius: 16px; --font: 'M PLUS Rounded 1c', sans-serif;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body {
-    background-color: var(--bg-color);
-    background-image: linear-gradient(#E2E8F0 1px, transparent 1px), linear-gradient(90deg, #E2E8F0 1px, transparent 1px);
-    background-size: 30px 30px; color: var(--text-main); font-family: var(--font); margin: 0; min-height: 100vh; overflow-x: hidden;
-  }
-  .btn {
-    background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 700; cursor: pointer; text-decoration: none;
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 0 var(--primary-dark); transition: all 0.1s; font-size: 0.95rem; font-family: var(--font);
-  }
-  .btn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--primary-dark); }
-  .btn.secondary { background: white; color: var(--text-main); border: 2px solid #E2E8F0; box-shadow: 0 4px 0 #CBD5E1; }
-  .btn.secondary:active { box-shadow: 0 0 0 #CBD5E1; }
-  .btn.danger { background: var(--danger); box-shadow: 0 4px 0 #B91C1C; }
-  .btn.danger:active { box-shadow: 0 0 0 #B91C1C; }
-  .glass-card { background: var(--card-bg); border: 1px solid #E2E8F0; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
-  .modal { 
-    position: fixed; inset: 0; 
-    background: rgba(15, 23, 42, 0.4); 
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    display: none; justify-content: center; align-items: center; 
-    z-index: 2000; opacity: 0; transition: 0.2s; 
-  }
-  .modal.show { display: flex; opacity: 1; }
-  .modal-content { 
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    padding: 24px; border-radius: var(--radius); 
-    width: 90%; max-width: 450px; text-align: center; 
-    transform: scale(0.95); transition: 0.2s; 
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); 
-    max-height: 90vh; overflow-y: auto; position: relative; 
-    border: 1px solid rgba(255, 255, 255, 0.5);
-  }
-  .modal.show .modal-content { transform: scale(1); }
-  .placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--text-light); text-align: center; font-size: 0.9rem; }
-  .placeholder i { font-size: 3rem; margin-bottom: 16px; display: block; color: #CBD5E1; }
-  .modal-close-btn { position: absolute; top: 16px; right: 16px; background: transparent; border: none; font-size: 1.2rem; color: var(--text-light); cursor: pointer; padding: 5px; z-index: 10; }
-  .modal-close-btn:hover { color: var(--danger); transform: rotate(90deg); transition: 0.2s; }
-  .actions { padding: 16px 10px 10px 10px; display: grid; gap: 12px; grid-template-columns: 1fr 1fr 1fr; }
-  #drawBtn { grid-column: 1 / -1; height: 54px; font-size: 1.1rem; box-shadow: 0 6px 0 var(--primary-dark); }
-  #drawBtn:active { transform: translateY(6px); box-shadow: 0 0 0 var(--primary-dark); }
-  .actions .btn.secondary { padding: 8px 0; font-size: 1.2rem; }
-  @media(min-width: 600px) {
-    .actions { grid-template-columns: 2fr 1fr 1fr 1fr; }
-    #drawBtn { grid-column: auto; height: auto; font-size: 0.95rem; }
-    .actions .btn.secondary { font-size: 0.95rem; }
-  }
-  .rules-table { width: 100%; font-size: 0.85rem; border-collapse: collapse; margin-top: 10px; }
-  .rules-table th { text-align: left; border-bottom: 2px solid #E2E8F0; padding: 6px; color: var(--primary); }
-  .rules-table td { border-bottom: 1px solid #F1F5F9; padding: 6px; }
-  .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-  .shop-item { background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px 15px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: space-between; min-height: 140px; }
-  .shop-item:hover { border-color: var(--primary); transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); }
-  .shop-item i { font-size: 2rem; margin-bottom: 10px; color: var(--primary); }
-  .shop-item.disabled { opacity: 0.6; filter: grayscale(1); cursor: not-allowed; border-color: #E2E8F0 !important; transform: none !important; box-shadow: none !important; }
-  .price-tag { background: linear-gradient(135deg, #FEF3C7, #FDE68A); color: #D97706; padding: 6px 10px; border-radius: 8px; font-weight:bold; font-size:0.9rem; margin-top:10px; display:inline-block; box-shadow: 0 2px 4px rgba(217,119,6,0.2); border: 1px solid #FBBF24; }
-  .shop-item.can-craft { border: 2px solid var(--secondary); background-color: #ECFDF5; box-shadow: 0 0 10px rgba(16, 185, 129, 0.3); animation: pulse 2s infinite; }
-  @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
-  .shop-cost { font-size: 0.8rem; color: var(--text-light); margin-top: 5px; }
-  .rarity-tag { position: absolute; top: 10px; left: 10px; z-index: 10; padding: 4px 12px; border-radius: 8px; font-weight: 900; color: white; font-size: 1rem; text-shadow: 0 2px 4px rgba(0,0,0,0.5); opacity: 0; transform: scale(0.8); transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); border: 2px solid rgba(255,255,255,0.8); }
-  .rarity-tag.show { opacity: 1; transform: scale(1); }
-  .r-n { background: #64748B; } .r-r { background: #3B82F6; } .r-sr { background: #8B5CF6; } .r-ssr { background: linear-gradient(135deg, #F59E0B, #D97706); }
-  .r-ur { background: linear-gradient(45deg, #EF4444, #EC4899, #8B5CF6); background-size: 200% 200%; animation: rainbow 3s ease infinite; border-color: #FFF; }
-  @keyframes rainbow { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-  .admin-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.85rem; text-align: left; }
-  .admin-table th { color: var(--text-light); font-weight: bold; padding: 8px; border-bottom: 2px solid #E2E8F0; }
-  .admin-table td { padding: 8px; border-bottom: 1px solid #F1F5F9; }
-  .admin-input { width: 100%; padding: 6px; border: 1px solid #E2E8F0; border-radius: 6px; font-family: var(--font); }
-  .admin-tabs { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 2px solid #F1F5F9; padding-bottom: 10px; }
-  .admin-tab { padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: bold; cursor: pointer; color: var(--text-light); transition: 0.2s; }
-  .admin-tab.active { background: #E0F2FE; color: var(--primary); }
-  .user-pill { background: white; padding: 6px 14px; border-radius: 8px; border: 1px solid #E2E8F0; font-size: 0.85rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-  .title-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: white; font-size: 0.7rem; font-weight: bold; vertical-align: middle; margin-left: 6px; text-shadow: 0 1px 1px rgba(0,0,0,0.2); }
-  .user-badge { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; }
-  .user-row-meta { font-size: 0.75rem; color: #94A3B8; }
-  .dice-stage { font-size: 5rem; color: var(--primary); margin: 20px 0; height: 80px; display: flex; align-items: center; justify-content: center; }
-  .dice-result-anim { animation: shake 0.5s infinite; }
-  @keyframes shake { 0% { transform: rotate(0deg); } 25% { transform: rotate(10deg); } 50% { transform: rotate(0deg); } 75% { transform: rotate(-10deg); } 100% { transform: rotate(0deg); } }
-  .bet-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; }
-  .bet-btn { padding: 15px; border-radius: 12px; font-weight: bold; font-size: 1.1rem; border: 2px solid transparent; cursor: pointer; transition: 0.2s; }
-  .bet-btn.small { background: #E0F2FE; color: #0284C7; border-color: #BAE6FD; }
-  .bet-btn.small:hover { background: #BAE6FD; }
-  .bet-btn.big { background: #FEE2E2; color: #DC2626; border-color: #FECACA; }
-  .bet-btn.big:hover { background: #FECACA; }
-  .banner-tabs {display: flex;background: rgba(255,255,255,0.5);border-radius: 12px;padding: 4px;margin-bottom: 12px;border: 1px solid #E2E8F0;}
-  .banner-tab {flex: 1;text-align: center;padding: 8px;border-radius: 8px;font-size: 0.9rem;font-weight: 800;cursor: pointer;color: var(--text-light);transition: 0.2s;position: relative;overflow: hidden;}
-  .banner-tab.active {background: white;color: var(--primary);box-shadow: 0 2px 4px rgba(0,0,0,0.05);color: var(--primary);}
-  .banner-tab.active.limited {color: #EF4444;}
-  .btn.limited-btn {background: linear-gradient(45deg, #EF4444, #F59E0B);box-shadow: 0 4px 0 #B91C1C;border: none;}
-  .btn.limited-btn:active {box-shadow: 0 0 0 #B91C1C;}
-  .pool-info-tag {font-size: 0.7rem;background: rgba(0,0,0,0.05);padding: 2px 6px;border-radius: 4px;margin-left: 4px;vertical-align: middle;}
-  .auth-tabs { display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid #E2E8F0; padding-bottom:10px; }
-  .auth-tab { flex:1; padding:8px; cursor:pointer; font-weight:bold; color:var(--text-light); border-radius:8px; transition:0.2s; }
-  .auth-tab.active { background:var(--bg-color); color:var(--primary); }
-  .refresh-spin { animation: spin-once 0.8s ease-in-out; color: var(--primary) !important; }
-  @keyframes spin-once { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-  .switch { position: relative; display: inline-block; width: 48px; height: 24px; vertical-align: middle; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #CBD5E1; transition: .4s; border-radius: 24px; }
-  .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-  input:checked + .slider { background-color: var(--secondary); }
-  input:checked + .slider:before { transform: translateX(24px); }
-  .title-list { display: grid; grid-template-columns: 1fr; gap: 8px; max-height: 300px; overflow-y: auto; margin-top: 10px; }
-  .title-item { 
-      padding: 10px; border: 1px solid #E2E8F0; border-radius: 8px; cursor: pointer; 
-      display: flex; justify-content: space-between; align-items: center; transition: 0.2s;
-  }
-  .title-item:hover { background: #F8FAFC; border-color: var(--primary); }
-  .title-item.active { background: #EFF6FF; border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
-  .title-item.active i { color: var(--primary); }
-  .title-text { font-weight: bold; color: var(--text-main); }
-  .no-title-msg { text-align: center; color: #94A3B8; padding: 20px; font-size: 0.9rem; } 
-  .form-row { margin-bottom: 15px; }
-  .form-label { display: block; font-weight: bold; font-size: 0.9rem; color: var(--text-main); margin-bottom: 6px; }
-  .form-hint { font-size: 0.75rem; color: var(--text-light); margin-top: 4px; }
-  .skeleton {
-    background: #E2E8F0;
-    background: linear-gradient(90deg, #E2E8F0 25%, #F1F5F9 37%, #E2E8F0 63%);
-    background-size: 400% 100%;
-    animation: skeleton-loading 1.4s ease infinite;
-    border-radius: 8px;
-  }
-  @keyframes skeleton-loading {
-    0% { background-position: 100% 50%; }
-    100% { background-position: 0 50%; }
-  }
-  .anim-shake { animation: shake-x 0.4s ease-in-out; }
-  .anim-pop { animation: pop-scale 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-  
-  @keyframes shake-x {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    75% { transform: translateX(5px); }
-  }
-  @keyframes pop-scale {
-    0% { transform: scale(0.95); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
-  }
-
-  @media (max-width: 480px) {
-    .modal-content { width: 95%; padding: 16px; max-width: none; }
-    .shop-grid { grid-template-columns: 1fr; }
-    .grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; padding: 10px; }
-    .actions { grid-template-columns: 1fr 1fr; gap: 8px; }
-    #drawBtn { grid-column: 1 / -1; }
-    .main-grid { grid-template-columns: 1fr; gap: 16px; }
-    .header {
-      flex-direction: row;
-      gap: 12px;
-      align-items: center;
-      padding: 0 5px;
-      max-width: 100%;
-    }
-    .logo-container { text-align: left; }
-    .logo { font-size: 1.3rem; }
-    .logo-subtitle { font-size: 0.75rem; margin-top: 2px; }
-    .header-right { justify-content: flex-end; }
-    .user-pill {
-      font-size: 0.8rem;
-      padding: 6px 10px 6px 8px;
-      gap: 6px;
-      max-width: none;
-      margin: 0;
-    }
-    .user-avatar { width: 24px; height: 24px; font-size: 0.8rem; }
-    .user-info { min-width: 0; }
-    .user-name { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
-    .user-title { font-size: 0.65rem; padding: 1px 4px; }
-    .user-chevron { display: none; }
-    #profileModal .modal-content { padding: 12px; }
-    #profileModal .modal-content > div:first-child { margin-bottom: 15px; }
-    #profileModal .modal-content > div:first-child > div:first-child { width: 60px; height: 60px; font-size: 1.5rem; }
-    #profileModal .modal-content h3 { font-size: 1.2rem; }
-    #profileModal .modal-content > div:nth-child(2) > div:first-child { grid-template-columns: 1fr; gap: 10px; }
-    #profileModal .modal-content > div:nth-child(2) > div:nth-child(2) > div:first-child { flex-direction: column; gap: 10px; }
-    #profileModal .modal-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) { grid-template-columns: repeat(3, 1fr); }
-    #profileModal .modal-content > div:nth-child(3) { grid-template-columns: 1fr; gap: 8px; }
-  }
-  @media (max-width: 768px) {
-    .modal-content { max-width: 90%; }
-    .shop-grid { grid-template-columns: 1fr 1fr; }
-    .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
-  }
-  @media (max-width: 768px) and (min-width: 481px) {
-    #profileModal .modal-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) { grid-template-columns: repeat(4, 1fr); }
-  }
-</style>
+<link rel="stylesheet" href="${EXTERNAL_CSS_URL}">
 `;
 
 function getHtmlPage() {
