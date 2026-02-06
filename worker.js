@@ -185,7 +185,7 @@ export default {
       'POST /auth/register': () => userService.register(request),
       'POST /auth/login': () => userService.login(request),
       'GET /user/info': () => userService.getInfo(currentUser),
-      'GET /user/inventory': () => userService.getInventory(currentUser), 
+      'GET /user/inventory': () => userService.getInventory(currentUser),
       'POST /user/update-profile': () => userService.updateProfile(currentUser, request),
       'POST /user/check-in': () => userService.checkIn(currentUser, request),
       'POST /user/claim-reward': () => userService.claimReward(currentUser, request),
@@ -203,6 +203,7 @@ export default {
       'GET /announcement': () => handleGetAnnouncement(env),
 
       'GET /library': () => handleLibrary(request, env, url),
+      'GET /api/library/items': () => handleLibraryApi(request, env),
       
       'POST /admin/users': () => handleAdminUsers(request, env),
       'POST /admin/verify': () => handleAdminVerify(request, env),
@@ -1472,6 +1473,46 @@ async function handleLibrary(request, env, url) {
   } catch (e) {
       console.error('Library Error:', e);
       return new Response('Gallery Database Error', { status: 500 });
+  }
+}
+
+async function handleLibraryApi(request, env) {
+  const url = new URL(request.url);
+  const page = parseInt(url.searchParams.get('page') || '1');
+  const pageSize = parseInt(url.searchParams.get('pageSize') || '24');
+  const offset = (page - 1) * pageSize;
+
+  try {
+    // 并行查询：获取当前页数据 + 获取总条数
+    const [dataRes, countRes] = await Promise.all([
+      env.DB.prepare(
+        'SELECT url, username, created_at as ts FROM gallery ORDER BY created_at DESC LIMIT ? OFFSET ?'
+      ).bind(pageSize, offset).all(),
+      env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first()
+    ]);
+
+    const items = dataRes.results || [];
+    const totalItems = countRes.total || 0;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const currentPage = Math.max(1, Math.min(page, totalPages));
+
+    return jsonResponse({
+      items,
+      pagination: {
+        currentPage,
+        totalPages,
+        totalItems,
+        pageSize,
+        hasMore: currentPage < totalPages
+      }
+    }, 200, {
+      'Cache-Control': 'public, max-age=60',
+      'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=600'
+    });
+
+  } catch (e) {
+    console.error('Library API Error:', e);
+    return jsonResponse({ error: 'Database Error' }, 500);
   }
 }
 
@@ -3073,27 +3114,46 @@ function getHtmlPage() {
 }
 
 function getLibraryHtml(items, pager) {
-  // 定义瀑布流和懒加载的专用 CSS
+  // 定义虚拟滚动和无限加载的专用 CSS
   const LIBRARY_CSS = `
   <style>
     :root {
       --gap: 16px;
       --bg-color: #F8FAFC;
+      --item-height: 300px; /* 预估的图片卡片高度，用于虚拟滚动计算 */
     }
-    body { 
-      padding-top: 70px; 
+    body {
+      padding-top: 70px;
       background-color: var(--bg-color);
       /* 隐藏滚动条但允许滚动 (可选) */
       scrollbar-width: thin;
+      margin: 0;
+      height: 100vh;
+      overflow: hidden; /* 禁用 body 滚动，使用虚拟滚动容器 */
     }
     
     /* 导航栏样式微调 */
-    .nav { 
-      position: fixed; top: 0; left: 0; right: 0; height: 60px; 
-      background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); 
-      border-bottom: 1px solid rgba(0,0,0,0.05); z-index: 100; 
-      padding: 0 20px; display: grid; grid-template-columns: 80px 1fr 80px; align-items: center; 
+    .nav {
+      position: fixed; top: 0; left: 0; right: 0; height: 60px;
+      background: rgba(255,255,255,0.95); backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(0,0,0,0.05); z-index: 100;
+      padding: 0 20px; display: grid; grid-template-columns: 80px 1fr 80px; align-items: center;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* 虚拟滚动容器 */
+    .virtual-scroll-container {
+      position: relative;
+      width: 100%;
+      height: calc(100vh - 70px); /* 减去导航栏高度 */
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    /* 虚拟滚动内容区域 */
+    .virtual-scroll-content {
+      position: relative;
+      width: 100%;
     }
     
     /* --- 瀑布流核心布局 (Masonry via CSS Columns) --- */
@@ -3102,7 +3162,7 @@ function getLibraryHtml(items, pager) {
       margin: 0 auto;
       padding: 20px;
       /* 关键：多列布局 */
-      column-count: 2; 
+      column-count: 2;
       column-gap: var(--gap);
     }
     
@@ -3114,7 +3174,7 @@ function getLibraryHtml(items, pager) {
     /* 卡片样式 */
     .item {
       /* 关键：防止元素被分割到两列 */
-      break-inside: avoid; 
+      break-inside: avoid;
       margin-bottom: var(--gap);
       background: white;
       border-radius: 12px;
@@ -3173,20 +3233,32 @@ function getLibraryHtml(items, pager) {
       gap: 6px;
     }
     
-    /* 分页器样式 */
-    .pager { display: flex; justify-content: center; gap: 15px; padding: 40px 0 60px; }
-    .page-btn { 
-      width: 44px; height: 44px; border-radius: 12px; background: white; 
-      display: flex; align-items: center; justify-content: center; 
-      color: var(--text-main); font-weight: bold; text-decoration: none; 
-      border: 1px solid #E2E8F0; transition: 0.2s; 
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    /* 加载指示器 */
+    .loading-indicator {
+      text-align: center;
+      padding: 30px 0;
+      color: #94A3B8;
+      font-size: 0.9rem;
+      grid-column: 1 / -1;
     }
-    .page-btn:hover { border-color: var(--primary); color: white; background: var(--primary); }
-    .page-info { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; }
-    .page-current { font-weight: 800; font-size: 1rem; color: var(--text-main); }
-    .page-total { font-size: 0.75rem; color: #94A3B8; }
-
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #E2E8F0;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
     /* 返回顶部按钮 */
     #backToTop {
       position: fixed; bottom: 30px; right: 30px;
@@ -3203,8 +3275,24 @@ function getLibraryHtml(items, pager) {
     #backToTop:active { transform: scale(0.95); }
 
     /* 空状态 */
-    .empty-state { text-align: center; padding: 100px 20px; color: #94A3B8; grid-column: 1/-1; }
+    .empty-state {
+      text-align: center;
+      padding: 100px 20px;
+      color: #94A3B8;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+    }
     .empty-state i { font-size: 4rem; margin-bottom: 20px; color: #E2E8F0; }
+    
+    /* 虚拟滚动占位符 */
+    .virtual-placeholder {
+      position: absolute;
+      width: 100%;
+      background: transparent;
+    }
   </style>
   `;
 
@@ -3214,7 +3302,7 @@ function getLibraryHtml(items, pager) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>图库 - 第 ${pager.currentPage} 页</title>
+  <title>图库 - 无限滚动</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   ${NEUTRAL_CSS}
   ${LIBRARY_CSS}
@@ -3227,40 +3315,48 @@ function getLibraryHtml(items, pager) {
       </a>
     </div>
     <div class="page-info">
-      <div class="page-current">第 ${pager.currentPage} 页</div>
-      <div class="page-total">共 ${pager.totalPages} 页</div>
+      <div class="page-current" id="statsInfo">加载中...</div>
+      <div class="page-total" id="totalInfo">共 0 张图片</div>
     </div>
     <div style="text-align:right;">
         <!-- 预留右侧按钮位置 -->
     </div>
   </nav>
 
-  <div class="masonry-container">
-    ${items.length === 0 ? `
-      <div class="empty-state">
-        <i class="fas fa-images"></i>
-        <h3>暂无图片</h3>
-        <p>快去首页抽取卡片吧！</p>
+  <!-- 虚拟滚动容器 -->
+  <div class="virtual-scroll-container" id="scrollContainer">
+    <div class="virtual-scroll-content" id="scrollContent" style="height: ${pager.totalItems * 300}px;">
+      <!-- 瀑布流容器 -->
+      <div class="masonry-container" id="masonryContainer">
+        ${items.length === 0 ? `
+          <div class="empty-state">
+            <i class="fas fa-images"></i>
+            <h3>暂无图片</h3>
+            <p>快去首页抽取卡片吧！</p>
+          </div>
+        ` : ''}
+        
+        <!-- 初始加载的图片 -->
+        ${items.map((item, index) => `
+          <div class="item" data-index="${index}" onclick="show('${item.url}')">
+            <div class="img-wrapper">
+              <img data-src="${item.url}" class="lazy" alt="Image by ${item.username}">
+            </div>
+            <div class="item-user">
+              <div class="user-tag"><i class="fas fa-user-circle"></i> ${item.username}</div>
+              <div style="font-size:0.7rem; color:#CBD5E1;">${new Date(item.ts).toLocaleDateString()}</div>
+            </div>
+          </div>
+        `).join('')}
+        
+        <!-- 加载更多指示器 -->
+        ${pager.currentPage < pager.totalPages ? `
+          <div class="loading-indicator" id="loadingIndicator">
+            <div class="loading-spinner"></div> 加载更多...
+          </div>
+        ` : ''}
       </div>
-    ` : ''}
-
-    ${items.map(item => `
-      <div class="item" onclick="show('${item.url}')">
-        <div class="img-wrapper">
-          <img data-src="${item.url}" class="lazy" alt="Image by ${item.username}">
-        </div>
-        <div class="item-user">
-          <div class="user-tag"><i class="fas fa-user-circle"></i> ${item.username}</div>
-          <div style="font-size:0.7rem; color:#CBD5E1;">${new Date(item.ts).toLocaleDateString()}</div>
-        </div>
-      </div>
-    `).join('')}
-  </div>
-
-  <div class="pager">
-    ${pager.currentPage > 1 ? `<a href="?page=${pager.currentPage-1}" class="page-btn"><i class="fas fa-chevron-left"></i></a>` : '<span class="page-btn" style="opacity:0.5; cursor:not-allowed;"><i class="fas fa-chevron-left"></i></span>'}
-    
-    ${pager.currentPage < pager.totalPages ? `<a href="?page=${pager.currentPage+1}" class="page-btn"><i class="fas fa-chevron-right"></i></a>` : '<span class="page-btn" style="opacity:0.5; cursor:not-allowed;"><i class="fas fa-chevron-right"></i></span>'}
+    </div>
   </div>
 
   <!-- 返回顶部按钮 -->
@@ -3274,55 +3370,278 @@ function getLibraryHtml(items, pager) {
   </div>
 
   <script>
-    // 1. 优化后的懒加载逻辑
-    document.addEventListener("DOMContentLoaded", function() {
-      const lazyImages = [].slice.call(document.querySelectorAll("img.lazy"));
-
-      if ("IntersectionObserver" in window) {
-        let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
-          entries.forEach(function(entry) {
-            if (entry.isIntersecting) {
-              let lazyImage = entry.target;
-              
-              // 图片加载完成后才显示，避免显示破损图标
-              lazyImage.onload = () => {
-                 lazyImage.classList.add("loaded");
-                 // 图片加载后，去除父级的固定高度限制（虽然 CSS 已经是 auto，但这是为了保险）
-                 lazyImage.parentElement.style.minHeight = 'auto'; 
-              };
-              
-              lazyImage.src = lazyImage.dataset.src;
-              observer.unobserve(lazyImage);
+    // 虚拟滚动和无限加载状态
+    const VirtualScroll = {
+      currentPage: ${pager.currentPage},
+      totalPages: ${pager.totalPages},
+      totalItems: ${pager.totalItems},
+      pageSize: 24,
+      isLoading: false,
+      allItems: ${JSON.stringify(items)},
+      itemHeight: 300, // 预估的图片卡片高度
+      visibleBuffer: 3, // 可见区域上下缓冲的项数
+      
+      init() {
+        this.updateStats();
+        this.setupScrollListener();
+        this.setupImageLazyLoad();
+        this.setupBackToTop();
+        
+        // 如果初始加载的图片少于总数，标记需要加载更多
+        if (this.currentPage < this.totalPages) {
+          this.setupInfiniteScroll();
+        }
+      },
+      
+      updateStats() {
+        document.getElementById('statsInfo').textContent = '已加载 ' + this.allItems.length + ' 张图片';
+        document.getElementById('totalInfo').textContent = '共 ' + this.totalItems + ' 张图片';
+      },
+      
+      setupScrollListener() {
+        const scrollContainer = document.getElementById('scrollContainer');
+        const scrollContent = document.getElementById('scrollContent');
+        
+        // 更新滚动内容高度
+        scrollContent.style.height = (this.totalItems * this.itemHeight) + 'px';
+        
+        // 初始渲染可见区域
+        this.renderVisibleItems();
+        
+        // 监听滚动事件
+        scrollContainer.addEventListener('scroll', () => {
+          this.renderVisibleItems();
+          this.updateBackToTop();
+        });
+      },
+      
+      renderVisibleItems() {
+        const scrollContainer = document.getElementById('scrollContainer');
+        const masonryContainer = document.getElementById('masonryContainer');
+        const scrollTop = scrollContainer.scrollTop;
+        const containerHeight = scrollContainer.clientHeight;
+        
+        // 计算可见区域的起始和结束索引
+        const startIndex = Math.max(0, Math.floor(scrollTop / this.itemHeight) - this.visibleBuffer);
+        const endIndex = Math.min(
+          this.allItems.length - 1,
+          Math.floor((scrollTop + containerHeight) / this.itemHeight) + this.visibleBuffer
+        );
+        
+        // 获取当前已渲染的项
+        const renderedItems = Array.from(masonryContainer.querySelectorAll('.item[data-index]'));
+        const renderedIndices = new Set(renderedItems.map(item => parseInt(item.dataset.index)));
+        
+        // 需要渲染的项
+        const itemsToRender = new Set();
+        for (let i = startIndex; i <= endIndex; i++) {
+          itemsToRender.add(i);
+        }
+        
+        // 移除不在可见区域的项
+        renderedItems.forEach(item => {
+          const index = parseInt(item.dataset.index);
+          if (!itemsToRender.has(index)) {
+            item.remove();
+          }
+        });
+        
+        // 添加新的可见项
+        for (let i = startIndex; i <= endIndex; i++) {
+          if (!renderedIndices.has(i) && this.allItems[i]) {
+            const item = this.allItems[i];
+            const itemElement = this.createItemElement(item, i);
+            
+            // 找到插入位置（保持DOM顺序）
+            let inserted = false;
+            const existingItems = Array.from(masonryContainer.querySelectorAll('.item[data-index]'));
+            for (let j = 0; j < existingItems.length; j++) {
+              const existingIndex = parseInt(existingItems[j].dataset.index);
+              if (i < existingIndex) {
+                existingItems[j].before(itemElement);
+                inserted = true;
+                break;
+              }
             }
-          });
+            
+            if (!inserted) {
+              const loadingIndicator = document.getElementById('loadingIndicator');
+              if (loadingIndicator) {
+                loadingIndicator.before(itemElement);
+              } else {
+                masonryContainer.appendChild(itemElement);
+              }
+            }
+          }
+        }
+        
+        // 触发懒加载
+        this.setupImageLazyLoad();
+      },
+      
+      createItemElement(item, index) {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.dataset.index = index;
+        div.onclick = () => this.show(item.url);
+        
+        // 手动构建HTML，避免模板字符串问题
+        const imgWrapper = document.createElement('div');
+        imgWrapper.className = 'img-wrapper';
+        
+        const img = document.createElement('img');
+        img.setAttribute('data-src', item.url);
+        img.className = 'lazy';
+        img.alt = 'Image by ' + item.username;
+        imgWrapper.appendChild(img);
+        
+        const itemUser = document.createElement('div');
+        itemUser.className = 'item-user';
+        
+        const userTag = document.createElement('div');
+        userTag.className = 'user-tag';
+        userTag.innerHTML = '<i class="fas fa-user-circle"></i> ' + item.username;
+        
+        const dateDiv = document.createElement('div');
+        dateDiv.style.fontSize = '0.7rem';
+        dateDiv.style.color = '#CBD5E1';
+        dateDiv.textContent = new Date(item.ts).toLocaleDateString();
+        
+        itemUser.appendChild(userTag);
+        itemUser.appendChild(dateDiv);
+        
+        div.appendChild(imgWrapper);
+        div.appendChild(itemUser);
+        
+        return div;
+      },
+      
+      setupInfiniteScroll() {
+        const scrollContainer = document.getElementById('scrollContainer');
+        const observer = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting && !this.isLoading && this.currentPage < this.totalPages) {
+            this.loadMore();
+          }
         }, {
-            rootMargin: "200px 0px" // 提前200px开始加载，体验更流畅
+          root: scrollContainer,
+          threshold: 0.1
         });
-
-        lazyImages.forEach(function(lazyImage) {
-          lazyImageObserver.observe(lazyImage);
-        });
-      } else {
-        // 降级处理：直接加载
-        lazyImages.forEach(function(lazyImage) {
+        
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        if (loadingIndicator) {
+          observer.observe(loadingIndicator);
+        }
+      },
+      
+      async loadMore() {
+        if (this.isLoading || this.currentPage >= this.totalPages) return;
+        
+        this.isLoading = true;
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        if (loadingIndicator) {
+          loadingIndicator.innerHTML = '<div class="loading-spinner"></div> 加载中...';
+        }
+        
+        try {
+          const nextPage = this.currentPage + 1;
+          const response = await fetch(\`/api/library/items?page=\${nextPage}&pageSize=\${this.pageSize}\`);
+          const data = await response.json();
+          
+          if (data.items && data.items.length > 0) {
+            // 添加新项到所有项列表
+            const startIndex = this.allItems.length;
+            data.items.forEach((item, i) => {
+              this.allItems.push(item);
+            });
+            
+            this.currentPage = nextPage;
+            this.updateStats();
+            
+            // 重新渲染可见区域
+            this.renderVisibleItems();
+            
+            // 如果还有更多页，更新加载指示器
+            if (this.currentPage < this.totalPages && loadingIndicator) {
+              loadingIndicator.innerHTML = '<div class="loading-spinner"></div> 加载更多...';
+            } else if (loadingIndicator) {
+              loadingIndicator.remove();
+            }
+          }
+        } catch (error) {
+          console.error('加载更多失败:', error);
+          if (loadingIndicator) {
+            loadingIndicator.innerHTML = '<span style="color: var(--danger);">加载失败，点击重试</span>';
+            loadingIndicator.onclick = () => this.loadMore();
+          }
+        } finally {
+          this.isLoading = false;
+        }
+      },
+      
+      setupImageLazyLoad() {
+        const lazyImages = [].slice.call(document.querySelectorAll("img.lazy"));
+        
+        if ("IntersectionObserver" in window) {
+          const lazyImageObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                const lazyImage = entry.target;
+                
+                lazyImage.onload = () => {
+                  lazyImage.classList.add("loaded");
+                  lazyImage.parentElement.style.minHeight = 'auto';
+                };
+                
+                lazyImage.src = lazyImage.dataset.src;
+                lazyImageObserver.unobserve(lazyImage);
+              }
+            });
+          }, {
+            rootMargin: "200px 0px"
+          });
+          
+          lazyImages.forEach((lazyImage) => {
+            lazyImageObserver.observe(lazyImage);
+          });
+        } else {
+          // 降级处理：直接加载
+          lazyImages.forEach((lazyImage) => {
             lazyImage.src = lazyImage.dataset.src;
             lazyImage.classList.add('loaded');
-        });
-      }
-    });
-
-    // 2. 大图显示
-    function show(u) { 
-        const img = document.getElementById('bigImg');
-        img.src = u; 
-        document.getElementById('imgModal').classList.add('show'); 
-    }
-
-    // 3. 返回顶部按钮控制
-    window.addEventListener('scroll', () => {
+          });
+        }
+      },
+      
+      setupBackToTop() {
         const btn = document.getElementById('backToTop');
-        if (window.scrollY > 300) btn.classList.add('show');
-        else btn.classList.remove('show');
+        btn.onclick = () => {
+          document.getElementById('scrollContainer').scrollTo({
+            top: 0,
+            behavior: 'smooth'
+          });
+        };
+      },
+      
+      updateBackToTop() {
+        const scrollContainer = document.getElementById('scrollContainer');
+        const btn = document.getElementById('backToTop');
+        if (scrollContainer.scrollTop > 300) {
+          btn.classList.add('show');
+        } else {
+          btn.classList.remove('show');
+        }
+      },
+      
+      show(url) {
+        const img = document.getElementById('bigImg');
+        img.src = url;
+        document.getElementById('imgModal').classList.add('show');
+      }
+    };
+    
+    // 初始化
+    document.addEventListener("DOMContentLoaded", () => {
+      VirtualScroll.init();
     });
   </script>
 </body>
