@@ -79,6 +79,16 @@ const CONFIG = {
     STATIC_ASSET: 31536000, // 静态资源(图片) 1年
     BUFFER_SLOTS: 10        // [新增] 缓冲池槽位数量，越大并发性能越好
   },
+  // 图片压缩配置
+  IMAGE_COMPRESSION: {
+    ENABLED: true, // 是否启用图片压缩
+    MAX_DIMENSION: 1920, // 最大尺寸（像素）
+    MAX_FILE_SIZE: 20 * 1024 * 1024, // 最大文件大小（20MB），超过此大小不压缩
+    QUALITY: 0.85, // 压缩质量 (0-1)
+    TIMEOUT: 5000, // 压缩超时（毫秒）
+    SKIP_GIF: true, // 跳过GIF动画
+    MIN_SIZE_FOR_COMPRESSION: 50 * 1024 // 最小压缩大小（50KB），小于此值不压缩
+  },
   R2_DOMAIN: "https://cft1.cszxorx.dpdns.org",
   DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
 };
@@ -786,6 +796,142 @@ class GachaService {
     return freshAsset;
   }
 
+  /**
+   * 图片压缩函数
+   * @param {ArrayBuffer} imageBuffer - 原始图片数据
+   * @param {string} contentType - 原始图片类型
+   * @returns {Promise<{buffer: ArrayBuffer, contentType: string}>} 压缩后的图片数据和类型
+   */
+  async compressImage(imageBuffer, contentType) {
+    const COMPRESS_CONFIG = CONFIG.IMAGE_COMPRESSION;
+    
+    // 如果压缩功能被禁用，直接返回原始数据
+    if (!COMPRESS_CONFIG.ENABLED) {
+      return {
+        buffer: imageBuffer,
+        contentType: contentType
+      };
+    }
+    
+    const originalSize = imageBuffer.byteLength;
+    
+    // 检查文件大小，如果太大直接返回
+    if (originalSize > COMPRESS_CONFIG.MAX_FILE_SIZE) {
+      console.log(`图片过大 (${(originalSize / 1024 / 1024).toFixed(2)}MB)，跳过压缩`);
+      return {
+        buffer: imageBuffer,
+        contentType: contentType
+      };
+    }
+    
+    // 如果图片太小，也不压缩
+    if (originalSize < COMPRESS_CONFIG.MIN_SIZE_FOR_COMPRESSION) {
+      console.log(`图片较小 (${(originalSize / 1024).toFixed(1)}KB)，跳过压缩`);
+      return {
+        buffer: imageBuffer,
+        contentType: contentType
+      };
+    }
+    
+    // 对于GIF等动画图片，保持原格式
+    if (COMPRESS_CONFIG.SKIP_GIF && (contentType === 'image/gif' || contentType.includes('animated'))) {
+      console.log('动画图片，跳过压缩');
+      return {
+        buffer: imageBuffer,
+        contentType: contentType
+      };
+    }
+    
+    try {
+      // 设置超时
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('图片压缩超时')), COMPRESS_CONFIG.TIMEOUT);
+      });
+      
+      // 压缩任务
+      const compressTask = (async () => {
+        // 解码图片
+        const blob = new Blob([imageBuffer], { type: contentType });
+        const imageBitmap = await createImageBitmap(blob);
+        
+        // 计算缩放尺寸
+        let { width, height } = imageBitmap;
+        
+        // 如果图片尺寸过大，进行缩放
+        if (width > COMPRESS_CONFIG.MAX_DIMENSION || height > COMPRESS_CONFIG.MAX_DIMENSION) {
+          const ratio = Math.min(COMPRESS_CONFIG.MAX_DIMENSION / width, COMPRESS_CONFIG.MAX_DIMENSION / height);
+          width = Math.floor(width * ratio);
+          height = Math.floor(height * ratio);
+        }
+        
+        // 创建OffscreenCanvas进行绘制
+        const canvas = new OffscreenCanvas(width, height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('无法获取Canvas上下文');
+        }
+        
+        // 设置背景为白色（对于透明图片）
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+        
+        // 绘制图片
+        ctx.drawImage(imageBitmap, 0, 0, width, height);
+        
+        // 根据原始格式和大小选择输出格式
+        let outputType = 'image/webp';
+        let quality = COMPRESS_CONFIG.QUALITY;
+        
+        // 小图片保持原格式
+        if (originalSize < 200 * 1024) {
+          if (contentType === 'image/jpeg' || contentType === 'image/jpg') {
+            outputType = 'image/jpeg';
+          } else if (contentType === 'image/png') {
+            outputType = 'image/png';
+            quality = Math.min(0.9, quality); // PNG质量设置
+          }
+        }
+        
+        // 转换为Blob
+        const compressedBlob = await canvas.convertToBlob({
+          type: outputType,
+          quality: quality
+        });
+        
+        const compressedBuffer = await compressedBlob.arrayBuffer();
+        
+        // 记录压缩效果
+        const compressionRatio = (compressedBuffer.byteLength / originalSize) * 100;
+        console.log(`图片压缩: ${(originalSize / 1024 / 1024).toFixed(2)}MB -> ${(compressedBuffer.byteLength / 1024 / 1024).toFixed(2)}MB (${compressionRatio.toFixed(1)}%)`);
+        
+        // 如果压缩后反而更大（罕见情况），返回原始数据
+        if (compressedBuffer.byteLength > originalSize * 0.95) {
+          console.log('压缩效果不佳，返回原始图片');
+          return {
+            buffer: imageBuffer,
+            contentType: contentType
+          };
+        }
+        
+        return {
+          buffer: compressedBuffer,
+          contentType: outputType
+        };
+      })();
+      
+      // 等待压缩任务或超时
+      return await Promise.race([compressTask, timeoutPromise]);
+      
+    } catch (error) {
+      console.error('图片压缩失败:', error);
+      // 压缩失败时返回原始数据
+      return {
+        buffer: imageBuffer,
+        contentType: contentType
+      };
+    }
+  }
+
   async fetchAndUploadRandom(sourceList) {
       const source = sourceList[Math.floor(Math.random() * sourceList.length)];
       return await this.fetchAndUpload(source);
@@ -799,18 +945,45 @@ class GachaService {
         clearTimeout(timeout);
 
         if (imgRes.ok) {
-            const buffer = await imgRes.arrayBuffer();
-            const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+            const originalBuffer = await imgRes.arrayBuffer();
+            const originalContentType = imgRes.headers.get('content-type') || 'image/jpeg';
             const timestamp = Date.now();
             const randomStr = Math.random().toString(36).slice(2, 8);
-            const filename = `images/${source.rarity}_${timestamp}_${randomStr}.jpg`;
             
-            await this.env.R2_BUCKET.put(filename, buffer, { 
-                httpMetadata: { contentType: contentType, cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable` } 
+            // 压缩图片
+            const { buffer: compressedBuffer, contentType: compressedContentType } =
+                await this.compressImage(originalBuffer, originalContentType);
+            
+            // 根据压缩后的内容类型确定文件扩展名
+            let extension = 'jpg';
+            if (compressedContentType === 'image/webp') {
+                extension = 'webp';
+            } else if (compressedContentType === 'image/png') {
+                extension = 'png';
+            } else if (compressedContentType === 'image/gif') {
+                extension = 'gif';
+            }
+            
+            const filename = `images/${source.rarity}_${timestamp}_${randomStr}.${extension}`;
+            
+            await this.env.R2_BUCKET.put(filename, compressedBuffer, {
+                httpMetadata: {
+                    contentType: compressedContentType,
+                    cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable`
+                }
             });
-            return { success: true, imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`, rarity: source.rarity, sourceName: source.name };
+            
+            return {
+                success: true,
+                imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`,
+                rarity: source.rarity,
+                sourceName: source.name
+            };
         }
-    } catch (e) { console.error('Fetch Asset Error', e); }
+    } catch (e) {
+        console.error('Fetch Asset Error', e);
+        // 如果压缩或上传失败，尝试使用默认图片
+    }
     return { success: false, rarity: 'N', imageUrl: CONFIG.DEFAULT_IMG };
   }
 
