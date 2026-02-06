@@ -2091,7 +2091,8 @@ function getHtmlPage() {
           if (data && data.username) { 
               this.username = data.username; 
               this.nickname = data.nickname;
-              this.coins = data.coins || 0; // 更新本地状态
+              // 强制转成数字，避免出现 undefined / NaN
+              this.coins = Number.isFinite(Number(data.coins)) ? Number(data.coins) : 0;
               this.updateUI(data); 
           } else { 
               localStorage.removeItem('moe_username');
@@ -2137,7 +2138,7 @@ function getHtmlPage() {
 
         // --- 2. 更新本地状态 (仅基础数据) ---
         // 注意：库存数据(this.inventory)不再此处更新，改为由 fetchInventory 独立处理
-        this.coins = user.coins || 0;
+        this.coins = Number.isFinite(Number(user.coins)) ? Number(user.coins) : 0;
 
         // --- 3. 更新个人资料页的基础信息 (如果DOM存在) ---
         // 即使个人页模态框未打开，这些元素也可能存在于 DOM 中，安全起见都尝试更新
@@ -2592,9 +2593,11 @@ function getHtmlPage() {
                  this.toast(isSpecial || this.currentPool === 'ltd' ? '召唤成功！' : '召唤成功', 'ok'); 
 
                  // 2. [关键优化] 直接使用后端返回的数据更新 UI，不再发起 fetch
-                 const newCoins = data.userCoins !== undefined ? data.userCoins : data.newBalance;
+                 let newCoins = data.userCoins !== undefined ? data.userCoins : data.newBalance;
+                 // 容错：后端字段缺失或类型异常时，避免把 undefined 写进 this.coins
+                 newCoins = Number.isFinite(Number(newCoins)) ? Number(newCoins) : null;
                  if (newCoins !== undefined) {
-                    this.coins = newCoins;
+                    this.coins = newCoins === null ? this.coins : newCoins;
                     const pCoins = document.getElementById('profileCoins');
                     if (pCoins) pCoins.innerText = this.coins;
                  }
@@ -2661,7 +2664,8 @@ function getHtmlPage() {
       closeRulesToProfile() { document.getElementById('rulesModal').classList.remove('show'); document.getElementById('profileModal').classList.add('show'); },
       openShop() {
         if(!this.username) return document.getElementById('authModal').classList.add('show');
-        const balance = this.coins;
+        // 兜底：如果 coins 尚未正确初始化，视为 0，避免界面显示为 "undefined"
+        const balance = Number.isFinite(Number(this.coins)) ? Number(this.coins) : 0;
         if(document.getElementById('shopBalance')) document.getElementById('shopBalance').innerText = balance;
         const packs = [{ id: 'R', color: '#3B82F6', price: 100 }, { id: 'SR', color: '#8B5CF6', price: 500 }, { id: 'SSR', color: '#F59E0B', price: 2000 }, { id: 'UR', color: '#EF4444', price: 8000 }];
         const container = document.getElementById('shopContent');
