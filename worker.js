@@ -92,10 +92,17 @@ const DEFAULT_CHANGELOG = [
   }
 ];
 
+// 路由路径规范化，消除末尾斜杠差异（例如 `/user/profile` 与 `/user/profile/` 视为同一路由）
+function normalizePath(pathname) {
+  if (!pathname || pathname === '/') return '/';
+  return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const method = request.method;
+    const method = request.method.toUpperCase();
+    const pathname = normalizePath(url.pathname);
 
     if (method === 'OPTIONS') {
       return new Response(null, {
@@ -123,6 +130,7 @@ export default {
     const userService = new UserService(env, ctx);
     const gachaService = new GachaService(env, ctx, userService);
 
+    // 统一维护的路由表：Key = `${METHOD} ${PATH}`（PATH 为规范化后的路径）
     const routes = {
       'GET /': () => handleHome(),
 
@@ -158,14 +166,22 @@ export default {
       'POST /admin/delete-user': () => handleAdminDeleteUser(request, env),
     };
 
-    const handler = routes[`${method} ${url.pathname}`];
+    const routeKey = `${method} ${pathname}`;
+    const handler = routes[routeKey];
+
     if (handler) {
       try {
         return await handler();
       } catch (err) {
-        return jsonResponse({ error: err.message }, 500);
+        return jsonResponse({ error: err.message || 'Internal Error' }, 500);
       }
     }
+
+    // 简单区分 API 与页面的 404 返回格式
+    if (pathname.startsWith('/auth') || pathname.startsWith('/user') || pathname.startsWith('/draw') || pathname.startsWith('/shop') || pathname.startsWith('/game') || pathname.startsWith('/admin')) {
+      return jsonResponse({ error: 'Not Found' }, 404);
+    }
+
     return new Response('Not Found', { status: 404 });
   }
 };
@@ -1324,6 +1340,13 @@ async function handleAdminUpdatePoints(request, env) {
     await env.DB.prepare(
       'UPDATE users SET coins = coins + ? WHERE id = ?'
     ).bind(parseInt(amount), user.id).run();
+
+    // 积分变动后，主动失效用户信息缓存，保证前端 /user/info 立刻能拿到最新积分
+    try {
+      await env.KV_CACHE.delete(`uinfo:${user.id}`);
+    } catch (cacheErr) {
+      console.error('Failed to invalidate user cache after admin update points:', cacheErr);
+    }
 
     return jsonResponse({ success: true, message: 'Points updated' });
 
