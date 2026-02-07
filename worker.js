@@ -1540,16 +1540,14 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
 function safeJsonParse(str) { try { return JSON.parse(str); } catch { return null; } }
 
 const NEUTRAL_CSS = `
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --primary: #3B82F6; --primary-dark: #2563EB; --secondary: #10B981;
     --bg-color: #F8FAFC; --card-bg: rgba(255, 255, 255, 0.95);
     --text-main: #334155; --text-light: #94A3B8; --danger: #EF4444;
     --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --radius: 16px; --font: 'M PLUS Rounded 1c', sans-serif;
+    --radius: 16px; 
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
