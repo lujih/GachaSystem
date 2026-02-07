@@ -3130,16 +3130,17 @@ function getLibraryHtml(items, pager) {
       overflow: hidden; 
     }
     
-    /* 导航栏样式微调 */
+    /* 导航栏样式 */
     .nav {
       position: fixed; top: 0; left: 0; right: 0; height: 60px;
       background: rgba(255,255,255,0.95); backdrop-filter: blur(12px);
       border-bottom: 1px solid rgba(0,0,0,0.05); z-index: 100;
-      padding: 0 20px; display: grid; grid-template-columns: 80px 1fr 80px; align-items: center;
+      padding: 0 20px; 
+      /* 修改：改为 flex 布局，只保留左侧返回按钮和右侧占位 */
+      display: flex; justify-content: space-between; align-items: center;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
     
-    /* 虚拟滚动容器 */
     .virtual-scroll-container {
       position: relative;
       width: 100%;
@@ -3148,7 +3149,6 @@ function getLibraryHtml(items, pager) {
       -webkit-overflow-scrolling: touch;
     }
     
-    /* 虚拟滚动内容区域 */
     .virtual-scroll-content {
       position: relative;
       width: 100%;
@@ -3179,7 +3179,7 @@ function getLibraryHtml(items, pager) {
       transition: transform 0.3s ease, box-shadow 0.3s ease;
       cursor: zoom-in;
       position: relative;
-      opacity: 0; /* 配合动画使用 */
+      opacity: 0;
     }
     
     @keyframes fadeIn { to { opacity: 1; } }
@@ -3227,12 +3227,27 @@ function getLibraryHtml(items, pager) {
       gap: 6px;
     }
     
+    /* 加载/结束 指示器样式优化 */
     .loading-indicator {
       text-align: center;
-      padding: 30px 0;
+      padding: 40px 0;
       color: #94A3B8;
       font-size: 0.9rem;
-      grid-column: 1 / -1;
+      /* 关键属性：强制跨越所有列，实现独占一行 */
+      column-span: all; 
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+    }
+    
+    .end-message {
+      display: inline-block;
+      padding: 8px 20px;
+      background: #F1F5F9;
+      border-radius: 20px;
+      color: #CBD5E1;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
     }
     
     .loading-spinner {
@@ -3282,29 +3297,27 @@ function getLibraryHtml(items, pager) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>图库 - 无限滚动</title>
+  <title>图库</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   ${NEUTRAL_CSS}
   ${LIBRARY_CSS}
 </head>
 <body>
   <nav class="nav">
-    <div style="text-align:left;">
+    <!-- 修改：只保留返回按钮 -->
+    <div>
       <a href="/" class="btn secondary" style="padding: 8px 16px; font-size:0.9rem; border-radius:10px;">
         <i class="fas fa-arrow-left"></i> <span style="display:none; display:inline-block @media(min-width:400px);">返回</span>
       </a>
     </div>
-    <div class="page-info">
-      <div class="page-current" id="statsInfo">加载中...</div>
-      <div class="page-total" id="totalInfo">共 0 张图片</div>
-    </div>
-    <div style="text-align:right;"></div>
+    <!-- 修改：中间标题 -->
+    <div style="font-weight:bold; color:var(--text-main);">图库</div>
+    <!-- 右侧占位，保持平衡 -->
+    <div style="width: 60px;"></div>
   </nav>
 
-  <!-- 虚拟滚动容器 -->
   <div class="virtual-scroll-container" id="scrollContainer">
     <div class="virtual-scroll-content" id="scrollContent">
-      <!-- 瀑布流容器 -->
       <div class="masonry-container" id="masonryContainer">
         ${items.length === 0 ? `
           <div class="empty-state">
@@ -3314,7 +3327,6 @@ function getLibraryHtml(items, pager) {
           </div>
         ` : ''}
         
-        <!-- 初始加载的图片 (服务端渲染) -->
         ${items.map((item, index) => `
           <div class="item" data-index="${index}" onclick="show('${item.url}')" style="opacity:1">
             <div class="img-wrapper">
@@ -3327,10 +3339,17 @@ function getLibraryHtml(items, pager) {
           </div>
         `).join('')}
         
-        <!-- 加载更多指示器 -->
+        <!-- 修改：加载指示器，增加样式确保独占一行 -->
         ${pager.currentPage < pager.totalPages ? `
           <div class="loading-indicator" id="loadingIndicator">
             <div class="loading-spinner"></div> 加载更多...
+          </div>
+        ` : ''}
+        
+        <!-- 如果初始就加载完了，直接显示到底了 -->
+        ${pager.currentPage >= pager.totalPages && items.length > 0 ? `
+          <div class="loading-indicator">
+            <span class="end-message">- 到底啦 -</span>
           </div>
         ` : ''}
       </div>
@@ -3346,9 +3365,7 @@ function getLibraryHtml(items, pager) {
   </div>
 
   <script>
-    // 修复后的滚动逻辑：改为标准的无限滚动
     const VirtualScroll = {
-      // 下面这三行是服务端注入的变量，不需要转义
       currentPage: ${pager.currentPage},
       totalPages: ${pager.totalPages},
       totalItems: ${pager.totalItems},
@@ -3359,7 +3376,7 @@ function getLibraryHtml(items, pager) {
       lastRenderedIndex: -1, 
 
       init() {
-        this.updateStats();
+        // 修改：移除了 updateStats 调用
         this.setupImageLazyLoad(); 
         this.lastRenderedIndex = this.allItems.length - 1; 
         this.setupBackToTop();
@@ -3369,10 +3386,7 @@ function getLibraryHtml(items, pager) {
         }
       },
       
-      updateStats() {
-        document.getElementById('statsInfo').textContent = '已加载 ' + this.allItems.length + ' 张图片';
-        document.getElementById('totalInfo').textContent = '共 ' + this.totalItems + ' 张图片';
-      },
+      // 修改：移除了 updateStats 函数
       
       renderNewItems() {
         const masonryContainer = document.getElementById('masonryContainer');
@@ -3397,7 +3411,7 @@ function getLibraryHtml(items, pager) {
       createItemElement(item, index) {
         const div = document.createElement('div');
         div.className = 'item';
-        div.style.animation = 'fadeIn 0.5s ease forwards'; // 这里使用单引号，无需转义
+        div.style.animation = 'fadeIn 0.5s ease forwards';
         div.dataset.index = index;
         div.onclick = () => this.show(item.url);
         
@@ -3457,19 +3471,21 @@ function getLibraryHtml(items, pager) {
         const nextPage = this.currentPage + 1;
         
         try {
+          // 转义反斜杠
           const response = await fetch(\`/api/library/items?page=\${nextPage}&pageSize=\${this.pageSize}\`);
           const data = await response.json();
           
           if (data.items && data.items.length > 0) {
             this.allItems = this.allItems.concat(data.items);
             this.currentPage = nextPage;
-            this.updateStats();
+            // 修改：移除了 updateStats 调用
             this.renderNewItems();
             
             if (this.currentPage >= this.totalPages) {
               const indicator = document.getElementById('loadingIndicator');
               if (indicator) {
-                  indicator.innerHTML = '<div style="padding:20px;">- 到底啦 -</div>';
+                  // 修改：美化到底啦的样式
+                  indicator.innerHTML = '<span class="end-message">- 到底啦 -</span>';
                   if(this.observer) this.observer.disconnect();
               }
             }
