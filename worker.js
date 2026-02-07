@@ -418,11 +418,6 @@ class UserService {
         return jsonResponse({ error: 'Already checked in today' }, 400);
     }
 
-    // 8. 更新成功后：写日志 & 清缓存
-    await this.env.DB.prepare(
-      'INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).bind(currentUser.id, currentUser.username, 'check_in', `Streak:${streak} Coins:${coinsReward} Timezone:${timezoneOffset}`, Date.now()).run();
-
     // [新增] 关键：清除缓存
     await this.invalidateUserCache(currentUser.id);
 
@@ -960,11 +955,6 @@ class GachaService {
         ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1
     `).bind(currentUser.id, assetData.rarity));
 
-    // Log 插入
-    batch.push(this.env.DB.prepare(
-        'INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(currentUser.id, currentUser.username, 'draw', assetData.imageUrl, assetData.rarity, timestamp));
-
     // 执行 Batch
     await this.env.DB.batch(batch);
     
@@ -1036,7 +1026,6 @@ class GachaService {
     
     batch.push(this.env.DB.prepare(userSql).bind(...userParams));
     batch.push(this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, assetData.rarity));
-    batch.push(this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, 'draw_limited', assetData.imageUrl, assetData.rarity, Date.now()));
 
     await this.env.DB.batch(batch);
 
@@ -1095,8 +1084,7 @@ class GachaService {
 
     batch.push(this.env.DB.prepare(userSql).bind(...userParams));
     batch.push(this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, assetData.rarity));
-    batch.push(this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, 'craft', assetData.imageUrl, assetData.rarity, Date.now()));
-
+   
     await this.env.DB.batch(batch);
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     if (['SR', 'SSR', 'UR'].includes(assetData.rarity)) {
@@ -1147,8 +1135,7 @@ class GachaService {
 
     batch.push(this.env.DB.prepare(userSql).bind(...userParams));
     batch.push(this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, assetData.rarity));
-    batch.push(this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, rarity, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, 'shop_buy', assetData.imageUrl, assetData.rarity, Date.now()));
-    
+   
     await this.env.DB.batch(batch);
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
@@ -1210,9 +1197,7 @@ class GachaService {
         // 输了只记录日志，不更新用户数据（已提前扣款）
         logDetail += `Lose`;
     }
-
-    batch.push(this.env.DB.prepare('INSERT INTO logs (user_id, username, action, detail, created_at) VALUES (?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, 'dice', logDetail, Date.now()));
-    
+       
     await this.env.DB.batch(batch);
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
