@@ -3000,13 +3000,11 @@ function getLibraryHtml(items, pager) {
       overflow: hidden; 
     }
     
-    /* 导航栏样式 */
     .nav {
       position: fixed; top: 0; left: 0; right: 0; height: 60px;
       background: rgba(255,255,255,0.95); backdrop-filter: blur(12px);
       border-bottom: 1px solid rgba(0,0,0,0.05); z-index: 100;
       padding: 0 20px; 
-      /* 修改：改为 flex 布局，只保留左侧返回按钮和右侧占位 */
       display: flex; justify-content: space-between; align-items: center;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
@@ -3024,7 +3022,6 @@ function getLibraryHtml(items, pager) {
       width: 100%;
     }
     
-    /* --- 瀑布流核心布局 --- */
     .masonry-container {
       max-width: 1400px;
       margin: 0 auto;
@@ -3037,7 +3034,6 @@ function getLibraryHtml(items, pager) {
     @media (min-width: 1024px) { .masonry-container { column-count: 4; } }
     @media (min-width: 1280px) { .masonry-container { column-count: 5; } }
 
-    /* 卡片样式 */
     .item {
       break-inside: avoid;
       margin-bottom: var(--gap);
@@ -3097,13 +3093,11 @@ function getLibraryHtml(items, pager) {
       gap: 6px;
     }
     
-    /* 加载/结束 指示器样式优化 */
     .loading-indicator {
       text-align: center;
       padding: 40px 0;
       color: #94A3B8;
       font-size: 0.9rem;
-      /* 关键属性：强制跨越所有列，实现独占一行 */
       column-span: all; 
       display: block;
       width: 100%;
@@ -3167,22 +3161,19 @@ function getLibraryHtml(items, pager) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>图库</title>
+  <title>图库 - 无限滚动</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   ${NEUTRAL_CSS}
   ${LIBRARY_CSS}
 </head>
 <body>
   <nav class="nav">
-    <!-- 修改：只保留返回按钮 -->
     <div>
       <a href="/" class="btn secondary" style="padding: 8px 16px; font-size:0.9rem; border-radius:10px;">
         <i class="fas fa-arrow-left"></i> <span style="display:none; display:inline-block @media(min-width:400px);">返回</span>
       </a>
     </div>
-    <!-- 修改：中间标题 -->
     <div style="font-weight:bold; color:var(--text-main);">图库</div>
-    <!-- 右侧占位，保持平衡 -->
     <div style="width: 60px;"></div>
   </nav>
 
@@ -3197,8 +3188,9 @@ function getLibraryHtml(items, pager) {
           </div>
         ` : ''}
         
+        <!-- 修复点：onclick="VirtualScroll.show(...)" -->
         ${items.map((item, index) => `
-          <div class="item" data-index="${index}" onclick="show('${item.url}')" style="opacity:1">
+          <div class="item" data-index="${index}" onclick="VirtualScroll.show('${item.url}')" style="opacity:1">
             <div class="img-wrapper">
               <img data-src="${item.url}" class="lazy" alt="Image by ${item.username}">
             </div>
@@ -3209,14 +3201,12 @@ function getLibraryHtml(items, pager) {
           </div>
         `).join('')}
         
-        <!-- 修改：加载指示器，增加样式确保独占一行 -->
         ${pager.currentPage < pager.totalPages ? `
           <div class="loading-indicator" id="loadingIndicator">
             <div class="loading-spinner"></div> 加载更多...
           </div>
         ` : ''}
         
-        <!-- 如果初始就加载完了，直接显示到底了 -->
         ${pager.currentPage >= pager.totalPages && items.length > 0 ? `
           <div class="loading-indicator">
             <span class="end-message">- 到底啦 -</span>
@@ -3246,7 +3236,6 @@ function getLibraryHtml(items, pager) {
       lastRenderedIndex: -1, 
 
       init() {
-        // 修改：移除了 updateStats 调用
         this.setupImageLazyLoad(); 
         this.lastRenderedIndex = this.allItems.length - 1; 
         this.setupBackToTop();
@@ -3255,8 +3244,6 @@ function getLibraryHtml(items, pager) {
           this.setupInfiniteScroll();
         }
       },
-      
-      // 修改：移除了 updateStats 函数
       
       renderNewItems() {
         const masonryContainer = document.getElementById('masonryContainer');
@@ -3283,7 +3270,7 @@ function getLibraryHtml(items, pager) {
         div.className = 'item';
         div.style.animation = 'fadeIn 0.5s ease forwards';
         div.dataset.index = index;
-        div.onclick = () => this.show(item.url);
+        div.onclick = () => this.show(item.url); // 这里 this.show 是正确的，因为是在对象内部调用
         
         const imgWrapper = document.createElement('div');
         imgWrapper.className = 'img-wrapper';
@@ -3341,20 +3328,17 @@ function getLibraryHtml(items, pager) {
         const nextPage = this.currentPage + 1;
         
         try {
-          // 转义反斜杠
           const response = await fetch(\`/api/library/items?page=\${nextPage}&pageSize=\${this.pageSize}\`);
           const data = await response.json();
           
           if (data.items && data.items.length > 0) {
             this.allItems = this.allItems.concat(data.items);
             this.currentPage = nextPage;
-            // 修改：移除了 updateStats 调用
             this.renderNewItems();
             
             if (this.currentPage >= this.totalPages) {
               const indicator = document.getElementById('loadingIndicator');
               if (indicator) {
-                  // 修改：美化到底啦的样式
                   indicator.innerHTML = '<span class="end-message">- 到底啦 -</span>';
                   if(this.observer) this.observer.disconnect();
               }
