@@ -92,17 +92,6 @@ const TECHNICAL_CONFIG = {
     BUFFER_SLOTS: 10              // 缓冲池槽位数量
   },
   
-  // 图片压缩配置（技术参数）
-  IMAGE_COMPRESSION: {
-    ENABLED: true,
-    MAX_DIMENSION: 1920,
-    MAX_FILE_SIZE: 20 * 1024 * 1024,
-    QUALITY: 0.85,
-    TIMEOUT: 5000,
-    SKIP_GIF: true,
-    MIN_SIZE_FOR_COMPRESSION: 50 * 1024
-  },
-  
   // 基础设施配置
   INFRASTRUCTURE: {
     R2_DOMAIN: "https://cft1.cszxorx.dpdns.org",
@@ -833,142 +822,6 @@ class GachaService {
     return freshAsset;
   }
 
-  /**
-   * 图片压缩函数
-   * @param {ArrayBuffer} imageBuffer - 原始图片数据
-   * @param {string} contentType - 原始图片类型
-   * @returns {Promise<{buffer: ArrayBuffer, contentType: string}>} 压缩后的图片数据和类型
-   */
-  async compressImage(imageBuffer, contentType) {
-    const COMPRESS_CONFIG = CONFIG.IMAGE_COMPRESSION;
-    
-    // 如果压缩功能被禁用，直接返回原始数据
-    if (!COMPRESS_CONFIG.ENABLED) {
-      return {
-        buffer: imageBuffer,
-        contentType: contentType
-      };
-    }
-    
-    const originalSize = imageBuffer.byteLength;
-    
-    // 检查文件大小，如果太大直接返回
-    if (originalSize > COMPRESS_CONFIG.MAX_FILE_SIZE) {
-      console.log(`图片过大 (${(originalSize / 1024 / 1024).toFixed(2)}MB)，跳过压缩`);
-      return {
-        buffer: imageBuffer,
-        contentType: contentType
-      };
-    }
-    
-    // 如果图片太小，也不压缩
-    if (originalSize < COMPRESS_CONFIG.MIN_SIZE_FOR_COMPRESSION) {
-      console.log(`图片较小 (${(originalSize / 1024).toFixed(1)}KB)，跳过压缩`);
-      return {
-        buffer: imageBuffer,
-        contentType: contentType
-      };
-    }
-    
-    // 对于GIF等动画图片，保持原格式
-    if (COMPRESS_CONFIG.SKIP_GIF && (contentType === 'image/gif' || contentType.includes('animated'))) {
-      console.log('动画图片，跳过压缩');
-      return {
-        buffer: imageBuffer,
-        contentType: contentType
-      };
-    }
-    
-    try {
-      // 设置超时
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('图片压缩超时')), COMPRESS_CONFIG.TIMEOUT);
-      });
-      
-      // 压缩任务
-      const compressTask = (async () => {
-        // 解码图片
-        const blob = new Blob([imageBuffer], { type: contentType });
-        const imageBitmap = await createImageBitmap(blob);
-        
-        // 计算缩放尺寸
-        let { width, height } = imageBitmap;
-        
-        // 如果图片尺寸过大，进行缩放
-        if (width > COMPRESS_CONFIG.MAX_DIMENSION || height > COMPRESS_CONFIG.MAX_DIMENSION) {
-          const ratio = Math.min(COMPRESS_CONFIG.MAX_DIMENSION / width, COMPRESS_CONFIG.MAX_DIMENSION / height);
-          width = Math.floor(width * ratio);
-          height = Math.floor(height * ratio);
-        }
-        
-        // 创建OffscreenCanvas进行绘制
-        const canvas = new OffscreenCanvas(width, height);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          throw new Error('无法获取Canvas上下文');
-        }
-        
-        // 设置背景为白色（对于透明图片）
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, width, height);
-        
-        // 绘制图片
-        ctx.drawImage(imageBitmap, 0, 0, width, height);
-        
-        // 根据原始格式和大小选择输出格式
-        let outputType = 'image/webp';
-        let quality = COMPRESS_CONFIG.QUALITY;
-        
-        // 小图片保持原格式
-        if (originalSize < 200 * 1024) {
-          if (contentType === 'image/jpeg' || contentType === 'image/jpg') {
-            outputType = 'image/jpeg';
-          } else if (contentType === 'image/png') {
-            outputType = 'image/png';
-            quality = Math.min(0.9, quality); // PNG质量设置
-          }
-        }
-        
-        // 转换为Blob
-        const compressedBlob = await canvas.convertToBlob({
-          type: outputType,
-          quality: quality
-        });
-        
-        const compressedBuffer = await compressedBlob.arrayBuffer();
-        
-        // 记录压缩效果
-        const compressionRatio = (compressedBuffer.byteLength / originalSize) * 100;
-        console.log(`图片压缩: ${(originalSize / 1024 / 1024).toFixed(2)}MB -> ${(compressedBuffer.byteLength / 1024 / 1024).toFixed(2)}MB (${compressionRatio.toFixed(1)}%)`);
-        
-        // 如果压缩后反而更大（罕见情况），返回原始数据
-        if (compressedBuffer.byteLength > originalSize * 0.95) {
-          console.log('压缩效果不佳，返回原始图片');
-          return {
-            buffer: imageBuffer,
-            contentType: contentType
-          };
-        }
-        
-        return {
-          buffer: compressedBuffer,
-          contentType: outputType
-        };
-      })();
-      
-      // 等待压缩任务或超时
-      return await Promise.race([compressTask, timeoutPromise]);
-      
-    } catch (error) {
-      console.error('图片压缩失败:', error);
-      // 压缩失败时返回原始数据
-      return {
-        buffer: imageBuffer,
-        contentType: contentType
-      };
-    }
-  }
-
   async fetchAndUploadRandom(sourceList) {
       const source = sourceList[Math.floor(Math.random() * sourceList.length)];
       return await this.fetchAndUpload(source);
@@ -976,40 +829,56 @@ class GachaService {
 
   async fetchAndUpload(source) {
     try {
+        // 1. 获取重定向后的真实图片链接 (解决 api.anosu.top 返回 302 跳转的问题)
+        // 我们需要先拿到真实的图片地址，才能传给压缩服务
+        const initRes = await fetch(source.url, {
+            method: 'HEAD', // 只获取头信息，不下载内容，速度快
+            redirect: 'follow'
+        });
+        const finalUrl = initRes.url; // 这是真实的图片地址 (例如 https://i.pixiv.cat/xxx.jpg)
+
+        // 2. 构建压缩代理 URL
+        // 使用 wsrv.nl (Weserv) 免费服务
+        // output=webp: 强制转为 webp
+        // q=75: 质量 75%
+        // w=1200: 宽度限制在 1200px (防止超大图)
+        // il: 即使原图有防盗链也尝试加载
+        const compressedUrl = `https://wsrv.nl/?url=${encodeURIComponent(finalUrl)}&output=webp&q=75&w=1200&il`;
+
+        // 3. 下载已压缩的图片数据
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        const imgRes = await fetch(source.url, { signal: controller.signal });
+        const timeout = setTimeout(() => controller.abort(), 8000); // 8秒超时
+        const imgRes = await fetch(compressedUrl, { signal: controller.signal });
         clearTimeout(timeout);
 
         if (imgRes.ok) {
-            const originalBuffer = await imgRes.arrayBuffer();
-            const originalContentType = imgRes.headers.get('content-type') || 'image/jpeg';
+            // 获取压缩后的数据
+            const compressedBuffer = await imgRes.arrayBuffer();
             const timestamp = Date.now();
             const randomStr = Math.random().toString(36).slice(2, 8);
             
-            // 压缩图片
-            const { buffer: compressedBuffer, contentType: compressedContentType } =
-                await this.compressImage(originalBuffer, originalContentType);
+            // 既然我们要了 webp，扩展名就是 webp
+            const extension = 'webp';
+            const contentType = 'image/webp';
             
-            // 根据压缩后的内容类型确定文件扩展名
-            let extension = 'jpg';
-            if (compressedContentType === 'image/webp') {
-                extension = 'webp';
-            } else if (compressedContentType === 'image/png') {
-                extension = 'png';
-            } else if (compressedContentType === 'image/gif') {
-                extension = 'gif';
+            // 检查大小：如果 Weserv 挂了或者返回空，做个兜底
+            if (compressedBuffer.byteLength < 100) {
+                throw new Error('Compressed image too small');
             }
-            
+
             const filename = `images/${source.rarity}_${timestamp}_${randomStr}.${extension}`;
             
+            // 4. 上传到 R2
             await this.env.R2_BUCKET.put(filename, compressedBuffer, {
                 httpMetadata: {
-                    contentType: compressedContentType,
+                    contentType: contentType,
+                    // 缓存 1 年
                     cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable`
                 }
             });
             
+            console.log(`[Compression] Saved: ${(compressedBuffer.byteLength / 1024).toFixed(2)} KB`);
+
             return {
                 success: true,
                 imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`,
@@ -1018,8 +887,9 @@ class GachaService {
             };
         }
     } catch (e) {
-        console.error('Fetch Asset Error', e);
-        // 如果压缩或上传失败，尝试使用默认图片
+        console.error('Fetch/Compress Error:', e);
+        // 这里可以做个降级：如果压缩服务挂了，尝试直接下载原图上传
+        // 但为了代码简洁，暂时返回失败，系统会自动重试
     }
     return { success: false, rarity: 'N', imageUrl: CONFIG.DEFAULT_IMG };
   }
