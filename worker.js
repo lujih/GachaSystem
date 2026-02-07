@@ -3423,6 +3423,7 @@ function getProfilePage() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>个人档案 - GachaSystem</title>
+  <!-- 使用国内 BootCDN -->
   <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   ${NEUTRAL_CSS}
   <style>
@@ -3499,13 +3500,12 @@ function getProfilePage() {
           <div style="font-weight:bold;" id="invCountUR">0</div>
         </div>
       </div>
-      <!-- 移除了 登录天数 的显示 -->
       <div style="text-align:center; margin-top:10px; font-size:0.8rem; color:#94A3B8;">
          召唤总数: <span id="profileCount">0</span>
       </div>
     </div>
 
-    <!-- [新增] 称号展示区 -->
+    <!-- 称号展示区 -->
     <div style="background:white; padding:15px; border-radius:12px; border:1px solid #E2E8F0; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between;">
         <div>
             <div style="font-size:0.8rem; color:#94A3B8; margin-bottom:4px;">当前佩戴称号</div>
@@ -3529,34 +3529,29 @@ function getProfilePage() {
         <button class="btn secondary" onclick="App.logout()"><i class="fas fa-sign-out-alt"></i> 注销登录</button>
     </div>
 
-    <!-- [新增] 称号管理弹窗 -->
+    <!-- 称号管理弹窗 -->
     <div id="titleModal" class="modal">
         <div class="modal-content">
             <button class="modal-close-btn" onclick="document.getElementById('titleModal').classList.remove('show')"><i class="fas fa-times"></i></button>
             <h3>称号管理</h3>
-            <div id="titleList" class="title-list">
-                <!-- 动态生成 -->
-            </div>
+            <div id="titleList" class="title-list"></div>
             <button class="btn secondary" style="width:100%; margin-top:15px;" onclick="App.equipTitle(null)">卸下当前称号</button>
         </div>
     </div>
   </div>
 
-  <!-- 2. 添加等级奖励模态框 -->
+  <!-- 等级奖励模态框 -->
     <div id="rewardModal" class="modal">
         <div class="modal-content">
             <button class="modal-close-btn" onclick="document.getElementById('rewardModal').classList.remove('show')"><i class="fas fa-times"></i></button>
             <h3>等级奖励</h3>
-            <div id="rewardList" style="text-align:left; max-height:400px; overflow-y:auto;">
-                <!-- JS 动态填充 -->
-            </div>
+            <div id="rewardList" style="text-align:left; max-height:400px; overflow-y:auto;"></div>
         </div>
     </div>
 
   <div id="toast-container"></div>
 
   <script>
-    // 注意：这里仅用于前端显示，实际校验在后端完成
     const MILESTONES = {
         5: { coins: 500, title: '新手收藏家' },
         10: { coins: 1000, title: '初级收藏家' },
@@ -3565,15 +3560,20 @@ function getProfilePage() {
         50: { coins: 5000, title: '传说人物' },
         100: { coins: 10000, title: '卡片之神' }
     };
+    
     const App = {
       username: localStorage.getItem('moe_username'),
       
       async init() {
         if (!this.username) {
-            window.location.href = '/'; // 未登录回首页
+            window.location.href = '/'; 
             return;
         }
-        await this.fetchUserInfo();
+        // [修复关键] 并行获取用户信息和库存信息
+        await Promise.all([
+            this.fetchUserInfo(),
+            this.fetchInventory()
+        ]);
       },
 
       async fetchUserInfo() {
@@ -3588,13 +3588,23 @@ function getProfilePage() {
         } catch(e) { console.error(e); }
       },
 
+      // [新增] 独立获取库存的方法
+      async fetchInventory() {
+        try {
+            const res = await fetch('/user/inventory', { headers: { 'X-User-ID': this.username } });
+            const data = await res.json();
+            if (data) {
+                this.updateInventoryUI(data);
+            }
+        } catch(e) { console.error('Failed to load inventory', e); }
+      },
+
       updateUI(user) {
         document.getElementById('profileNickname').innerText = user.nickname || user.username;
         document.getElementById('profileUsername').innerText = user.username;
         document.getElementById('profileCoins').innerText = user.coins || 0;
         document.getElementById('profileLevel').innerText = user.level || 1;
         document.getElementById('profileCount').innerText = user.drawCount || 0;
-        // 移除了 login_streak 的更新
 
         // 更新经验条
         const exp = user.exp || 0;
@@ -3606,13 +3616,7 @@ function getProfilePage() {
         document.getElementById('profileLevelProgress').innerText = progress + '%';
         document.getElementById('profileExpBar').style.width = progress + '%';
 
-        // 更新库存
-        const inv = user.inventory || {};
-        ['N', 'R', 'SR', 'SSR', 'UR'].forEach(r => {
-            document.getElementById('invCount' + r).innerText = inv[r] || 0;
-        });
-
-        // [新增] 更新称号显示
+        // 更新称号显示
         const titleEl = document.getElementById('currentTitleDisplay');
         if (user.title && user.title.name) {
             titleEl.innerHTML = \`<span class="title-badge" style="background:linear-gradient(135deg, #3B82F6, #8B5CF6); font-size:1rem; padding:4px 10px;">\${user.title.name}</span>\`;
@@ -3621,7 +3625,14 @@ function getProfilePage() {
         }
       },
 
-      // [新增] 打开称号管理
+      // [新增] 独立更新库存 UI 的方法
+      updateInventoryUI(inv) {
+        ['N', 'R', 'SR', 'SSR', 'UR'].forEach(r => {
+            const el = document.getElementById('invCount' + r);
+            if(el) el.innerText = inv[r] || 0;
+        });
+      },
+
       async openTitleManager() {
         const modal = document.getElementById('titleModal');
         const list = document.getElementById('titleList');
@@ -3656,13 +3667,9 @@ function getProfilePage() {
         const currentLevel = parseInt(document.getElementById('profileLevel').innerText) || 1;
         
         let html = '';
-        
-        // 遍历所有奖励等级
         for (const [lvl, reward] of Object.entries(MILESTONES)) {
             const level = parseInt(lvl);
             const isReached = currentLevel >= level;
-            
-            // 生成奖励描述
             let desc = \`金币 \${reward.coins}\`;
             if (reward.title) desc += \` + 称号 [\${reward.title}]\`;
             
@@ -3678,14 +3685,12 @@ function getProfilePage() {
                 <div style="font-size:0.85rem; color:#475569;">\${desc}</div>
             </div>\`;
         }
-        
         list.innerHTML = html;
         modal.classList.add('show');
       },
 
       async claimReward(level) {
         if(!confirm(\`确定领取 Lv.\${level} 的奖励吗？\`)) return;
-        
         try {
             const res = await fetch('/user/claim-reward', {
                 method: 'POST',
@@ -3693,56 +3698,40 @@ function getProfilePage() {
                 body: JSON.stringify({ targetLevel: level })
             });
             const data = await res.json();
-            
             if(data.success) {
                 alert('领取成功！');
                 document.getElementById('rewardModal').classList.remove('show');
-                this.fetchUserInfo(); // 刷新数据
+                this.fetchUserInfo();
             } else {
-                // 简单的错误映射
                 const msg = data.error === 'Reward already claimed' ? '该奖励已经领取过了' : data.error;
                 alert(msg);
             }
-        } catch(e) {
-            alert('网络错误');
-        }
+        } catch(e) { alert('网络错误'); }
       },
 
-      // [新增] 装备称号
       async equipTitle(titleId) {
         try {
             const res = await fetch('/user/equip-title', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-User-ID': this.username
-                },
+                headers: { 'Content-Type': 'application/json', 'X-User-ID': this.username },
                 body: JSON.stringify({ titleId })
             });
             const data = await res.json();
-            
             if (data.success) {
                 document.getElementById('titleModal').classList.remove('show');
                 this.toast(data.message, 'ok');
-                this.fetchUserInfo(); // 刷新界面显示
+                this.fetchUserInfo();
             } else {
                 this.toast(data.error || '操作失败', 'warn');
             }
-        } catch(e) {
-            this.toast('网络错误', 'warn');
-        }
+        } catch(e) { this.toast('网络错误', 'warn'); }
       },
 
       async editProfile() {
         const current = document.getElementById('profileNickname').innerText;
         const newNick = prompt('输入新昵称 (最多20字符):', current);
-        
         if (newNick && newNick !== current) {
-            if(newNick.length > 20) {
-                alert('昵称过长');
-                return;
-            }
-            
+            if(newNick.length > 20) { alert('昵称过长'); return; }
             try {
                 const res = await fetch('/user/update-profile', {
                     method: 'POST',
@@ -3750,16 +3739,11 @@ function getProfilePage() {
                     body: JSON.stringify({ nickname: newNick })
                 });
                 const data = await res.json();
-                
                 if(data.success) {
                     document.getElementById('profileNickname').innerText = data.nickname;
                     alert('修改成功');
-                } else {
-                    alert(data.error || '修改失败');
-                }
-            } catch(e) {
-                alert('网络错误');
-            }
+                } else { alert(data.error || '修改失败'); }
+            } catch(e) { alert('网络错误'); }
         }
       },
 
@@ -3768,6 +3752,14 @@ function getProfilePage() {
             localStorage.removeItem('moe_username');
             window.location.href = '/';
         }
+      },
+
+      toast(msg, type) { 
+        const div = document.createElement('div'); 
+        div.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:10px 20px;border-radius:20px;z-index:9999;font-size:0.9rem;';
+        div.innerText = msg;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 2500); 
       }
     };
 
