@@ -962,8 +962,8 @@ class GachaService {
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: timestamp }));
     
-    // [优化] 仅 SR/SSR/UR 更新排行榜，节省 KV 写额度
-    if (['SR', 'SSR', 'UR'].includes(assetData.rarity)) {
+    // [优化] 仅 UR 级图片进入精选图库
+    if (assetData.rarity === 'UR') {
         this.ctx.waitUntil(updateLeaderboard(this.env, {
             username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp
         }));
@@ -1031,10 +1031,12 @@ class GachaService {
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
-    // 限定池必定更新排行榜
-    this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now() }));
-    
-    return jsonResponse({ 
+    // [优化] 限定池仅 UR 级图片进入精选图库
+    if (assetData.rarity === 'UR') {
+        this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now() }));
+    }
+
+    return jsonResponse({
         success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain,
         userCoins: currentUser.coins + levelUpInfo.coinsReward
     });
@@ -1087,7 +1089,8 @@ class GachaService {
    
     await this.env.DB.batch(batch);
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-    if (['SR', 'SSR', 'UR'].includes(assetData.rarity)) {
+    // [优化] 合成系统仅 UR 级图片进入精选图库
+    if (assetData.rarity === 'UR') {
         this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now() }));
     }
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
