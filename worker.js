@@ -419,6 +419,10 @@ class UserService {
         return jsonResponse({ error: 'Already checked in today' }, 400);
     }
 
+    // [修复] 更新内存中的用户数据，确保后续操作使用最新值
+    currentUser.total_exp = (currentUser.total_exp || 0) + expReward;
+    currentUser.exp = (currentUser.exp || 0) + expReward;
+
     // [新增] 关键：清除缓存
     await this.invalidateUserCache(currentUser.id);
 
@@ -958,7 +962,16 @@ class GachaService {
 
     // 执行 Batch
     await this.env.DB.batch(batch);
-    
+
+    // [修复] 更新内存中的用户数据，确保后续操作使用最新值
+    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+    if (levelUpInfo.hasLevelUp) {
+      currentUser.level = levelUpInfo.newLevel;
+      currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+    } else {
+      currentUser.exp = (currentUser.exp || 0) + expGain;
+    }
+
     // 5. 异步副作用 (缓存/索引/排行榜)
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: timestamp }));
@@ -1030,6 +1043,15 @@ class GachaService {
 
     await this.env.DB.batch(batch);
 
+    // [修复] 更新内存中的用户数据，确保后续操作使用最新值
+    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+    if (levelUpInfo.hasLevelUp) {
+      currentUser.level = levelUpInfo.newLevel;
+      currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+    } else {
+      currentUser.exp = (currentUser.exp || 0) + expGain;
+    }
+
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
     // [优化] 限定池仅 UR 级图片进入精选图库
@@ -1089,6 +1111,16 @@ class GachaService {
     batch.push(this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, assetData.rarity));
    
     await this.env.DB.batch(batch);
+
+    // [修复] 更新内存中的用户数据，确保后续操作使用最新值
+    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+    if (levelUpInfo.hasLevelUp) {
+      currentUser.level = levelUpInfo.newLevel;
+      currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+    } else {
+      currentUser.exp = (currentUser.exp || 0) + expGain;
+    }
+
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     // [优化] 合成系统仅 UR 级图片进入精选图库
     if (assetData.rarity === 'UR') {
@@ -1141,10 +1173,20 @@ class GachaService {
     batch.push(this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, assetData.rarity));
    
     await this.env.DB.batch(batch);
+
+    // [修复] 更新内存中的用户数据，确保后续操作使用最新值
+    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+    if (levelUpInfo.hasLevelUp) {
+      currentUser.level = levelUpInfo.newLevel;
+      currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+    } else {
+      currentUser.exp = (currentUser.exp || 0) + expGain;
+    }
+
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
-    
-    return jsonResponse({ 
+
+    return jsonResponse({
         success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain,
         userCoins: currentUser.coins + levelUpInfo.coinsReward
     });
@@ -1201,8 +1243,21 @@ class GachaService {
         // 输了只记录日志，不更新用户数据（已提前扣款）
         logDetail += `Lose`;
     }
-       
+
     await this.env.DB.batch(batch);
+
+    // [修复] 更新内存中的用户数据（仅在赢时获得经验）
+    if (isWin && expGain > 0) {
+      const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
+      currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+      if (levelUpInfo.hasLevelUp) {
+        currentUser.level = levelUpInfo.newLevel;
+        currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+      } else {
+        currentUser.exp = (currentUser.exp || 0) + expGain;
+      }
+    }
+
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
     return jsonResponse({ success: true, roll, isWin, winAmount, expGained: expGain, userCoins: currentUser.coins });
