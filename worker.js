@@ -193,7 +193,8 @@ export default {
 
       'GET /library': () => handleLibrary(request, env, url),
       'GET /api/library/items': () => handleLibraryApi(request, env),
-      
+      'GET /favicon.ico': () => new Response(null, { status: 204 }),
+
       'POST /admin/users': () => handleAdminUsers(request, env),
       'POST /admin/verify': () => handleAdminVerify(request, env),
       'POST /admin/save-changelog': () => handleAdminSaveLog(request, env),
