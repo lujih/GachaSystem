@@ -228,6 +228,8 @@ export default {
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
       'POST /admin/update-points': () => handleAdminUpdatePoints(request, env),
       'POST /admin/delete-user': () => handleAdminDeleteUser(request, env),
+      'POST /admin/uploads': () => handleAdminUploads(request, env),
+      'POST /admin/review-upload': () => handleAdminReviewUpload(request, env),
     };
 
     const routeKey = `${method} ${pathname}`;
@@ -1898,6 +1900,98 @@ async function handleAdminDeleteUser(request, env) {
   }
 }
 
+/**
+ * [新增] 获取待审核的上传列表
+ */
+async function handleAdminUploads(request, env) {
+  try {
+    const { password, status = 'pending', limit = 50, offset = 0 } = await request.json();
+
+    if (password !== env.admin) {
+      return jsonResponse({ error: 'Auth Failed' }, 403);
+    }
+
+    // 查询上传列表
+    let sql = `
+      SELECT 
+        id, user_id, username, url, rarity, status, 
+        created_at, reviewed_at 
+      FROM user_uploads 
+      WHERE status = ?
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    
+    const uploads = await env.DB.prepare(sql)
+      .bind(status, limit, offset)
+      .all();
+
+    // 获取总数
+    const countResult = await env.DB.prepare(
+      'SELECT COUNT(*) as total FROM user_uploads WHERE status = ?'
+    ).bind(status).first();
+
+    return jsonResponse({
+      success: true,
+      uploads: uploads.results || [],
+      total: countResult.total,
+      limit,
+      offset
+    });
+
+  } catch (e) {
+    console.error('[Admin Uploads Error]:', e);
+    return jsonResponse({ error: 'Internal server error' }, 500);
+  }
+}
+
+/**
+ * [新增] 审核上传（通过/拒绝）
+ */
+async function handleAdminReviewUpload(request, env) {
+  try {
+    const { password, uploadId, action, rarity } = await request.json();
+
+    if (password !== env.admin) {
+      return jsonResponse({ error: 'Auth Failed' }, 403);
+    }
+
+    if (!uploadId || !['approved', 'rejected'].includes(action)) {
+      return jsonResponse({ error: 'Invalid parameters' }, 400);
+    }
+
+    const reviewedAt = Date.now();
+
+    if (action === 'approved') {
+      // 通过审核：更新状态、稀有度、审核时间
+      const validRarity = rarity || 'N';
+      await env.DB.prepare(
+        'UPDATE user_uploads SET status = ?, rarity = ?, reviewed_at = ? WHERE id = ?'
+      ).bind('approved', validRarity, reviewedAt, uploadId).run();
+      
+      return jsonResponse({ 
+        success: true, 
+        message: 'Upload approved',
+        rarity: validRarity
+      });
+    } else {
+      // 拒绝审核：更新状态和审核时间
+      await env.DB.prepare(
+        'UPDATE user_uploads SET status = ?, reviewed_at = ? WHERE id = ?'
+      ).bind('rejected', reviewedAt, uploadId).run();
+      
+      return jsonResponse({ 
+        success: true, 
+        message: 'Upload rejected'
+      });
+    }
+
+  } catch (e) {
+    console.error('[Admin Review Upload Error]:', e);
+    return jsonResponse({ error: 'Internal server error' }, 500);
+  }
+}
+
 async function updateLeaderboard(env, newItem) {
   if (!env.RECENT_REQUESTS) return;
   const key = CONFIG.KEYS.LEADERBOARD;
@@ -2494,6 +2588,7 @@ function getHtmlPage() {
         <div class="admin-tabs">
             <div class="admin-tab active" onclick="App.switchAdminTab('log')" id="tab-log">更新日志</div>
             <div class="admin-tab" onclick="App.switchAdminTab('users')" id="tab-users">用户管理</div>
+            <div class="admin-tab" onclick="App.switchAdminTab('uploads')" id="tab-uploads">上传审核</div>
             <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann">系统公告</div>
         </div>
         <div id="view-log">
@@ -2513,6 +2608,28 @@ function getHtmlPage() {
             </div>
             <div style="max-height:350px; overflow-y:auto; border:1px solid #F1F5F9; border-radius:8px;">
                 <table class="admin-table"><thead><tr><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="4" style="text-align:center; padding:20px;">加载中...</td></tr></tbody></table>
+            </div>
+        </div>
+        <div id="view-uploads" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span style="font-weight:bold; font-size:0.9rem;">
+                    待审核上传 
+                    <span id="uploadsCountBadge" style="background:var(--primary); color:white; padding:2px 8px; border-radius:12px; font-size:0.75rem;">0</span>
+                </span>
+                <div style="display:flex; gap:8px;">
+                    <select id="uploadStatusFilter" onchange="App.loadAdminUploads()" style="padding:4px 8px; border:1px solid #E2E8F0; border-radius:6px; font-size:0.8rem;">
+                        <option value="pending">待审核</option>
+                        <option value="approved">已通过</option>
+                        <option value="rejected">已拒绝</option>
+                    </select>
+                    <button class="btn secondary" onclick="App.loadAdminUploads()" style="font-size:0.8rem; padding:4px 10px;"><i class="fas fa-sync"></i></button>
+                </div>
+            </div>
+            <div id="uploadsContainer" style="max-height:400px; overflow-y:auto; border:1px solid #F1F5F9; border-radius:8px;">
+                <div style="text-align:center; padding:40px; color:var(--text-light);">
+                    <i class="fas fa-images" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
+                    加载中...
+                </div>
             </div>
         </div>
         <div id="view-ann" style="display:none;">
@@ -3518,7 +3635,7 @@ function getHtmlPage() {
             if(d.success) { this.adminPwd = pwd; document.getElementById('adminLogin').style.display = 'none'; document.getElementById('adminPanel').style.display = 'block'; this.switchAdminTab('log'); this.renderAdminTable(); } else { this.toast('密码错误', 'warn'); }
         } catch(e) { this.toast('网络错误', 'warn'); }
       },
-      switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'ann') this.loadAdminAnnouncement();},
+      switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-uploads').style.display = tab === 'uploads' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'uploads') this.loadAdminUploads(); if(tab === 'ann') this.loadAdminAnnouncement();},
       async loadAdminUsers() {
         const tbody = document.getElementById('userTbody'); 
         
@@ -3547,6 +3664,80 @@ function getHtmlPage() {
       },
       async adminEditPoints(userId) { const val = prompt('输入要增加或减少的积分:'); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
       async deleteUser(id) { if(!confirm('确定删除该用户吗？此操作不可逆。')) return; try { const res = await fetch('/admin/delete-user', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: id }) }); const d = await res.json(); if(d.success) { this.toast('用户已删除', 'ok'); this.loadAdminUsers(); } else { this.toast('Error', 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
+      async loadAdminUploads() {
+        const container = document.getElementById('uploadsContainer');
+        const status = document.getElementById('uploadStatusFilter').value;
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-light);"><i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:10px; display:block;"></i>加载中...</div>';
+        try {
+          const res = await fetch('/admin/uploads', {
+            method: 'POST',
+            body: JSON.stringify({ password: this.adminPwd, status })
+          });
+          const d = await res.json();
+          if(d.success) {
+            document.getElementById('uploadsCountBadge').textContent = d.total || 0;
+            if(!d.uploads || d.uploads.length === 0) {
+              container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-light);"><i class="fas fa-inbox" style="font-size:2rem; margin-bottom:10px; display:block;"></i>暂无' + (status === 'pending' ? '待审核' : status === 'approved' ? '已通过' : '已拒绝') + '的上传</div>';
+              return;
+            }
+            let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:15px; padding:15px;">';
+            d.uploads.forEach(u => {
+              const dateStr = new Date(u.created_at).toLocaleString('zh-CN');
+              const rarityClass = 'r-' + (u.rarity || 'N').toLowerCase();
+              const rarityName = u.rarity || 'N';
+              html += \`
+                <div style="border:1px solid #E2E8F0; border-radius:8px; overflow:hidden; background:white;">
+                  <div style="position:relative; aspect-ratio:1; background:#F8FAFC; cursor:pointer;" onclick="App.showImage('\${u.url}')">
+                    <img src="\${u.url}" style="width:100%; height:100%; object-fit:cover;" loading="lazy">
+                    <span class="rarity-tag \${rarityClass} show" style="position:absolute; top:8px; left:8px; font-size:0.75rem; padding:2px 8px;">\${rarityName}</span>
+                  </div>
+                  <div style="padding:10px;">
+                    <div style="font-size:0.8rem; font-weight:bold; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${u.username}</div>
+                    <div style="font-size:0.7rem; color:var(--text-light); margin-bottom:8px;">\${dateStr}</div>
+                    \${status === 'pending' ? \`
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                      <select id="rarity-\${u.id}" style="padding:4px; border:1px solid #E2E8F0; border-radius:4px; font-size:0.75rem;">
+                        <option value="N">N</option>
+                        <option value="R">R</option>
+                        <option value="SR">SR</option>
+                        <option value="SSR">SSR</option>
+                        <option value="UR" selected>UR</option>
+                      </select>
+                      <button class="btn" style="padding:4px; font-size:0.75rem;" onclick="App.reviewUpload(\${u.id}, 'approved')">通过</button>
+                      <button class="btn secondary" style="padding:4px; font-size:0.75rem; grid-column:1/-1;" onclick="App.reviewUpload(\${u.id}, 'rejected')">拒绝</button>
+                    </div>
+                    \` : \`<div style="font-size:0.75rem; color:var(--text-light); text-align:center;">已\${status === 'approved' ? '通过' : '拒绝'}</div>\`}
+                  </div>
+                </div>
+              \`;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+          } else {
+            container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:10px; display:block;"></i>加载失败: ' + (d.error || 'Unknown') + '</div>';
+          }
+        } catch(e) {
+          container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:10px; display:block;"></i>网络错误</div>';
+        }
+      },
+      async reviewUpload(uploadId, action) {
+        const rarity = action === 'approved' ? document.getElementById('rarity-' + uploadId).value : null;
+        try {
+          const res = await fetch('/admin/review-upload', {
+            method: 'POST',
+            body: JSON.stringify({ password: this.adminPwd, uploadId, action, rarity })
+          });
+          const d = await res.json();
+          if(d.success) {
+            this.toast(action === 'approved' ? '已通过审核' : '已拒绝', 'ok');
+            this.loadAdminUploads();
+          } else {
+            this.toast(d.error || '操作失败', 'warn');
+          }
+        } catch(e) {
+          this.toast('网络错误', 'warn');
+        }
+      },
       renderAdminTable() { document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => \`<tr><td><input class="admin-input" value="\${log.date}" onchange="App.updateLog(\${idx}, 'date', this.value)"></td><td><input class="admin-input" value="\${log.ver}" onchange="App.updateLog(\${idx}, 'ver', this.value)"></td><td><input class="admin-input" value="\${log.content}" onchange="App.updateLog(\${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:4px 6px;" onchange="App.updateLog(\${idx}, 'tag', this.value)"><option value="optimization" \${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" \${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" \${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" \${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" \${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" \${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.delLog(\${idx})">删</button></td></tr>\`).join(''); },
       updateLog(idx, field, val) { this.logsData[idx][field] = val; }, addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
       async saveAdminLog() { try { const res = await fetch('/admin/save-changelog', { method: 'POST', body: JSON.stringify({password: this.adminPwd, logs: this.logsData}) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadChangelog(); } else { this.toast('保存失败', 'warn'); } } catch(e) { this.toast('保存失败', 'warn'); } },
