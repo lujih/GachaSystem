@@ -2796,9 +2796,12 @@ function getHtmlPage() {
           const data = await res.json();
           if (data.success && data.pools) {
             const listEl = document.getElementById('poolDropdownList');
-            const currentPool = this.currentLimitedPool || data.defaultPool;
             this.limitedPools = data.pools;
-            this.currentLimitedPool = currentPool;
+            // [修复] 防止竞争条件：始终在设置前检查最新的 currentLimitedPool
+            if (!this.currentLimitedPool || !data.pools.find(p => p.id === this.currentLimitedPool)) {
+              this.currentLimitedPool = data.defaultPool;
+            }
+            const currentPool = this.currentLimitedPool;
             
             listEl.innerHTML = data.pools.map(p => {
               const isActive = p.id === currentPool;
