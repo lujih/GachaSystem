@@ -2125,7 +2125,7 @@ const NEUTRAL_CSS = `
   .bet-btn.small:hover { background: #BAE6FD; }
   .bet-btn.big { background: #FEE2E2; color: #DC2626; border-color: #FECACA; }
   .bet-btn.big:hover { background: #FECACA; }
-  .banner-tabs {display: flex;background: rgba(255,255,255,0.5);border-radius: 12px;padding: 4px;margin-bottom: 12px;border: 1px solid #E2E8F0;}
+  .banner-tabs {display: flex;background: rgba(255,255,255,0.5);border-radius: 12px;padding: 4px;margin-bottom: 12px;border: 1px solid #E2E8F0; position: relative;}
   .banner-tab {flex: 1;text-align: center;padding: 8px;border-radius: 8px;font-size: 0.9rem;font-weight: 800;cursor: pointer;color: var(--text-light);transition: 0.2s;position: relative;overflow: hidden;}
   .banner-tab.active {background: white;color: var(--primary);box-shadow: 0 2px 4px rgba(0,0,0,0.05);color: var(--primary);}
   .banner-tab.active.limited {color: #EF4444;}
@@ -2389,17 +2389,16 @@ function getHtmlPage() {
         <div class="banner-tab active" id="tab-std" onclick="App.switchPool('std')">
             <span>常驻池</span>
         </div>
-        <div class="banner-tab" id="tab-ltd" onclick="App.switchPool('ltd')">
-            <span>限定池</span>
+        <div class="banner-tab" id="tab-ltd" onclick="App.togglePoolDropdown()">
+            <span>限定池 <i class="fas fa-chevron-down" style="font-size:0.7rem; margin-left:3px; transition:transform 0.2s;" id="poolDropdownArrow"></i></span>
             <span class="pool-info-tag" id="ltdCostDisplay">500pts</span>
         </div>
-      </div>
-      <!-- 限定池选择器 -->
-      <div id="poolSelector" style="display:none; padding:8px 12px; background:#FEF2F2; border-bottom:1px solid #FECACA;">
-        <select id="limitedPoolSelect" onchange="App.switchLimitedPool(this.value)" style="width:100%; padding:8px; border:1px solid #FECACA; border-radius:6px; background:white; font-family:var(--font);">
-          <option value="">加载中...</option>
-        </select>
-        <div id="poolDescription" style="margin-top:6px; font-size:0.8rem; color:#7F1D1D;"></div>
+        <!-- 限定池下拉弹窗 -->
+        <div id="poolDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:linear-gradient(135deg, #FEF2F2, #FFF5F5); border:2px solid #FECACA; border-radius:12px; margin-top:8px; padding:8px; box-shadow:0 10px 25px rgba(239,68,68,0.15); z-index:100; max-height:250px; overflow-y:auto;">
+          <div id="poolDropdownList" style="display:flex; flex-direction:column; gap:6px;">
+            <!-- 动态填充 -->
+          </div>
+        </div>
       </div>
       <div class="stage" id="stage">
         <div id="rarityTag" class="rarity-tag">SSR</div>
@@ -2749,9 +2748,11 @@ function getHtmlPage() {
         if (isLtd) activeTab.classList.add('limited');
         
         // 2. 显示/隐藏限定池选择器
-        const poolSelector = document.getElementById('poolSelector');
-        if (poolSelector) {
-          poolSelector.style.display = isLtd ? 'block' : 'none';
+        const poolDropdown = document.getElementById('poolDropdown');
+        const arrow = document.getElementById('poolDropdownArrow');
+        if (poolDropdown) {
+          poolDropdown.style.display = 'none';
+          if (arrow) arrow.style.transform = 'rotate(0deg)';
           if (isLtd) this.loadLimitedPools();
         }
         
@@ -2762,37 +2763,80 @@ function getHtmlPage() {
         btn.className = isLtd ? 'btn limited-btn' : 'btn';
         btn.innerHTML = \`<i class="fas \${icon}"></i> 召唤\`;
       },
+      togglePoolDropdown() {
+        const dropdown = document.getElementById('poolDropdown');
+        const arrow = document.getElementById('poolDropdownArrow');
+        const isVisible = dropdown.style.display === 'block';
+        
+        if (!isVisible) {
+          // 切换到限定池并显示下拉
+          this.switchPool('ltd');
+          dropdown.style.display = 'block';
+          if (arrow) arrow.style.transform = 'rotate(180deg)';
+          // 点击外部关闭
+          setTimeout(() => {
+            const closeHandler = (e) => {
+              if (!dropdown.contains(e.target) && e.target.id !== 'tab-ltd') {
+                dropdown.style.display = 'none';
+                if (arrow) arrow.style.transform = 'rotate(0deg)';
+                document.removeEventListener('click', closeHandler);
+              }
+            };
+            document.addEventListener('click', closeHandler);
+          }, 0);
+        } else {
+          dropdown.style.display = 'none';
+          if (arrow) arrow.style.transform = 'rotate(0deg)';
+        }
+      },
       async loadLimitedPools() {
         if (!this.username) return;
         try {
           const res = await fetch('/limited/pools', { headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           if (data.success && data.pools) {
-            const select = document.getElementById('limitedPoolSelect');
+            const listEl = document.getElementById('poolDropdownList');
             const currentPool = this.currentLimitedPool || data.defaultPool;
-            select.innerHTML = data.pools.map(p => 
-              \`<option value="\${p.id}" \${p.id === currentPool ? 'selected' : ''} \${!p.available ? 'disabled' : ''}>\${p.name} (\${p.available ? p.count ? p.count + '张' : '' : '暂无图片'})</option>\`
-            ).join('');
             this.limitedPools = data.pools;
             this.currentLimitedPool = currentPool;
-            this.updatePoolDescription();
+            
+            listEl.innerHTML = data.pools.map(p => {
+              const isActive = p.id === currentPool;
+              const isAvailable = p.available;
+              return \`
+                <div onclick="App.selectPool('\${p.id}')" 
+                     style="padding:12px; border-radius:10px; cursor:pointer; transition:all 0.2s; 
+                            background:\${isActive ? 'linear-gradient(135deg, #EF4444, #F59E0B)' : isAvailable ? 'white' : '#F3F4F6'};
+                            border:2px solid \${isActive ? 'transparent' : isAvailable ? '#FECACA' : '#E5E7EB'};
+                            opacity:\${isAvailable ? 1 : 0.6};
+                            color:\${isActive ? 'white' : 'inherit'};
+                            display:flex; flex-direction:column; gap:4px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; font-weight:800; font-size:0.95rem;">
+                    <span>\${p.name}</span>
+                    <span style="font-size:0.8rem; opacity:0.9; background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:6px;">
+                      \${p.available ? p.count ? p.count + '张' : '可用' : '暂无图片'}
+                    </span>
+                  </div>
+                  <div style="font-size:0.8rem; opacity:0.8; line-height:1.3;">
+                    \${p.description || ''}
+                  </div>
+                </div>
+              \`;
+            }).join('');
           }
         } catch (e) { console.error('Load pools failed', e); }
       },
-      switchLimitedPool(poolId) {
+      selectPool(poolId) {
         this.currentLimitedPool = poolId;
-        this.updatePoolDescription();
+        document.getElementById('poolDropdown').style.display = 'none';
+        const arrow = document.getElementById('poolDropdownArrow');
+        if (arrow) arrow.style.transform = 'rotate(0deg)';
         const pool = this.limitedPools?.find(p => p.id === poolId);
         if (pool) {
           this.toast(\`已切换至: \${pool.name}\`, 'ok');
         }
-      },
-      updatePoolDescription() {
-        const pool = this.limitedPools?.find(p => p.id === this.currentLimitedPool);
-        const descEl = document.getElementById('poolDescription');
-        if (descEl && pool) {
-          descEl.innerText = pool.description || '';
-        }
+        // 刷新下拉列表以更新选中状态
+        this.loadLimitedPools();
       },
       switchAuth(mode) {
         this.authMode = mode;
