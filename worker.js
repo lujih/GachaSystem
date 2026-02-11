@@ -248,6 +248,76 @@ class UserService {
       this.initXpTable();
     }
   }
+
+  /**
+   * [安全] 使用 PBKDF2 哈希密码
+   * @param {string} password - 明文密码
+   * @returns {Promise<string>} - 格式: salt:hash (base64)
+   */
+  async hashPassword(password) {
+    const encoder = new TextEncoder();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const passwordBuffer = encoder.encode(password);
+    
+    // 使用 PBKDF2 进行 100000 次迭代
+    const key = await crypto.subtle.importKey(
+      'raw', passwordBuffer, { name: 'PBKDF2' }, false, ['deriveBits']
+    );
+    
+    const hash = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      key,
+      256
+    );
+    
+    // 将 salt 和 hash 组合并转为 base64
+    const saltBase64 = btoa(String.fromCharCode(...salt));
+    const hashBase64 = btoa(String.fromCharCode(...new Uint8Array(hash)));
+    return `${saltBase64}:${hashBase64}`;
+  }
+
+  /**
+   * [安全] 验证密码
+   * @param {string} password - 明文密码
+   * @param {string} storedHash - 存储的哈希值 (格式: salt:hash) 或明文密码（向后兼容）
+   * @returns {Promise<boolean>} - 是否匹配
+   */
+  async verifyPassword(password, storedHash) {
+    // [向后兼容] 如果存储的不是哈希格式（旧数据），直接比较明文
+    if (!storedHash || !storedHash.includes(':')) {
+      return password === storedHash;
+    }
+    
+    const [saltBase64, hashBase64] = storedHash.split(':');
+    if (!saltBase64 || !hashBase64) return false;
+    
+    const encoder = new TextEncoder();
+    const salt = Uint8Array.from(atob(saltBase64), c => c.charCodeAt(0));
+    const passwordBuffer = encoder.encode(password);
+    
+    const key = await crypto.subtle.importKey(
+      'raw', passwordBuffer, { name: 'PBKDF2' }, false, ['deriveBits']
+    );
+    
+    const hash = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      key,
+      256
+    );
+    
+    const computedHash = btoa(String.fromCharCode(...new Uint8Array(hash)));
+    return computedHash === hashBase64;
+  }
   /**
    * [新增] 初始化累积经验表
    * 数学原理：Level L 的总经验阈值 = sum( Cost(i) ) for i from 2 to L
@@ -338,12 +408,15 @@ class UserService {
     if (!username || !password) return jsonResponse({ error: 'Missing fields' }, 400);
 
     try {
+      // [安全] 对密码进行哈希处理
+      const hashedPassword = await this.hashPassword(password);
+      
       await this.env.DB.prepare(
         'INSERT INTO users (username, nickname, password, coins, level, exp, total_exp, login_streak, last_login_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(
         username,
         nickname || username,
-        password,
+        hashedPassword,
         1000,  // 初始积分
         1,     // 初始等级
         0,     // 初始经验
@@ -603,13 +676,18 @@ class UserService {
   async login(request) {
     const { username, password } = await request.json();
     
-    // 1. 查询用户信息
-    // 仅查询构建 Session 所需的基本字段，移除了 streak 和 date 的查询需求
+    // 1. 查询用户信息（包括密码哈希和金币）
     const user = await this.env.DB.prepare(
-      'SELECT id, username, nickname, level, exp, total_exp FROM users WHERE username = ? AND password = ?'
-    ).bind(username, password).first();
+      'SELECT id, username, nickname, password, coins, level, exp, total_exp FROM users WHERE username = ?'
+    ).bind(username).first();
 
     if (!user) return jsonResponse({ error: 'Invalid Credentials' }, 403);
+
+    // [安全] 验证密码哈希
+    const isPasswordValid = await this.verifyPassword(password, user.password);
+    if (!isPasswordValid) {
+      return jsonResponse({ error: 'Invalid Credentials' }, 403);
+    }
 
     // [修复] 基于 total_exp 重新计算等级和当前经验值，确保数据一致性
     const totalExp = user.total_exp || 0;
@@ -2154,6 +2232,9 @@ function getHtmlPage() {
         <button class="btn secondary" onclick="App.checkIn()" style="background:#ECFDF5; border-color:#6EE7B7; color:#059669;">
           <i class="fas fa-calendar-check"></i>
         </button>
+        <button class="btn secondary" onclick="App.openUpload()" style="background:#F3E8FF; border-color:#C4B5FD; color:#7C3AED;">
+          <i class="fas fa-cloud-upload-alt"></i>
+        </button>
         <a href="/library" class="btn secondary"><i class="fas fa-th-large"></i></a>
       </div>
     </div>
@@ -2244,6 +2325,37 @@ function getHtmlPage() {
         <button class="bet-btn big" onclick="App.playDice('big')"><div>押大 (4-6)</div></button>
       </div>
       <div id="diceMsg" style="margin-top:15px; font-weight:bold; height:20px; color:#334155;"></div>
+    </div>
+  </div>
+
+  <div id="uploadModal" class="modal">
+    <div class="modal-content">
+      <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
+      <h3>上传图片</h3>
+      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:15px;">选择图片上传，审核通过后可加入抽卡池。</p>
+      <div style="border:2px dashed #C4B5FD; border-radius:12px; padding:30px; text-align:center; background:#FAF5FF; margin-bottom:15px;" id="uploadDropZone">
+        <i class="fas fa-cloud-upload-alt" style="font-size:2rem; color:#7C3AED; margin-bottom:10px;"></i>
+        <div style="color:#6B7280; margin-bottom:10px;">点击或拖拽图片到此处</div>
+        <div style="font-size:0.8rem; color:#9CA3AF;">支持 JPG, PNG, GIF, WebP (最大 5MB)</div>
+        <input type="file" id="uploadInput" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;">
+      </div>
+      <div id="uploadPreview" style="display:none; margin-bottom:15px;">
+        <img id="uploadPreviewImg" style="max-width:100%; max-height:200px; border-radius:8px; border:1px solid #E2E8F0;">
+      </div>
+      <div style="margin-bottom:15px;">
+        <label style="display:block; margin-bottom:5px; color:#374151; font-size:0.9rem;">期望稀有度:</label>
+        <select id="uploadRarity" style="width:100%; padding:10px; border:2px solid #E2E8F0; border-radius:8px; font-family:var(--font);">
+          <option value="N">N (普通)</option>
+          <option value="R">R (稀有)</option>
+          <option value="SR">SR (超稀有)</option>
+          <option value="SSR">SSR (特级超稀有)</option>
+          <option value="UR">UR (极度稀有)</option>
+        </select>
+      </div>
+      <button class="btn" style="width:100%;" onclick="App.doUpload()" id="uploadBtn">
+        <i class="fas fa-upload"></i> 上传
+      </button>
+      <div id="uploadMsg" style="margin-top:15px; font-weight:bold; height:20px; color:#334155; text-align:center;"></div>
     </div>
   </div>
 
@@ -3049,6 +3161,111 @@ function getHtmlPage() {
         } catch(e) { this.loading = false; document.getElementById('loadingSpinner').classList.remove('show'); this.switchPool(this.currentPool); this.toast(e.message, 'warn'); }
       },
       openDice() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('diceModal').classList.add('show'); document.getElementById('diceIcon').className = 'fas fa-dice-d6'; document.getElementById('diceMsg').innerText = ''; },
+      openUpload() { 
+        if(!this.username) return document.getElementById('authModal').classList.add('show'); 
+        document.getElementById('uploadModal').classList.add('show'); 
+        document.getElementById('uploadMsg').innerText = '';
+        document.getElementById('uploadPreview').style.display = 'none';
+        document.getElementById('uploadInput').value = '';
+        
+        // 绑定文件选择事件
+        const input = document.getElementById('uploadInput');
+        const dropZone = document.getElementById('uploadDropZone');
+        
+        input.onchange = (e) => {
+          if(e.target.files && e.target.files[0]) {
+            this.previewUpload(e.target.files[0]);
+          }
+        };
+        
+        dropZone.onclick = () => input.click();
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.background = '#E9D5FF'; };
+        dropZone.ondragleave = () => { dropZone.style.background = '#FAF5FF'; };
+        dropZone.ondrop = (e) => {
+          e.preventDefault();
+          dropZone.style.background = '#FAF5FF';
+          if(e.dataTransfer.files && e.dataTransfer.files[0]) {
+            input.files = e.dataTransfer.files;
+            this.previewUpload(e.dataTransfer.files[0]);
+          }
+        };
+      },
+      previewUpload(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          document.getElementById('uploadPreviewImg').src = e.target.result;
+          document.getElementById('uploadPreview').style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      },
+      async doUpload() {
+        if(this.loading) return;
+        
+        const input = document.getElementById('uploadInput');
+        const rarity = document.getElementById('uploadRarity').value;
+        const msg = document.getElementById('uploadMsg');
+        
+        if(!input.files || !input.files[0]) {
+          msg.innerText = '请先选择图片';
+          msg.style.color = '#EF4444';
+          return;
+        }
+        
+        const file = input.files[0];
+        
+        // 验证文件类型
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if(!allowedTypes.includes(file.type)) {
+          msg.innerText = '不支持的文件类型';
+          msg.style.color = '#EF4444';
+          return;
+        }
+        
+        // 验证文件大小 (5MB)
+        if(file.size > 5 * 1024 * 1024) {
+          msg.innerText = '文件过大，最大支持5MB';
+          msg.style.color = '#EF4444';
+          return;
+        }
+        
+        this.loading = true;
+        msg.innerText = '上传中...';
+        msg.style.color = '#6B7280';
+        document.getElementById('uploadBtn').disabled = true;
+        
+        try {
+          const formData = new FormData();
+          formData.append('image', file);
+          formData.append('rarity', rarity);
+          
+          const res = await fetch('/user/upload', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-User-ID': this.username }
+          });
+          
+          const data = await res.json();
+          
+          if(data.error) {
+            msg.innerText = this.mapError(data.error);
+            msg.style.color = '#EF4444';
+            this.vibrate('failure');
+          } else {
+            msg.innerText = '上传成功！等待审核';
+            msg.style.color = '#10B981';
+            this.vibrate('success');
+            this.toast('图片上传成功', 'ok');
+            setTimeout(() => this.closeModals(), 1500);
+          }
+        } catch(e) {
+          msg.innerText = '上传失败';
+          msg.style.color = '#EF4444';
+          this.vibrate('failure');
+        } finally {
+          this.loading = false;
+          document.getElementById('uploadBtn').disabled = false;
+        }
+      },
       async playDice(prediction) {
         if(this.loading) return; 
         const bet = parseInt(document.getElementById('betInput').value); 
