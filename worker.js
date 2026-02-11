@@ -400,19 +400,43 @@ class UserService {
     const expReward = CONFIG.LEVEL.EXP_GAIN.CHECK_IN;
 
     // 6. 数据库原子更新 (WHERE 子句包含日期检查，防止并发)
+    // [修复] 升级时需要正确处理 exp 字段
     // 注意：这里仍然使用 UTC 日期进行比较，因为数据库存储的是 UTC
     // 但我们需要将用户本地日期转换为 UTC 日期进行比较
     const utcTodayStr = now.toISOString().split('T')[0];
-    const result = await this.env.DB.prepare(
-      `UPDATE users
-       SET coins = coins + ?,
-           exp = exp + ?,
-           total_exp = total_exp + ?,
-           last_login_date = ?,
-           login_streak = ?
-       WHERE id = ?
-       AND (last_login_date IS NULL OR substr(last_login_date, 1, 10) != ?)`
-    ).bind(coinsReward, expReward, expReward, fullDateStr, streak, currentUser.id, utcTodayStr).run();
+    
+    // 先计算是否会升级
+    const currentTotalExp = (currentUser.total_exp || 0) + expReward;
+    const levelUpInfo = this.calculateLevelUpRaw(currentUser, expReward);
+    
+    let result;
+    if (levelUpInfo.hasLevelUp) {
+        // 升级时：设置新等级，exp 重置为新等级的剩余经验
+        const newExp = currentTotalExp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+        result = await this.env.DB.prepare(
+          `UPDATE users
+           SET coins = coins + ?,
+               level = ?,
+               exp = ?,
+               total_exp = total_exp + ?,
+               last_login_date = ?,
+               login_streak = ?
+           WHERE id = ?
+           AND (last_login_date IS NULL OR substr(last_login_date, 1, 10) != ?)`
+        ).bind(coinsReward, levelUpInfo.newLevel, newExp, expReward, fullDateStr, streak, currentUser.id, utcTodayStr).run();
+    } else {
+        // 未升级时：正常累加经验
+        result = await this.env.DB.prepare(
+          `UPDATE users
+           SET coins = coins + ?,
+               exp = exp + ?,
+               total_exp = total_exp + ?,
+               last_login_date = ?,
+               login_streak = ?
+           WHERE id = ?
+           AND (last_login_date IS NULL OR substr(last_login_date, 1, 10) != ?)`
+        ).bind(coinsReward, expReward, expReward, fullDateStr, streak, currentUser.id, utcTodayStr).run();
+    }
 
     // 7. 检查是否更新成功 (meta.changes === 0 说明被并发拦截)
     if (result.meta.changes === 0) {
@@ -421,7 +445,12 @@ class UserService {
 
     // [修复] 更新内存中的用户数据，确保后续操作使用最新值
     currentUser.total_exp = (currentUser.total_exp || 0) + expReward;
-    currentUser.exp = (currentUser.exp || 0) + expReward;
+    if (levelUpInfo.hasLevelUp) {
+      currentUser.level = levelUpInfo.newLevel;
+      currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+    } else {
+      currentUser.exp = (currentUser.exp || 0) + expReward;
+    }
 
     // [新增] 关键：清除缓存
     await this.invalidateUserCache(currentUser.id);
@@ -1105,15 +1134,22 @@ class GachaService {
     }
 
     // 4. Batch 更新
+    // [修复] 升级时需要正确处理 exp 字段
     const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT;
+    const currentTotalExp = (currentUser.total_exp || 0) + expGain;
     const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
     const batch = [];
 
-    let userSql = 'UPDATE users SET exp = exp + ?, total_exp = total_exp + ?';
-    let userParams = [expGain, expGain];
+    let userSql, userParams;
     if (levelUpInfo.hasLevelUp) {
-        userSql += ', level = ?, coins = coins + ?';
-        userParams.push(levelUpInfo.newLevel, levelUpInfo.coinsReward);
+        // 升级时：设置新等级和金币奖励，exp 重置为新等级的剩余经验
+        const newExp = currentTotalExp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+        userSql = 'UPDATE users SET level = ?, exp = ?, total_exp = total_exp + ?, coins = coins + ?';
+        userParams = [levelUpInfo.newLevel, newExp, expGain, levelUpInfo.coinsReward];
+    } else {
+        // 未升级时：正常累加经验
+        userSql = 'UPDATE users SET exp = exp + ?, total_exp = total_exp + ?';
+        userParams = [expGain, expGain];
     }
     userSql += ' WHERE id = ?';
     userParams.push(currentUser.id);
@@ -1167,15 +1203,22 @@ class GachaService {
       return jsonResponse({ success: false, message: '购买失败，积分已退还' });
     }
 
+    // [修复] 升级时需要正确处理 exp 字段
     const expGain = CONFIG.LEVEL.EXP_GAIN.SHOP_BUY;
+    const currentTotalExp = (currentUser.total_exp || 0) + expGain;
     const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
     const batch = [];
     
-    let userSql = 'UPDATE users SET exp = exp + ?, total_exp = total_exp + ?';
-    let userParams = [expGain, expGain];
+    let userSql, userParams;
     if (levelUpInfo.hasLevelUp) {
-        userSql += ', level = ?, coins = coins + ?';
-        userParams.push(levelUpInfo.newLevel, levelUpInfo.coinsReward);
+        // 升级时：设置新等级和金币奖励，exp 重置为新等级的剩余经验
+        const newExp = currentTotalExp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+        userSql = 'UPDATE users SET level = ?, exp = ?, total_exp = total_exp + ?, coins = coins + ?';
+        userParams = [levelUpInfo.newLevel, newExp, expGain, levelUpInfo.coinsReward];
+    } else {
+        // 未升级时：正常累加经验
+        userSql = 'UPDATE users SET exp = exp + ?, total_exp = total_exp + ?';
+        userParams = [expGain, expGain];
     }
     userSql += ' WHERE id = ?';
     userParams.push(currentUser.id);
@@ -1225,21 +1268,23 @@ class GachaService {
     const batch = [];
     let logDetail = `Bet:${bet} Roll:${roll} `;
 
-    // 替换第 1057-1082 行
+    // [修复] 升级时需要正确处理 exp 字段
     if (isWin) {
         winAmount = bet * 2;
         expGain = CONFIG.LEVEL.EXP_GAIN.DICE_WIN;
 
         // 内存计算升级
+        const currentTotalExp = (currentUser.total_exp || 0) + expGain;
         const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
 
         let userSql, userParams;
 
         if (levelUpInfo.hasLevelUp) {
-            // 升级时：金币 = 当前 + 赢钱 + 升级奖励
+            // 升级时：金币 = 当前 + 赢钱 + 升级奖励，exp 重置为新等级的剩余经验
             const totalCoinsAdd = winAmount + levelUpInfo.coinsReward;
-            userSql = 'UPDATE users SET coins = coins + ?, wins = wins + 1, exp = exp + ?, total_exp = total_exp + ?, level = ? WHERE id = ?';
-            userParams = [totalCoinsAdd, expGain, expGain, levelUpInfo.newLevel, currentUser.id];
+            const newExp = currentTotalExp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+            userSql = 'UPDATE users SET coins = coins + ?, wins = wins + 1, level = ?, exp = ?, total_exp = total_exp + ? WHERE id = ?';
+            userParams = [totalCoinsAdd, levelUpInfo.newLevel, newExp, expGain, currentUser.id];
             currentUser.coins += totalCoinsAdd;
         } else {
             // 未升级时：金币 = 当前 + 赢钱
