@@ -2131,6 +2131,17 @@ const NEUTRAL_CSS = `
   .btn.limited-btn {background: linear-gradient(45deg, #EF4444, #F59E0B);box-shadow: 0 4px 0 #B91C1C;border: none;}
   .btn.limited-btn:active {box-shadow: 0 0 0 #B91C1C;}
   .pool-info-tag {font-size: 0.7rem;background: rgba(0,0,0,0.05);padding: 2px 6px;border-radius: 4px;margin-left: 4px;vertical-align: middle;}
+  .pool-dropdown-container {margin-top: 8px;padding: 12px;background: linear-gradient(135deg, #FEF2F2 0%, #FFF5F5 100%);border: 2px solid #FECACA;border-radius: 12px;box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);position: relative;overflow: hidden;animation: slideDown 0.3s ease;}
+  .pool-dropdown-container::before {content: '';position: absolute;top: 0;left: 0;right: 0;height: 3px;background: linear-gradient(90deg, #EF4444, #F59E0B);}
+  .pool-dropdown-header {display: flex;align-items: center;gap: 8px;margin-bottom: 10px;font-size: 0.85rem;font-weight: 700;color: #991B1B;}
+  .pool-dropdown-header i {font-size: 1rem;color: #EF4444;}
+  .pool-dropdown-select {width: 100%;padding: 10px 14px;border: 2px solid #FECACA;border-radius: 10px;background: white;font-family: var(--font);font-size: 0.9rem;font-weight: 600;color: #1F2937;cursor: pointer;transition: 0.2s;appearance: none;background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23EF4444' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat: no-repeat;background-position: right 12px center;padding-right: 40px;}
+  .pool-dropdown-select:hover {border-color: #EF4444;box-shadow: 0 2px 8px rgba(239, 68, 68, 0.1);}
+  .pool-dropdown-select:focus {outline: none;border-color: #EF4444;box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);}
+  .pool-dropdown-select option:disabled {color: #9CA3AF;font-style: italic;}
+  .pool-dropdown-desc {margin-top: 10px;padding: 10px;background: rgba(255,255,255,0.8);border-radius: 8px;font-size: 0.8rem;color: #7F1D1D;line-height: 1.4;border-left: 3px solid #EF4444;}
+  .pool-dropdown-desc:empty {display: none;}
+  @keyframes slideDown {from {opacity: 0;transform: translateY(-10px);} to {opacity: 1;transform: translateY(0);}}
   .auth-tabs { display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid #E2E8F0; padding-bottom:10px; }
   .auth-tab { flex:1; padding:8px; cursor:pointer; font-weight:bold; color:var(--text-light); border-radius:8px; transition:0.2s; }
   .auth-tab.active { background:var(--bg-color); color:var(--primary); }
@@ -2394,11 +2405,15 @@ function getHtmlPage() {
         </div>
       </div>
       <!-- 限定池选择器 -->
-      <div id="poolSelector" style="display:none; padding:8px 12px; background:#FEF2F2; border-bottom:1px solid #FECACA;">
-        <select id="limitedPoolSelect" onchange="App.switchLimitedPool(this.value)" style="width:100%; padding:8px; border:1px solid #FECACA; border-radius:6px; background:white; font-family:var(--font);">
+      <div id="poolSelector" class="pool-dropdown-container" style="display:none;">
+        <div class="pool-dropdown-header">
+          <i class="fas fa-star"></i>
+          <span>选择限定池</span>
+        </div>
+        <select id="limitedPoolSelect" class="pool-dropdown-select" onchange="App.switchLimitedPool(this.value)">
           <option value="">加载中...</option>
         </select>
-        <div id="poolDescription" style="margin-top:6px; font-size:0.8rem; color:#7F1D1D;"></div>
+        <div id="poolDescription" class="pool-dropdown-desc"></div>
       </div>
       <div class="stage" id="stage">
         <div id="rarityTag" class="rarity-tag">SSR</div>
