@@ -943,12 +943,17 @@ class GachaService {
     const batch = [];
     
     // 构建 User 更新语句 (合并金币、经验、等级)
-    let userSql = 'UPDATE users SET coins = coins + ?, draw_count = draw_count + 1, exp = exp + ?, total_exp = total_exp + ?';
-    let userParams = [totalCoinsToAdd, expGain, expGain];
-    
+    // [修复] 升级时需要重置 exp 为新等级的剩余经验值，而不是继续累加
+    let userSql, userParams;
     if (levelUpInfo.hasLevelUp) {
-        userSql += ', level = ?';
-        userParams.push(levelUpInfo.newLevel);
+        // 升级时：设置新等级，exp 重置为计算后的剩余经验
+        const newExp = currentTotalExp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+        userSql = 'UPDATE users SET coins = coins + ?, draw_count = draw_count + 1, level = ?, exp = ?, total_exp = total_exp + ?';
+        userParams = [totalCoinsToAdd, levelUpInfo.newLevel, newExp, expGain];
+    } else {
+        // 未升级时：正常累加经验
+        userSql = 'UPDATE users SET coins = coins + ?, draw_count = draw_count + 1, exp = exp + ?, total_exp = total_exp + ?';
+        userParams = [totalCoinsToAdd, expGain, expGain];
     }
     userSql += ' WHERE id = ?';
     userParams.push(currentUser.id);
@@ -1024,16 +1029,22 @@ class GachaService {
     }
 
     // 4. 计算与 Batch 更新
+    // [修复] 升级时需要正确处理 exp 字段
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW['UR'] || 500;
+    const currentTotalExp = (currentUser.total_exp || 0) + expGain;
     const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
     const batch = [];
     
-    let userSql = 'UPDATE users SET exp = exp + ?, total_exp = total_exp + ?';
-    let userParams = [expGain, expGain];
-    
+    let userSql, userParams;
     if (levelUpInfo.hasLevelUp) {
-        userSql += ', level = ?, coins = coins + ?';
-        userParams.push(levelUpInfo.newLevel, levelUpInfo.coinsReward);
+        // 升级时：设置新等级和金币奖励，exp 重置为新等级的剩余经验
+        const newExp = currentTotalExp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+        userSql = 'UPDATE users SET level = ?, exp = ?, total_exp = total_exp + ?, coins = coins + ?';
+        userParams = [levelUpInfo.newLevel, newExp, expGain, levelUpInfo.coinsReward];
+    } else {
+        // 未升级时：正常累加经验
+        userSql = 'UPDATE users SET exp = exp + ?, total_exp = total_exp + ?';
+        userParams = [expGain, expGain];
     }
     userSql += ' WHERE id = ?';
     userParams.push(currentUser.id);
