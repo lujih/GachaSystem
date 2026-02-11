@@ -122,8 +122,8 @@ const DEFAULT_CHANGELOG = [
   { 
     date: new Date().toISOString().split('T')[0], 
     ver: 'v1.0.0', 
-    content: '系统迁移至 D1 数据库完成。\n初始版本发布。', 
-    tag: 'feature' 
+    content: '暂无变更日志。', 
+    tag: 'info' 
   }
 ];
 
