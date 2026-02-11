@@ -445,9 +445,11 @@ class UserService {
 
     // [修复] 更新内存中的用户数据，确保后续操作使用最新值
     currentUser.total_exp = (currentUser.total_exp || 0) + expReward;
+    currentUser.coins = (currentUser.coins || 0) + coinsReward;
     if (levelUpInfo.hasLevelUp) {
       currentUser.level = levelUpInfo.newLevel;
       currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+      currentUser.coins = (currentUser.coins || 0) + levelUpInfo.coinsReward;
     } else {
       currentUser.exp = (currentUser.exp || 0) + expReward;
     }
@@ -457,6 +459,7 @@ class UserService {
 
     return jsonResponse({
       success: true,
+      userCoins: currentUser.coins,
       checkIn: {
         coins: coinsReward,
         exp: expReward,
@@ -534,10 +537,13 @@ class UserService {
 
     await this.env.DB.batch(batch);
      
+     // [修复] 更新内存中的用户数据
+     currentUser.coins = (currentUser.coins || 0) + coinsToAdd;
+     
      // [新增] 清除缓存
      await this.invalidateUserCache(currentUser.id);
      
-     return jsonResponse({ success: true, reward: rewardConfig });
+     return jsonResponse({ success: true, userCoins: currentUser.coins, reward: rewardConfig });
   }
 
   // 辅助函数：判断日期连续
@@ -794,37 +800,9 @@ class GachaService {
   }
 
   /**
- * 检查 KV 写入配额是否充足
- */
-  async checkKVQuota() {
-      const today = new Date().toISOString().slice(0, 10);
-      const quotaKey = `stats:kv_writes:${today}`;
-      const current = parseInt(await this.env.KV_CACHE.get(quotaKey) || '0');
-
-      // 免费档 1000/天，预留 100 给关键操作
-      if (current >= 900) {
-          console.warn(`KV quota nearly exhausted: ${current}/1000`);
-          return false;
-      }
-
-      // 异步增加计数（不 await，不阻塞主流程）
-      this.ctx.waitUntil(
-          this.env.KV_CACHE.put(quotaKey, (current + 1).toString(), { expirationTtl: 86400 })
-      );
-      return true;
-  }
-
-  /**
-   * 安全的缓冲池补充（带配额检查）
+   * 缓冲池补充（后台异步）
    */
   async safeRefillGlobalBuffer(rarity, sourceList, slotIndex) {
-      // 检查配额
-      const hasQuota = await this.checkKVQuota();
-      if (!hasQuota) {
-          console.log(`KV quota limit reached, skipping buffer refill for ${rarity}`);
-          return;
-      }
-
       // 添加随机延迟，打散写入压力（0-3秒）
       await new Promise(r => setTimeout(r, Math.random() * 3000));
 
@@ -1005,6 +983,7 @@ class GachaService {
 
     // [修复] 更新内存中的用户数据，确保后续操作使用最新值
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+    currentUser.coins = (currentUser.coins || 0) + totalCoinsToAdd;
     if (levelUpInfo.hasLevelUp) {
       currentUser.level = levelUpInfo.newLevel;
       currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
@@ -1030,8 +1009,8 @@ class GachaService {
         imageUrl: assetData.imageUrl,
         pointsEarned: points,
         expGained: expGain,
-        // 返回预测的最新金币数
-        userCoins: (currentUser.coins || 0) + totalCoinsToAdd,
+        // 返回最新的金币数
+        userCoins: currentUser.coins,
         levelUp: levelUpInfo.hasLevelUp ? { newLevel: levelUpInfo.newLevel, reward: levelUpInfo.coinsReward } : null
     });
   }
@@ -1094,6 +1073,7 @@ class GachaService {
     if (levelUpInfo.hasLevelUp) {
       currentUser.level = levelUpInfo.newLevel;
       currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+      currentUser.coins = (currentUser.coins || 0) + levelUpInfo.coinsReward;
     } else {
       currentUser.exp = (currentUser.exp || 0) + expGain;
     }
@@ -1107,7 +1087,7 @@ class GachaService {
 
     return jsonResponse({
         success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain,
-        userCoins: currentUser.coins + levelUpInfo.coinsReward
+        userCoins: currentUser.coins
     });
   }
 
@@ -1181,9 +1161,14 @@ class GachaService {
     }
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
 
+    // [修复] 更新内存中的用户数据，确保后续操作使用最新值
+    if (levelUpInfo.hasLevelUp) {
+      currentUser.coins = (currentUser.coins || 0) + levelUpInfo.coinsReward;
+    }
+
     return jsonResponse({
         success: true, rarity: assetData.rarity, imageUrl: assetData.imageUrl, expGained: expGain,
-        userCoins: (currentUser.coins || 0) + levelUpInfo.coinsReward,
+        userCoins: currentUser.coins,
         // 告知前端本次消耗和获得，以便前端自行更新，无需 fetch
         craftResult: { consumed: costRarity, gained: assetData.rarity }
     });
@@ -1239,6 +1224,7 @@ class GachaService {
     if (levelUpInfo.hasLevelUp) {
       currentUser.level = levelUpInfo.newLevel;
       currentUser.exp = currentUser.total_exp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
+      currentUser.coins = (currentUser.coins || 0) + levelUpInfo.coinsReward;
     } else {
       currentUser.exp = (currentUser.exp || 0) + expGain;
     }
@@ -1248,7 +1234,7 @@ class GachaService {
 
     return jsonResponse({
         success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain,
-        userCoins: currentUser.coins + levelUpInfo.coinsReward
+        userCoins: currentUser.coins
     });
   }
 
