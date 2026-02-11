@@ -3315,14 +3315,17 @@ function getHtmlPage() {
           let url = '/draw';
           let method = 'GET';
           let body = null;
+          console.log('[DrawDebug] currentPool:', this.currentPool, 'currentLimitedPool:', this.currentLimitedPool);
           if (this.currentPool === 'ltd') {
               url = '/draw/limited';
               method = 'POST';
-              // 发送选择的池 ID
-              body = JSON.stringify({ poolId: this.currentLimitedPool || '${CONFIG.LIMITED.DEFAULT_POOL}' });
+              // 发送选择的池 ID，如果没有选择则默认 genshin
+              const poolId = this.currentLimitedPool || 'genshin';
+              body = JSON.stringify({ poolId: poolId });
+              console.log('[DrawDebug] Sending poolId:', poolId);
           }
 
-          const fetchOptions = { method: method, headers: { 'X-User-ID': this.username } };
+          const fetchOptions = { method: method, headers: { 'X-User-ID': this.username, 'Content-Type': 'application/json' } };
           if (body) fetchOptions.body = body;
           const res = await fetch(url, fetchOptions);
           const data = await res.json();
