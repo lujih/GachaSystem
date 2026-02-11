@@ -3368,22 +3368,27 @@ function getHtmlPage() {
         } catch(e) { this.loading = false; document.getElementById('loadingSpinner').classList.remove('show'); this.switchPool(this.currentPool); this.toast(e.message, 'warn'); this.fetchUserInfo(); }
       },
       handleDrawResult(data, img, tag, btn, isSpecial = false) {
-          img.src = data.imageUrl;
-          
+           img.src = data.imageUrl;
+           
            const onImageLoad = () => {
-              img.classList.add('show');
-              document.getElementById('placeholder').style.display = 'none';
-              document.getElementById('loadingSpinner').classList.remove('show');
-              this.loading = false;
-             
-             const icon = this.currentPool === 'ltd' ? 'fa-star' : 'fa-bolt';
-             btn.innerHTML = \`<i class="fas \${icon}"></i> 再召唤\`;
+               if (!img || !document.body.contains(img)) return;
+               img.classList.add('show');
+               const placeholder = document.getElementById('placeholder');
+               const spinner = document.getElementById('loadingSpinner');
+               const btn = document.getElementById('drawBtn');
+               const tag = document.getElementById('rarityTag');
+               if (placeholder) placeholder.style.display = 'none';
+               if (spinner) spinner.classList.remove('show');
+               this.loading = false;
+              
+              const icon = this.currentPool === 'ltd' ? 'fa-star' : 'fa-bolt';
+              if (btn) btn.innerHTML = `<i class="fas ${icon}"></i> 再召唤`;
 
-             if (data.rarity) { 
-                 tag.innerText = data.rarity; 
-                 tag.className = 'rarity-tag r-' + data.rarity.toLowerCase(); 
-                 tag.classList.add('show'); 
-             }
+              if (data.rarity && tag) { 
+                  tag.innerText = data.rarity; 
+                  tag.className = 'rarity-tag r-' + data.rarity.toLowerCase(); 
+                  tag.classList.add('show'); 
+              }
              
              if(data.success) { 
                  // 1. 成功反馈
