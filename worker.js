@@ -94,7 +94,7 @@ const TECHNICAL_CONFIG = {
     LEADERBOARD: 'system:leaderboard',
     BUFFER_PREFIX: 'sys:buffer:'
   },
-  
+
   // 缓存时间配置（秒）
   TTL: {
     SESSION: 86400 * 7,           // 会话缓存 7天
@@ -106,11 +106,22 @@ const TECHNICAL_CONFIG = {
     STATIC_ASSET: 31536000,       // 静态资源缓存 1年
     BUFFER_SLOTS: 10              // 缓冲池槽位数量
   },
-  
+
   // 基础设施配置
   INFRASTRUCTURE: {
     R2_DOMAIN: "https://cft1.cszxorx.dpdns.org",
     DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
+  },
+
+  // GitHub 图床配置
+  GITHUB: {
+    API_BASE: 'https://api.github.com',
+    RAW_BASE: 'https://raw.githubusercontent.com',
+    CDN_BASE: 'https://cdn.jsdelivr.net/gh',  // jsDelivr CDN
+    OWNER: 'lujih',           // 仓库所有者
+    REPO: 'chouka-images',    // 仓库名
+    BRANCH: 'main',           // 分支名
+    PATH_PREFIX: 'images'     // 图片存储路径前缀
   }
 };
 
@@ -900,6 +911,96 @@ class UserService {
   }  
 }
 
+/**
+ * GitHub 图床上传辅助函数
+ * @param {Object} env - 环境变量
+ * @param {string} path - GitHub 文件路径
+ * @param {ArrayBuffer} content - 文件内容
+ * @param {string} extension - 文件扩展名
+ * @param {string} message - Git commit 消息
+ * @returns {Promise<string|null>} - 成功返回图片 URL，失败返回 null
+ */
+async function uploadToGithub(env, path, content, extension, message) {
+  try {
+    const githubToken = env.GITHUB_TOKEN;
+    const repoOwner = env.GITHUB_OWNER || TECHNICAL_CONFIG.GITHUB.OWNER;
+    const repoName = env.GITHUB_REPO || TECHNICAL_CONFIG.GITHUB.REPO;
+
+    if (!githubToken) {
+      console.error('[GitHub Upload] Missing GITHUB_TOKEN environment variable');
+      return null;
+    }
+
+    // 将 ArrayBuffer 转换为 Base64
+    const base64Content = btoa(String.fromCharCode(...new Uint8Array(content)));
+
+    // 构建 API URL
+    const apiUrl = `${TECHNICAL_CONFIG.GITHUB.API_BASE}/repos/${repoOwner}/${repoName}/contents/${path}`;
+
+    // 检查文件是否已存在（GitHub API 要求提供 sha）
+    let sha = null;
+    try {
+      const checkRes = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `token ${githubToken}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Chouka-Worker'
+        }
+      });
+
+      if (checkRes.ok) {
+        const existing = await checkRes.json();
+        sha = existing.sha;
+      }
+    } catch (e) {
+      // 文件不存在，继续上传
+    }
+
+    // 构建请求体
+    const requestBody = {
+      message: message,
+      content: base64Content,
+      branch: TECHNICAL_CONFIG.GITHUB.BRANCH
+    };
+
+    if (sha) {
+      requestBody.sha = sha;
+    }
+
+    // 上传到 GitHub
+    const response = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${githubToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Chouka-Worker'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[GitHub Upload] Failed:', error);
+      return null;
+    }
+
+    const result = await response.json();
+
+    // 返回 CDN 加速 URL (jsDelivr)
+    // 格式: https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}
+    const cdnUrl = `${TECHNICAL_CONFIG.GITHUB.CDN_BASE}/${repoOwner}/${repoName}@${TECHNICAL_CONFIG.GITHUB.BRANCH}/${path}`;
+
+    console.log(`[GitHub Upload] Success: ${cdnUrl}`);
+    return cdnUrl;
+
+  } catch (e) {
+    console.error('[GitHub Upload] Error:', e);
+    return null;
+  }
+}
+
 class GachaService {
   constructor(env, ctx, userService) {
     this.env = env;
@@ -1491,63 +1592,67 @@ class GachaService {
   }
 
   /**
-   * [新增] 用户上传图片
+   * [修改] 用户上传图片 - 上传到 GitHub
    */
   async uploadImage(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
-    
+
     try {
       const formData = await request.formData();
       const file = formData.get('image');
       const rarity = formData.get('rarity') || 'N';
-      
+
       if (!file) return jsonResponse({ error: 'No image provided' }, 400);
-      
+
       // 验证文件类型
       const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
       if (!allowedTypes.includes(file.type)) {
         return jsonResponse({ error: 'Invalid file type. Only JPEG, PNG, GIF, WebP allowed' }, 400);
       }
-      
+
       // 验证文件大小 (最大 5MB)
       const maxSize = 5 * 1024 * 1024;
       if (file.size > maxSize) {
         return jsonResponse({ error: 'File too large. Max 5MB' }, 400);
       }
-      
+
       // 读取文件数据
       const fileBuffer = await file.arrayBuffer();
-      
+
       // 生成唯一文件名
       const timestamp = Date.now();
       const randomStr = Math.random().toString(36).slice(2, 8);
       const extension = file.type.split('/')[1] || 'jpg';
-      const r2Key = `uploads/${currentUser.id}_${timestamp}_${randomStr}.${extension}`;
-      
-      // 上传到 R2
-      await this.env.R2_BUCKET.put(r2Key, fileBuffer, {
-        httpMetadata: {
-          contentType: file.type,
-          cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable`
-        }
-      });
-      
-      const imageUrl = `${CONFIG.R2_DOMAIN}/${r2Key}`;
-      
+      const filename = `${currentUser.id}_${timestamp}_${randomStr}.${extension}`;
+      const githubPath = `${CONFIG.GITHUB.PATH_PREFIX}/${filename}`;
+
+      // 上传到 GitHub
+      const githubUrl = await uploadToGithub(
+        this.env,
+        githubPath,
+        fileBuffer,
+        extension,
+        `Upload image from user ${currentUser.username} at ${new Date().toISOString()}`
+      );
+
+      if (!githubUrl) {
+        return jsonResponse({ error: 'Failed to upload to GitHub' }, 500);
+      }
+
       // 记录到数据库
       await this.env.DB.prepare(
         'INSERT INTO user_uploads (user_id, username, r2_key, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).bind(currentUser.id, currentUser.username, r2Key, imageUrl, rarity, 'pending', timestamp).run();
-      
-      console.log(`[Upload] User ${currentUser.username} uploaded image: ${r2Key}`);
-      
+      ).bind(currentUser.id, currentUser.username, githubPath, githubUrl, rarity, 'pending', timestamp).run();
+
+      console.log(`[Upload] User ${currentUser.username} uploaded image: ${githubPath}`);
+
       return jsonResponse({
         success: true,
         message: 'Image uploaded successfully, awaiting review',
-        imageUrl: imageUrl,
+        imageUrl: githubUrl,
         uploadId: timestamp
       });
-      
+
     } catch (e) {
       console.error('[Upload Error]:', e);
       return jsonResponse({ error: 'Upload failed: ' + e.message }, 500);

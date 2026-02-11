@@ -3,6 +3,13 @@ main = "worker.js"
 compatibility_date = "2026-01-25"
 keep_vars = true
 
+# 环境变量（需要在 Cloudflare Dashboard 或命令行配置）
+# GITHUB_TOKEN - GitHub Personal Access Token（必需）
+#   创建方法：GitHub Settings -> Developer settings -> Personal access tokens -> Tokens (classic)
+#   权限：需要勾选 'repo' 权限
+# GITHUB_OWNER - GitHub 用户名（可选，默认：lujih）
+# GITHUB_REPO - 仓库名（可选，默认：chouka-images）
+
 [[kv_namespaces]]
 binding = "KV_CACHE"
 id = "adb207beb6464667aa6d5bd6bb9aca18"
