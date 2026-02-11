@@ -228,6 +228,8 @@ export default {
       'POST /admin/save-announcement': () => handleAdminSaveAnnouncement(request, env),
       'POST /admin/update-points': () => handleAdminUpdatePoints(request, env),
       'POST /admin/delete-user': () => handleAdminDeleteUser(request, env),
+      'POST /admin/uploads': () => handleAdminUploads(request, env),
+      'POST /admin/review-upload': () => handleAdminReviewUpload(request, env),
     };
 
     const routeKey = `${method} ${pathname}`;
@@ -1898,6 +1900,97 @@ async function handleAdminDeleteUser(request, env) {
   }
 }
 
+/**
+ * [管理员] 获取上传图片列表
+ */
+async function handleAdminUploads(request, env) {
+  try {
+    const { password, status = 'pending', limit = 20, offset = 0 } = await request.json();
+
+    if (password !== env.admin) {
+      return jsonResponse({ error: 'Auth Failed' }, 403);
+    }
+
+    let sql = `
+      SELECT 
+        u.id, u.url, u.rarity, u.status, u.created_at, u.reviewed_at,
+        usr.username, usr.nickname
+      FROM user_uploads u
+      LEFT JOIN users usr ON u.user_id = usr.id
+    `;
+    let params = [];
+
+    if (status) {
+      sql += ' WHERE u.status = ?';
+      params.push(status);
+    }
+
+    sql += ' ORDER BY u.created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const uploads = await env.DB.prepare(sql).bind(...params).all();
+
+    // 获取总数
+    let countSql = 'SELECT COUNT(*) as total FROM user_uploads';
+    let countParams = [];
+    if (status) {
+      countSql += ' WHERE status = ?';
+      countParams.push(status);
+    }
+    const countResult = await env.DB.prepare(countSql).bind(...countParams).first();
+
+    return jsonResponse({
+      success: true,
+      uploads: uploads.results || [],
+      total: countResult.total
+    });
+
+  } catch (e) {
+    console.error('[Admin Uploads Error]:', e);
+    return jsonResponse({ error: 'Internal server error' }, 500);
+  }
+}
+
+/**
+ * [管理员] 审核上传图片
+ */
+async function handleAdminReviewUpload(request, env) {
+  try {
+    const { password, uploadId, action, rarity } = await request.json();
+
+    if (password !== env.admin) {
+      return jsonResponse({ error: 'Auth Failed' }, 403);
+    }
+
+    if (!uploadId || !['approved', 'rejected'].includes(action)) {
+      return jsonResponse({ error: 'Invalid parameters' }, 400);
+    }
+
+    const reviewedAt = Date.now();
+
+    if (action === 'approved') {
+      // 通过审核，同时更新稀有度
+      await env.DB.prepare(
+        'UPDATE user_uploads SET status = ?, rarity = ?, reviewed_at = ? WHERE id = ?'
+      ).bind('approved', rarity || 'UR', reviewedAt, uploadId).run();
+    } else {
+      // 拒绝审核
+      await env.DB.prepare(
+        'UPDATE user_uploads SET status = ?, reviewed_at = ? WHERE id = ?'
+      ).bind('rejected', reviewedAt, uploadId).run();
+    }
+
+    return jsonResponse({
+      success: true,
+      message: action === 'approved' ? '审核通过' : '已拒绝'
+    });
+
+  } catch (e) {
+    console.error('[Admin Review Error]:', e);
+    return jsonResponse({ error: 'Internal server error' }, 500);
+  }
+}
+
 async function updateLeaderboard(env, newItem) {
   if (!env.RECENT_REQUESTS) return;
   const key = CONFIG.KEYS.LEADERBOARD;
@@ -2491,11 +2584,12 @@ function getHtmlPage() {
         <button class="btn" style="width:100%;" onclick="App.verifyAdmin()">确认</button>
       </div>
       <div id="adminPanel" style="display:none; text-align:left;">
-        <div class="admin-tabs">
-            <div class="admin-tab active" onclick="App.switchAdminTab('log')" id="tab-log">更新日志</div>
-            <div class="admin-tab" onclick="App.switchAdminTab('users')" id="tab-users">用户管理</div>
-            <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann">系统公告</div>
-        </div>
+         <div class="admin-tabs">
+             <div class="admin-tab active" onclick="App.switchAdminTab('log')" id="tab-log">更新日志</div>
+             <div class="admin-tab" onclick="App.switchAdminTab('users')" id="tab-users">用户管理</div>
+             <div class="admin-tab" onclick="App.switchAdminTab('uploads')" id="tab-uploads">上传审核</div>
+             <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann">系统公告</div>
+         </div>
         <div id="view-log">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
             <span style="font-weight:bold; font-size:0.9rem;">可视化编辑器</span>
@@ -2514,10 +2608,30 @@ function getHtmlPage() {
             <div style="max-height:350px; overflow-y:auto; border:1px solid #F1F5F9; border-radius:8px;">
                 <table class="admin-table"><thead><tr><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="4" style="text-align:center; padding:20px;">加载中...</td></tr></tbody></table>
             </div>
-        </div>
-        <div id="view-ann" style="display:none;">
-            <div class="form-row">
-                <label class="form-label">公告标题</label>
+         </div>
+         <div id="view-uploads" style="display:none;">
+             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                 <span style="font-weight:bold; font-size:0.9rem;">待审核图片</span>
+                 <div style="display:flex; gap:8px;">
+                     <select id="uploadFilterStatus" onchange="App.loadPendingUploads()" style="padding:4px 8px; border:1px solid #E2E8F0; border-radius:4px; font-size:0.8rem;">
+                         <option value="pending">待审核</option>
+                         <option value="approved">已通过</option>
+                         <option value="rejected">已拒绝</option>
+                         <option value="">全部</option>
+                     </select>
+                     <button class="btn secondary" onclick="App.loadPendingUploads()" style="font-size:0.8rem;"><i class="fas fa-sync"></i></button>
+                 </div>
+             </div>
+             <div id="uploadReviewContainer" style="max-height:400px; overflow-y:auto; border:1px solid #F1F5F9; border-radius:8px; padding:10px;">
+                 <div style="text-align:center; padding:40px; color:#94A3B8;">
+                     <i class="fas fa-images" style="font-size:2rem; margin-bottom:10px;"></i>
+                     <div>加载中...</div>
+                 </div>
+             </div>
+         </div>
+         <div id="view-ann" style="display:none;">
+             <div class="form-row">
+                 <label class="form-label">公告标题</label>
                 <input type="text" id="adminAnnTitle" class="admin-input" placeholder="例如：新春活动开启！">
             </div>
             
@@ -3518,7 +3632,97 @@ function getHtmlPage() {
             if(d.success) { this.adminPwd = pwd; document.getElementById('adminLogin').style.display = 'none'; document.getElementById('adminPanel').style.display = 'block'; this.switchAdminTab('log'); this.renderAdminTable(); } else { this.toast('密码错误', 'warn'); }
         } catch(e) { this.toast('网络错误', 'warn'); }
       },
-      switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'ann') this.loadAdminAnnouncement();},
+      switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-uploads').style.display = tab === 'uploads' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'uploads') this.loadPendingUploads(); if(tab === 'ann') this.loadAdminAnnouncement();},
+      async loadPendingUploads() {
+        if (!this.adminPwd) return;
+        const container = document.getElementById('uploadReviewContainer');
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:#94A3B8;"><i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:10px;"></i><div>加载中...</div></div>';
+        
+        try {
+          const status = document.getElementById('uploadFilterStatus')?.value || 'pending';
+          const res = await fetch('/admin/uploads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: this.adminPwd, status: status, limit: 50 })
+          });
+          const data = await res.json();
+          
+          if (data.error) {
+            container.innerHTML = '<div style="text-align:center; padding:40px; color:#EF4444;">加载失败: ' + data.error + '</div>';
+            return;
+          }
+          
+          if (!data.uploads || data.uploads.length === 0) {
+            var statusText = status === 'pending' ? '待审核' : status === 'approved' ? '已通过' : '已拒绝';
+            container.innerHTML = '<div style="text-align:center; padding:40px; color:#94A3B8;"><i class="fas fa-check-circle" style="font-size:2rem; margin-bottom:10px;"></i><div>暂无' + statusText + '的图片</div></div>';
+            return;
+          }
+          
+          container.innerHTML = data.uploads.map(function(u) {
+            var bgColor = u.status === 'pending' ? '#FFFBEB' : u.status === 'approved' ? '#ECFDF5' : '#FEF2F2';
+            var statusBg = u.status === 'pending' ? '#FEF3C7' : u.status === 'approved' ? '#D1FAE5' : '#FEE2E2';
+            var statusColor = u.status === 'pending' ? '#92400E' : u.status === 'approved' ? '#065F46' : '#991B1B';
+            var statusText = u.status === 'pending' ? '待审核' : u.status === 'approved' ? '已通过' : '已拒绝';
+            var dateStr = new Date(u.created_at).toLocaleString();
+            var pendingActions = u.status === 'pending' ? 
+              '<div style="display:flex; gap:8px; margin-top:10px;">' +
+                '<select id="rarity-' + u.id + '" style="padding:6px 10px; border:1px solid #E2E8F0; border-radius:6px; font-size:0.85rem;">' +
+                  '<option value="N">N</option>' +
+                  '<option value="R">R</option>' +
+                  '<option value="SR">SR</option>' +
+                  '<option value="SSR">SSR</option>' +
+                  '<option value="UR" selected>UR</option>' +
+                '</select>' +
+                '<button class="btn" style="padding:6px 12px; font-size:0.85rem;" onclick="App.reviewUpload(' + u.id + ', \'approved\')">' +
+                  '<i class="fas fa-check"></i> 通过' +
+                '</button>' +
+                '<button class="btn secondary" style="padding:6px 12px; font-size:0.85rem; background:#FEE2E2; border-color:#FECACA; color:#DC2626;" onclick="App.reviewUpload(' + u.id + ', \'rejected\')">' +
+                  '<i class="fas fa-times"></i> 拒绝' +
+                '</button>' +
+              '</div>' : '';
+            
+            return '<div style="display:flex; gap:15px; padding:15px; border-bottom:1px solid #F1F5F9; background:' + bgColor + '; border-radius:8px; margin-bottom:10px;">' +
+              '<img src="' + u.url + '" style="width:120px; height:120px; object-fit:cover; border-radius:6px; border:1px solid #E2E8F0; cursor:pointer;" onclick="window.open(\'' + u.url + '\', \'_blank\')">' +
+              '<div style="flex:1; display:flex; flex-direction:column; justify-content:space-between;">' +
+                '<div>' +
+                  '<div style="font-weight:bold; color:#374151; margin-bottom:4px;">' + (u.nickname || u.username) + '</div>' +
+                  '<div style="font-size:0.8rem; color:#6B7280; margin-bottom:8px;">@' + u.username + ' · ' + dateStr + '</div>' +
+                  '<div style="display:flex; gap:8px; align-items:center;">' +
+                    '<span style="background:#DBEAFE; color:#1E40AF; padding:2px 8px; border-radius:4px; font-size:0.75rem;">' + u.rarity + '</span>' +
+                    '<span style="background:' + statusBg + '; color:' + statusColor + '; padding:2px 8px; border-radius:4px; font-size:0.75rem;">' + statusText + '</span>' +
+                  '</div>' +
+                '</div>' +
+                pendingActions +
+              '</div>' +
+            '</div>';
+          }).join('');
+        } catch (e) {
+          container.innerHTML = '<div style="text-align:center; padding:40px; color:#EF4444;">加载失败</div>';
+        }
+      },
+      async reviewUpload(uploadId, action) {
+        if (!this.adminPwd) return;
+        var raritySelect = document.getElementById('rarity-' + uploadId);
+        var rarity = raritySelect ? raritySelect.value : 'UR';
+        
+        try {
+          const res = await fetch('/admin/review-upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: this.adminPwd, uploadId: uploadId, action: action, rarity: rarity })
+          });
+          const data = await res.json();
+          
+          if (data.success) {
+            this.toast(action === 'approved' ? '审核通过' : '已拒绝', 'ok');
+            this.loadPendingUploads();
+          } else {
+            this.toast(data.error || '操作失败', 'warn');
+          }
+        } catch (e) {
+          this.toast('操作失败', 'warn');
+        }
+      },
       async loadAdminUsers() {
         const tbody = document.getElementById('userTbody'); 
         
