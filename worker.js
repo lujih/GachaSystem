@@ -1630,8 +1630,13 @@ const NEUTRAL_CSS = `
     border: 1px solid rgba(255, 255, 255, 0.5);
   }
   .modal.show .modal-content { transform: scale(1); }
-  .placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--text-light); text-align: center; font-size: 0.9rem; }
-  .placeholder i { font-size: 3rem; margin-bottom: 16px; display: block; color: #CBD5E1; }
+   .placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--text-light); text-align: center; font-size: 0.9rem; }
+   .placeholder i { font-size: 3rem; margin-bottom: 16px; display: block; color: #CBD5E1; }
+   .loading-spinner { position: absolute; inset: 0; display: none; flex-direction: column; justify-content: center; align-items: center; color: var(--primary); text-align: center; font-size: 0.9rem; background: rgba(255,255,255,0.95); border-radius: var(--radius); z-index: 5; }
+   .loading-spinner.show { display: flex; }
+   .loading-spinner i { font-size: 3rem; margin-bottom: 16px; display: block; animation: spin 1s linear infinite; }
+   .loading-spinner .loading-text { font-weight: 600; color: var(--text-main); }
+   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .modal-close-btn { position: absolute; top: 16px; right: 16px; background: transparent; border: none; font-size: 1.2rem; color: var(--text-light); cursor: pointer; padding: 5px; z-index: 10; }
   .modal-close-btn:hover { color: var(--danger); transform: rotate(90deg); transition: 0.2s; }
   .actions { padding: 16px 10px 10px 10px; display: grid; gap: 12px; grid-template-columns: 1fr 1fr 1fr; }
@@ -1954,6 +1959,10 @@ function getHtmlPage() {
         <div class="placeholder" id="placeholder">
           <i class="fas fa-gamepad"></i>
           <div>准备召唤</div>
+        </div>
+        <div class="loading-spinner" id="loadingSpinner">
+          <i class="fas fa-circle-notch"></i>
+          <div class="loading-text">召唤中...</div>
         </div>
         <img id="resultImg" alt="Result">
       </div>
@@ -2681,13 +2690,17 @@ function getHtmlPage() {
         }
 
         this.loading = true;
-        const btn = document.getElementById('drawBtn'); 
-        const img = document.getElementById('resultImg'); 
-        const tag = document.getElementById('rarityTag'); 
-        
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; 
-        img.classList.remove('show'); 
+        const btn = document.getElementById('drawBtn');
+        const img = document.getElementById('resultImg');
+        const tag = document.getElementById('rarityTag');
+        const spinner = document.getElementById('loadingSpinner');
+        const placeholder = document.getElementById('placeholder');
+
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        img.classList.remove('show');
         tag.classList.remove('show');
+        placeholder.style.display = 'none';
+        spinner.classList.add('show');
 
         try {
           let url = '/draw';
@@ -2708,11 +2721,12 @@ function getHtmlPage() {
               throw this.mapError(data.error);
           }
           this.handleDrawResult(data, img, tag, btn);
-        } catch(e) { 
-          this.loading = false; 
-          this.switchPool(this.currentPool);
-          this.toast(e.message || e.toString(), 'warn'); 
-        }
+         } catch(e) {
+           this.loading = false;
+           document.getElementById('loadingSpinner').classList.remove('show');
+           this.switchPool(this.currentPool);
+           this.toast(e.message || e.toString(), 'warn');
+         }
       },
       async doCraft(target) {
         if(this.loading) return;
@@ -2723,22 +2737,27 @@ function getHtmlPage() {
         if(!confirm('确定消耗5张低阶卡合成1张 ' + target + ' 吗？')) return;
         
         this.loading = true; this.closeModals();
-        const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag'); 
+        const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag');
+        const spinner = document.getElementById('loadingSpinner');
+        const placeholder = document.getElementById('placeholder');
         btn.innerHTML = '<i class="fas fa-flask fa-spin"></i>'; img.classList.remove('show'); tag.classList.remove('show');
+        placeholder.style.display = 'none';
+        spinner.classList.add('show');
         try {
           const res = await fetch('/user/craft', { method: 'POST', body: JSON.stringify({ targetRarity: target }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
-          if(data.error) throw new Error(this.mapError(data.error));
+           if(data.error) throw new Error(this.mapError(data.error));
           this.handleDrawResult(data, img, tag, btn, true);
-        } catch(e) { this.loading = false; this.switchPool(this.currentPool); this.toast(e.message, 'warn'); this.fetchUserInfo(); }
+        } catch(e) { this.loading = false; document.getElementById('loadingSpinner').classList.remove('show'); this.switchPool(this.currentPool); this.toast(e.message, 'warn'); this.fetchUserInfo(); }
       },
       handleDrawResult(data, img, tag, btn, isSpecial = false) {
           img.src = data.imageUrl;
           
-          const onImageLoad = () => {
-             img.classList.add('show'); 
-             document.getElementById('placeholder').style.display = 'none'; 
-             this.loading = false; 
+           const onImageLoad = () => {
+              img.classList.add('show');
+              document.getElementById('placeholder').style.display = 'none';
+              document.getElementById('loadingSpinner').classList.remove('show');
+              this.loading = false;
              
              const icon = this.currentPool === 'ltd' ? 'fa-star' : 'fa-bolt';
              btn.innerHTML = \`<i class="fas \${icon}"></i> 再召唤\`;
@@ -2845,13 +2864,17 @@ function getHtmlPage() {
         if(!confirm('确定花费 ' + price + ' 积分吗？')) return;
         this.loading = true; this.closeModals();
         const btn = document.getElementById('drawBtn'); const img = document.getElementById('resultImg'); const tag = document.getElementById('rarityTag');
+        const spinner = document.getElementById('loadingSpinner');
+        const placeholder = document.getElementById('placeholder');
         btn.innerHTML = '<i class="fas fa-shopping-cart fa-spin"></i>'; img.classList.remove('show'); tag.classList.remove('show');
+        placeholder.style.display = 'none';
+        spinner.classList.add('show');
         try {
           const res = await fetch('/shop/buy', { method: 'POST', body: JSON.stringify({ targetRarity: rarity }), headers: { 'X-User-ID': this.username } });
           const data = await res.json();
           if(data.error) throw new Error(this.mapError(data.error));
           this.handleDrawResult(data, img, tag, btn, true);
-        } catch(e) { this.loading = false; this.switchPool(this.currentPool); this.toast(e.message, 'warn'); }
+        } catch(e) { this.loading = false; document.getElementById('loadingSpinner').classList.remove('show'); this.switchPool(this.currentPool); this.toast(e.message, 'warn'); }
       },
       openDice() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('diceModal').classList.add('show'); document.getElementById('diceIcon').className = 'fas fa-dice-d6'; document.getElementById('diceMsg').innerText = ''; },
       async playDice(prediction) {
