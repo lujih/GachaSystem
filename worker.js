@@ -20,10 +20,25 @@ const BUSINESS_CONFIG = {
   // 限定池配置
   LIMITED: {
     COST: 500,
-    NAME: "Limited Festival",
-    SOURCES: [
-      { name: 'Genshin Impact', url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
-    ]
+    // 支持多个图池，可以通过 ID 切换
+    POOLS: {
+      'genshin': {
+        name: '原神限定',
+        description: '原神角色精选',
+        sources: [
+          { name: 'Genshin Impact', url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
+        ],
+        type: 'api'
+      },
+      'user_uploads': {
+        name: '用户投稿',
+        description: '玩家上传的精选图片',
+        sources: [], // 动态从数据库加载
+        type: 'uploads',
+        rarity: 'UR'
+      }
+    },
+    DEFAULT_POOL: 'genshin'
   },
   
   // 游戏数值配置
@@ -191,6 +206,7 @@ export default {
       'POST /user/equip-title': () => userService.equipTitle(currentUser, request),
       'POST /user/upload': () => gachaService.uploadImage(currentUser, request),
       'GET /user/uploads': () => gachaService.getUserUploads(currentUser, request),
+      'GET /limited/pools': () => gachaService.getLimitedPools(currentUser),
       
       'GET /draw': () => gachaService.draw(currentUser),
       'POST /draw/limited': () => gachaService.drawLimited(currentUser),
@@ -1106,11 +1122,58 @@ class GachaService {
   }
 
   /**
-   * [优化] 限定池：使用 Check-and-Set 或 Update 判定
+   * 获取可用的限定池列表
    */
-  async drawLimited(currentUser) {
+  async getLimitedPools(currentUser) {
+    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    
+    try {
+      // 检查用户上传池是否有已审核的图片
+      const uploadCount = await this.env.DB.prepare(
+        'SELECT COUNT(*) as count FROM user_uploads WHERE status = ?'
+      ).bind('approved').first();
+      
+      const pools = Object.entries(CONFIG.LIMITED.POOLS).map(([id, pool]) => ({
+        id,
+        name: pool.name,
+        description: pool.description,
+        cost: CONFIG.LIMITED.COST,
+        type: pool.type,
+        available: pool.type === 'uploads' ? uploadCount.count > 0 : true,
+        count: pool.type === 'uploads' ? uploadCount.count : null
+      }));
+      
+      return jsonResponse({ 
+        success: true, 
+        pools,
+        defaultPool: CONFIG.LIMITED.DEFAULT_POOL
+      });
+    } catch (e) {
+      console.error('[Get Pools Error]:', e);
+      return jsonResponse({ error: 'Failed to get pools' }, 500);
+    }
+  }
+
+  /**
+   * [优化] 限定池：支持切换不同图池
+   */
+  async drawLimited(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
     const cost = CONFIG.LIMITED.COST;
+    
+    // 获取选择的图池
+    let poolId = CONFIG.LIMITED.DEFAULT_POOL;
+    try {
+      const body = await request.json();
+      poolId = body.poolId || poolId;
+    } catch (e) {
+      // 如果没有请求体，使用默认池
+    }
+    
+    const pool = CONFIG.LIMITED.POOLS[poolId];
+    if (!pool) {
+      return jsonResponse({ error: 'Invalid pool' }, 400);
+    }
 
     // 1. 扣费 (Write) - 利用 affected rows 判断余额是否充足
     const deductRes = await this.env.DB.prepare(
@@ -1123,11 +1186,18 @@ class GachaService {
     currentUser.coins = (currentUser.coins || cost) - cost;
 
     // 2. 获取资源
-    const limitedRarityKey = 'LIMITED_UR'; 
-    let assetData = await this.consumeGlobalBuffer(limitedRarityKey, CONFIG.LIMITED.SOURCES);
+    let assetData;
+    if (pool.type === 'uploads') {
+      // 从用户上传中获取随机图片
+      assetData = await this.getRandomUserUpload();
+    } else {
+      // API 类型：使用原有逻辑
+      const limitedRarityKey = 'LIMITED_UR';
+      assetData = await this.consumeGlobalBuffer(limitedRarityKey, pool.sources);
+    }
 
     // 3. 失败退款 (Write)
-    if (!assetData.success) {
+    if (!assetData || !assetData.success) {
       await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
       return jsonResponse({ success: false, message: '限定池暂时空缺，积分已退还' });
     }
@@ -1462,6 +1532,32 @@ class GachaService {
     } catch (e) {
       console.error('[Upload Error]:', e);
       return jsonResponse({ error: 'Upload failed: ' + e.message }, 500);
+    }
+  }
+
+  /**
+   * [新增] 获取随机用户上传图片
+   */
+  async getRandomUserUpload() {
+    try {
+      // 获取已审核通过的上传图片
+      const upload = await this.env.DB.prepare(
+        'SELECT url, rarity FROM user_uploads WHERE status = ? ORDER BY RANDOM() LIMIT 1'
+      ).bind('approved').first();
+      
+      if (!upload) {
+        return { success: false, message: 'No approved uploads available' };
+      }
+      
+      return {
+        success: true,
+        imageUrl: upload.url,
+        rarity: upload.rarity || 'UR',
+        sourceName: 'User Upload'
+      };
+    } catch (e) {
+      console.error('[Random Upload Error]:', e);
+      return { success: false, message: 'Failed to get upload' };
     }
   }
 
@@ -2204,6 +2300,13 @@ function getHtmlPage() {
             <span class="pool-info-tag" id="ltdCostDisplay">500pts</span>
         </div>
       </div>
+      <!-- 限定池选择器 -->
+      <div id="poolSelector" style="display:none; padding:8px 12px; background:#FEF2F2; border-bottom:1px solid #FECACA;">
+        <select id="limitedPoolSelect" onchange="App.switchLimitedPool(this.value)" style="width:100%; padding:8px; border:1px solid #FECACA; border-radius:6px; background:white; font-family:var(--font);">
+          <option value="">加载中...</option>
+        </select>
+        <div id="poolDescription" style="margin-top:6px; font-size:0.8rem; color:#7F1D1D;"></div>
+      </div>
       <div class="stage" id="stage">
         <div id="rarityTag" class="rarity-tag">SSR</div>
         <div class="placeholder" id="placeholder">
@@ -2484,6 +2587,8 @@ function getHtmlPage() {
       username: localStorage.getItem('moe_username'),
       nickname: null, loading: false, adminPwd: null, logsData: [], currentAdminTab: 'log', inventory: {},
       currentPool: 'std',
+      currentLimitedPool: '${CONFIG.LIMITED.DEFAULT_POOL}',
+      limitedPools: [],
       authMode: 'login', 
       coins: 0,
       
@@ -2526,12 +2631,51 @@ function getHtmlPage() {
         activeTab.classList.add('active');
         if (isLtd) activeTab.classList.add('limited');
         
-        // 2. 更新按钮样式与图标 (合并逻辑)
+        // 2. 显示/隐藏限定池选择器
+        const poolSelector = document.getElementById('poolSelector');
+        if (poolSelector) {
+          poolSelector.style.display = isLtd ? 'block' : 'none';
+          if (isLtd) this.loadLimitedPools();
+        }
+        
+        // 3. 更新按钮样式与图标 (合并逻辑)
         const btn = document.getElementById('drawBtn');
         const icon = isLtd ? 'fa-star' : 'fa-bolt';
         
         btn.className = isLtd ? 'btn limited-btn' : 'btn';
         btn.innerHTML = \`<i class="fas \${icon}"></i> 召唤\`;
+      },
+      async loadLimitedPools() {
+        if (!this.username) return;
+        try {
+          const res = await fetch('/limited/pools', { headers: { 'X-User-ID': this.username } });
+          const data = await res.json();
+          if (data.success && data.pools) {
+            const select = document.getElementById('limitedPoolSelect');
+            const currentPool = this.currentLimitedPool || data.defaultPool;
+            select.innerHTML = data.pools.map(p => 
+              \`<option value="\${p.id}" \${p.id === currentPool ? 'selected' : ''} \${!p.available ? 'disabled' : ''}>\${p.name} (\${p.available ? p.count ? p.count + '张' : '' : '暂无图片'})</option>\`
+            ).join('');
+            this.limitedPools = data.pools;
+            this.currentLimitedPool = currentPool;
+            this.updatePoolDescription();
+          }
+        } catch (e) { console.error('Load pools failed', e); }
+      },
+      switchLimitedPool(poolId) {
+        this.currentLimitedPool = poolId;
+        this.updatePoolDescription();
+        const pool = this.limitedPools?.find(p => p.id === poolId);
+        if (pool) {
+          this.toast(\`已切换至: \${pool.name}\`, 'ok');
+        }
+      },
+      updatePoolDescription() {
+        const pool = this.limitedPools?.find(p => p.id === this.currentLimitedPool);
+        const descEl = document.getElementById('poolDescription');
+        if (descEl && pool) {
+          descEl.innerText = pool.description || '';
+        }
       },
       switchAuth(mode) {
         this.authMode = mode;
@@ -2989,12 +3133,17 @@ function getHtmlPage() {
         try {
           let url = '/draw';
           let method = 'GET';
+          let body = null;
           if (this.currentPool === 'ltd') {
               url = '/draw/limited';
               method = 'POST';
+              // 发送选择的池 ID
+              body = JSON.stringify({ poolId: this.currentLimitedPool || '${CONFIG.LIMITED.DEFAULT_POOL}' });
           }
 
-          const res = await fetch(url, { method: method, headers: { 'X-User-ID': this.username } });
+          const fetchOptions = { method: method, headers: { 'X-User-ID': this.username } };
+          if (body) fetchOptions.body = body;
+          const res = await fetch(url, fetchOptions);
           const data = await res.json();
           
           if(data.error) {
