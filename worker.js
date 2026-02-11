@@ -1168,11 +1168,14 @@ class GachaService {
     try {
       const body = await request.json();
       poolId = body.poolId || poolId;
+      console.log(`[DrawLimited] Received poolId: ${poolId}, body:`, body);
     } catch (e) {
       // 如果没有请求体，使用默认池
+      console.log(`[DrawLimited] No body found, using default poolId: ${poolId}`);
     }
     
     const pool = CONFIG.LIMITED.POOLS[poolId];
+    console.log(`[DrawLimited] Selected pool:`, pool);
     if (!pool) {
       return jsonResponse({ error: 'Invalid pool' }, 400);
     }
@@ -1191,14 +1194,28 @@ class GachaService {
     let assetData;
     if (pool.type === 'uploads') {
       // 从用户上传中获取随机图片
+      console.log(`[DrawLimited] Fetching from user uploads pool`);
       assetData = await this.getRandomUserUpload();
+      console.log(`[DrawLimited] User upload result:`, assetData);
+      
+      // 如果用户投稿池没有图片，返回错误提示
+      if (!assetData || !assetData.success) {
+        // 先恢复扣掉的积分
+        await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
+        return jsonResponse({ 
+          success: false, 
+          error: 'user_uploads_empty',
+          message: '用户投稿池暂无图片，请尝试其他卡池' 
+        });
+      }
     } else {
       // API 类型：使用原有逻辑
+      console.log(`[DrawLimited] Fetching from API pool: ${poolId}`);
       const limitedRarityKey = 'LIMITED_UR';
       assetData = await this.consumeGlobalBuffer(limitedRarityKey, pool.sources);
     }
 
-    // 3. 失败退款 (Write)
+    // 3. 失败退款 (Write) - 仅针对 API 类型
     if (!assetData || !assetData.success) {
       await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
       return jsonResponse({ success: false, message: '限定池暂时空缺，积分已退还' });
