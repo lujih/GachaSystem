@@ -594,17 +594,21 @@ class UserService {
 
     if (!user) return jsonResponse({ error: 'Invalid Credentials' }, 403);
 
+    // [修复] 基于 total_exp 重新计算等级和当前经验值，确保数据一致性
+    const totalExp = user.total_exp || 0;
+    const { level: calculatedLevel, currentExp } = this.calculateLevelFromTotalExp(totalExp);
+
     // 2. 生成 Token
     const token = crypto.randomUUID();
     
     // 3. 构建 Session 数据
-    // 直接使用数据库中的原始数据，不进行任何经验值累加
+    // 使用基于 total_exp 计算出的正确等级和经验值
     const sessionData = {
       id: user.id,
       username: user.username,
       nickname: user.nickname,
-      level: user.level,
-      exp: user.exp,
+      level: calculatedLevel,
+      exp: currentExp,
       total_exp: user.total_exp
     };
     
@@ -647,9 +651,10 @@ class UserService {
     const userRes = await this.env.DB.prepare(sql).bind(currentUser.id).first();
     if (!userRes) return jsonResponse({ error: 'User Not Found' }, 404);
 
-    // 计算等级相关 (保持不变)
-    const currentLevel = userRes.level || 1;
-    const currentExp = userRes.exp || 0;
+    // [修复] 基于 total_exp 重新计算等级和当前经验值，确保数据一致性
+    const totalExp = userRes.total_exp || 0;
+    const { level: calculatedLevel, currentExp } = this.calculateLevelFromTotalExp(totalExp);
+    const currentLevel = calculatedLevel;
     const requiredExpForNextLevel = this.calculateRequiredExp(currentLevel + 1);
     const levelProgress = this.calculateLevelProgress(currentExp, currentLevel);
     
@@ -927,10 +932,11 @@ class GachaService {
    * [优化] 纯内存计算升级逻辑，不查库
    */
   calculateLevelUpRaw(currentUser, expGained) {
-    const currentLevel = currentUser.level || 1;
-    // 使用 session 中的 total_exp 进行预测
-    const currentTotalExp = (currentUser.total_exp || 0) + expGained;
+    // [修复] 基于 total_exp 重新计算当前等级，不依赖可能过期的 session 数据
+    const originalTotalExp = currentUser.total_exp || 0;
+    const currentTotalExp = originalTotalExp + expGained;
     
+    const { level: currentLevel } = this.userService.calculateLevelFromTotalExp(originalTotalExp);
     const { level: calculatedLevel } = this.userService.calculateLevelFromTotalExp(currentTotalExp);
 
     if (calculatedLevel > currentLevel) {
