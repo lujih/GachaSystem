@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS user_titles (
         REFERENCES users(id) ON DELETE CASCADE
 ) STRICT;
 
--- 7. 用户上传/自制卡片表
+-- 7. 用户上传表
 CREATE TABLE IF NOT EXISTS user_uploads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,

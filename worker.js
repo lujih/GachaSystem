@@ -153,12 +153,21 @@ export default {
     let currentUser = null;
     if (token) {
       const userDataStr = await env.KV_CACHE.get(`session:${token}`);
-      if (userDataStr) currentUser = JSON.parse(userDataStr);
-    } 
+      if (userDataStr) {
+        currentUser = JSON.parse(userDataStr);
+        // [修复] 向后兼容：旧 session 可能没有 coins 字段，从数据库查询
+        if (currentUser && currentUser.coins === undefined && currentUser.id) {
+          const userData = await env.DB.prepare('SELECT coins FROM users WHERE id = ?').bind(currentUser.id).first();
+          if (userData) {
+            currentUser.coins = userData.coins || 0;
+          }
+        }
+      }
+    }
     
     if (!currentUser && request.headers.get('X-User-ID')) {
          const uidName = request.headers.get('X-User-ID');
-         const user = await env.DB.prepare('SELECT id, username, nickname FROM users WHERE username = ?').bind(uidName).first();
+         const user = await env.DB.prepare('SELECT id, username, nickname, coins, level, exp, total_exp FROM users WHERE username = ?').bind(uidName).first();
          if(user) currentUser = user;
     }
 
@@ -180,6 +189,8 @@ export default {
       'POST /user/claim-reward': () => userService.claimReward(currentUser, request),
       'GET /user/titles': () => userService.getTitles(currentUser),
       'POST /user/equip-title': () => userService.equipTitle(currentUser, request),
+      'POST /user/upload': () => gachaService.uploadImage(currentUser, request),
+      'GET /user/uploads': () => gachaService.getUserUploads(currentUser, request),
       
       'GET /draw': () => gachaService.draw(currentUser),
       'POST /draw/limited': () => gachaService.drawLimited(currentUser),
@@ -613,6 +624,7 @@ class UserService {
       id: user.id,
       username: user.username,
       nickname: user.nickname,
+      coins: user.coins || 0,
       level: calculatedLevel,
       exp: currentExp,
       total_exp: user.total_exp
@@ -1309,6 +1321,118 @@ class GachaService {
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
     return jsonResponse({ success: true, roll, isWin, winAmount, expGained: expGain, userCoins: currentUser.coins });
+  }
+
+  /**
+   * [新增] 用户上传图片
+   */
+  async uploadImage(currentUser, request) {
+    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    
+    try {
+      const formData = await request.formData();
+      const file = formData.get('image');
+      const rarity = formData.get('rarity') || 'N';
+      
+      if (!file) return jsonResponse({ error: 'No image provided' }, 400);
+      
+      // 验证文件类型
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        return jsonResponse({ error: 'Invalid file type. Only JPEG, PNG, GIF, WebP allowed' }, 400);
+      }
+      
+      // 验证文件大小 (最大 5MB)
+      const maxSize = 5 * 1024 * 1024;
+      if (file.size > maxSize) {
+        return jsonResponse({ error: 'File too large. Max 5MB' }, 400);
+      }
+      
+      // 读取文件数据
+      const fileBuffer = await file.arrayBuffer();
+      
+      // 生成唯一文件名
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).slice(2, 8);
+      const extension = file.type.split('/')[1] || 'jpg';
+      const r2Key = `uploads/${currentUser.id}_${timestamp}_${randomStr}.${extension}`;
+      
+      // 上传到 R2
+      await this.env.R2_BUCKET.put(r2Key, fileBuffer, {
+        httpMetadata: {
+          contentType: file.type,
+          cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable`
+        }
+      });
+      
+      const imageUrl = `${CONFIG.R2_DOMAIN}/${r2Key}`;
+      
+      // 记录到数据库
+      await this.env.DB.prepare(
+        'INSERT INTO user_uploads (user_id, username, r2_key, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(currentUser.id, currentUser.username, r2Key, imageUrl, rarity, 'pending', timestamp).run();
+      
+      console.log(`[Upload] User ${currentUser.username} uploaded image: ${r2Key}`);
+      
+      return jsonResponse({
+        success: true,
+        message: 'Image uploaded successfully, awaiting review',
+        imageUrl: imageUrl,
+        uploadId: timestamp
+      });
+      
+    } catch (e) {
+      console.error('[Upload Error]:', e);
+      return jsonResponse({ error: 'Upload failed: ' + e.message }, 500);
+    }
+  }
+
+  /**
+   * [新增] 获取用户上传记录
+   */
+  async getUserUploads(currentUser, request) {
+    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    
+    try {
+      const url = new URL(request.url);
+      const status = url.searchParams.get('status'); // 可选: pending, approved, rejected
+      const limit = parseInt(url.searchParams.get('limit')) || 20;
+      const offset = parseInt(url.searchParams.get('offset')) || 0;
+      
+      let sql = 'SELECT id, url, rarity, status, created_at, reviewed_at FROM user_uploads WHERE user_id = ?';
+      let params = [currentUser.id];
+      
+      if (status) {
+        sql += ' AND status = ?';
+        params.push(status);
+      }
+      
+      sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+      params.push(limit, offset);
+      
+      const uploads = await this.env.DB.prepare(sql).bind(...params).all();
+      
+      // 获取总数
+      let countSql = 'SELECT COUNT(*) as total FROM user_uploads WHERE user_id = ?';
+      let countParams = [currentUser.id];
+      if (status) {
+        countSql += ' AND status = ?';
+        countParams.push(status);
+      }
+      const countResult = await this.env.DB.prepare(countSql).bind(...countParams).first();
+      
+      return jsonResponse({
+        success: true,
+        uploads: uploads.results || [],
+        total: countResult.total,
+        limit,
+        offset
+      });
+      
+    } catch (e) {
+      console.error('[Get Uploads Error]:', e);
+      return jsonResponse({ error: 'Failed to get uploads: ' + e.message }, 500);
+    }
   }
 }
 
