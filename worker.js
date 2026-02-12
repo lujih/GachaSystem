@@ -26,7 +26,7 @@ const BUSINESS_CONFIG = {
         name: '原神限定',
         description: '原神角色精选',
         sources: [
-          { name: 'Genshin Impact', url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
+          { name: 'Genshin Impact', url: 'https://github_images.cszxorx.dpdns.org/', rarity: 'UR' }
         ],
         type: 'api'
       },
@@ -34,7 +34,7 @@ const BUSINESS_CONFIG = {
         name: 'GitHub图库',
         description: '从GitHub仓库随机获取图片',
         sources: [
-          { name: 'GitHub Random', url: 'https://github_images.cszxorx.dpdns.org/', rarity: 'UR' }
+          { name: 'GitHub Random', url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
         ],
         type: 'api'
       }
@@ -2300,6 +2300,16 @@ const NEUTRAL_CSS = `
   .btn.limited-btn {background: linear-gradient(45deg, #EF4444, #F59E0B);box-shadow: 0 4px 0 #B91C1C;border: none;}
   .btn.limited-btn:active {box-shadow: 0 0 0 #B91C1C;}
   .pool-info-tag {font-size: 0.7rem;background: rgba(0,0,0,0.05);padding: 2px 6px;border-radius: 4px;margin-left: 4px;vertical-align: middle;}
+  /* [优化] 池列表项样式 */
+  .pool-item {padding:12px;border-radius:10px;cursor:pointer;transition:all 0.2s;background:white;border:2px solid #FECACA;display:flex;flex-direction:column;gap:4px;}
+  .pool-item:hover {transform:translateY(-1px);box-shadow:0 2px 8px rgba(239,68,68,0.1);}
+  .pool-item.active {background:linear-gradient(135deg,#EF4444,#F59E0B);border-color:transparent;color:white;}
+  .pool-item.unavailable {opacity:0.6;background:#F3F4F6;border-color:#E5E7EB;}
+  .pool-item.unavailable:hover {transform:none;box-shadow:none;}
+  .pool-item-header {display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:0.95rem;}
+  .pool-status {font-size:0.8rem;opacity:0.9;background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:6px;}
+  .pool-item.active .pool-status {background:rgba(255,255,255,0.25);}
+  .pool-desc {font-size:0.8rem;opacity:0.8;line-height:1.3;}
   .auth-tabs { display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid #E2E8F0; padding-bottom:10px; }
   .auth-tab { flex:1; padding:8px; cursor:pointer; font-weight:bold; color:var(--text-light); border-radius:8px; transition:0.2s; }
   .auth-tab.active { background:var(--bg-color); color:var(--primary); }
@@ -2904,6 +2914,11 @@ function getHtmlPage() {
         this.loadChangelog();
         this.checkAnnouncement();
       },
+      // [优化] 限定池相关状态缓存
+      _poolsCache: null,
+      _poolsLoading: false,
+      _poolsLastFetch: 0,
+      
       switchPool(pool) {
         if(this.loading) return;
         this.currentPool = pool;
@@ -2915,21 +2930,169 @@ function getHtmlPage() {
         activeTab.classList.add('active');
         if (isLtd) activeTab.classList.add('limited');
         
-        // 2. 显示/隐藏限定池选择器
+        // 2. 显示/隐藏限定池选择器（不触发列表刷新）
         const poolDropdown = document.getElementById('poolDropdown');
         const arrow = document.getElementById('poolDropdownArrow');
         if (poolDropdown) {
           poolDropdown.style.display = 'none';
           if (arrow) arrow.style.transform = 'rotate(0deg)';
-          if (isLtd) this.loadLimitedPools();
         }
         
-        // 3. 更新按钮样式与图标 (合并逻辑)
+        // 3. 更新按钮样式与图标
         const btn = document.getElementById('drawBtn');
         const icon = isLtd ? 'fa-star' : 'fa-bolt';
-        
         btn.className = isLtd ? 'btn limited-btn' : 'btn';
         btn.innerHTML = \`<i class="fas \${icon}"></i> 召唤\`;
+      },
+      
+      togglePoolDropdown() {
+        const dropdown = document.getElementById('poolDropdown');
+        const arrow = document.getElementById('poolDropdownArrow');
+        const isVisible = dropdown.style.display === 'block';
+        
+        if (!isVisible) {
+          // 切换到限定池并显示下拉
+          this.switchPool('ltd');
+          dropdown.style.display = 'block';
+          if (arrow) arrow.style.transform = 'rotate(180deg)';
+          // 加载池列表（带缓存）
+          this.loadLimitedPools();
+          // 点击外部关闭
+          this._closeDropdownHandler = (e) => {
+            if (!dropdown.contains(e.target) && e.target.id !== 'tab-ltd') {
+              dropdown.style.display = 'none';
+              if (arrow) arrow.style.transform = 'rotate(0deg)';
+              document.removeEventListener('click', this._closeDropdownHandler);
+              this._closeDropdownHandler = null;
+            }
+          };
+          requestAnimationFrame(() => {
+            document.addEventListener('click', this._closeDropdownHandler);
+          });
+        } else {
+          dropdown.style.display = 'none';
+          if (arrow) arrow.style.transform = 'rotate(0deg)';
+          if (this._closeDropdownHandler) {
+            document.removeEventListener('click', this._closeDropdownHandler);
+            this._closeDropdownHandler = null;
+          }
+        }
+      },
+      
+      async loadLimitedPools(forceRefresh = false) {
+        if (!this.username || this._poolsLoading) return;
+        
+        // 检查缓存（5分钟内有效）
+        const now = Date.now();
+        const cacheValid = this._poolsCache && (now - this._poolsLastFetch < 300000);
+        
+        if (!forceRefresh && cacheValid && this.limitedPools) {
+          // 使用缓存，只更新UI
+          this._renderPoolList();
+          return;
+        }
+        
+        this._poolsLoading = true;
+        
+        try {
+          const res = await fetch('/limited/pools', { headers: { 'X-User-ID': this.username } });
+          const data = await res.json();
+          
+          if (data.success && data.pools) {
+            this._poolsCache = data.pools;
+            this._poolsLastFetch = now;
+            this.limitedPools = data.pools;
+            
+            // 设置默认池
+            if (!this.currentLimitedPool || !data.pools.find(p => p.id === this.currentLimitedPool)) {
+              this.currentLimitedPool = data.defaultPool;
+            }
+            
+            // 使用 requestAnimationFrame 渲染，避免阻塞
+            requestAnimationFrame(() => this._renderPoolList());
+          }
+        } catch (e) { 
+          console.error('Load pools failed', e);
+          // 缓存失败时如果有旧缓存，继续使用
+          if (this._poolsCache) {
+            requestAnimationFrame(() => this._renderPoolList());
+          }
+        } finally {
+          this._poolsLoading = false;
+        }
+      },
+      
+      // [优化] 渲染池列表（使用CSS类优化性能）
+      _renderPoolList() {
+        const listEl = document.getElementById('poolDropdownList');
+        if (!listEl || !this.limitedPools) return;
+        
+        const currentPool = this.currentLimitedPool;
+        const pools = this.limitedPools;
+        
+        // 构建HTML字符串（一次性插入）
+        const html = pools.map(p => {
+          const isActive = p.id === currentPool;
+          const isAvailable = p.available;
+          const statusText = p.available ? (p.count ? p.count + '张' : '可用') : '暂无图片';
+          
+          return \`
+            <div class="pool-item \${isActive ? 'active' : ''} \${isAvailable ? '' : 'unavailable'}" 
+                 onclick="App.selectPool('\${p.id}')"
+                 data-pool-id="\${p.id}">
+              <div class="pool-item-header">
+                <span class="pool-name">\${p.name}</span>
+                <span class="pool-status">\${statusText}</span>
+              </div>
+              <div class="pool-desc">\${p.description || ''}</div>
+            </div>
+          \`;
+        }).join('');
+        
+        listEl.innerHTML = html;
+      },
+      
+      // [优化] 选择池（不重新加载列表，只更新样式）
+      selectPool(poolId) {
+        if (this.currentLimitedPool === poolId) {
+          // 如果点击的是已选中的池，直接关闭下拉
+          document.getElementById('poolDropdown').style.display = 'none';
+          const arrow = document.getElementById('poolDropdownArrow');
+          if (arrow) arrow.style.transform = 'rotate(0deg)';
+          return;
+        }
+        
+        this.currentLimitedPool = poolId;
+        
+        // 关闭下拉菜单
+        document.getElementById('poolDropdown').style.display = 'none';
+        const arrow = document.getElementById('poolDropdownArrow');
+        if (arrow) arrow.style.transform = 'rotate(0deg)';
+        
+        // 显示提示
+        const pool = this.limitedPools?.find(p => p.id === poolId);
+        if (pool) {
+          this.toast(\`已切换至: \${pool.name}\`, 'ok');
+        }
+        
+        // [优化] 只更新UI样式，不重新请求数据
+        requestAnimationFrame(() => this._updatePoolSelection(poolId));
+      },
+      
+      // [优化] 更新池选中状态（仅修改CSS类）
+      _updatePoolSelection(selectedId) {
+        const listEl = document.getElementById('poolDropdownList');
+        if (!listEl) return;
+        
+        const items = listEl.querySelectorAll('.pool-item');
+        items.forEach(item => {
+          const poolId = item.dataset.poolId;
+          if (poolId === selectedId) {
+            item.classList.add('active');
+          } else {
+            item.classList.remove('active');
+          }
+        });
       },
       togglePoolDropdown() {
         const dropdown = document.getElementById('poolDropdown');
