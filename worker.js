@@ -1250,6 +1250,8 @@ class GachaService {
         count: pool.type === 'uploads' ? uploadCount.count : null
       }));
       
+      console.log('[GetLimitedPools] Returning pools:', pools.map(p => ({ id: p.id, type: p.type, available: p.available })));
+      
       return jsonResponse({ 
         success: true, 
         pools,
