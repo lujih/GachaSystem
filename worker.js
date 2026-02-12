@@ -30,11 +30,11 @@ const BUSINESS_CONFIG = {
         ],
         type: 'api'
       },
-      'user_uploads': {
-        name: '用户投稿',
-        description: '玩家上传的精选图片',
-        sources: [], // 动态从数据库加载
-        type: 'uploads',
+      'github_repo': {
+        name: 'GitHub图库',
+        description: '从GitHub仓库随机获取图片',
+        sources: [], // 动态从GitHub API获取
+        type: 'github',
         rarity: 'UR'
       }
     },
@@ -1297,20 +1297,20 @@ class GachaService {
 
     // 2. 获取资源
     let assetData;
-    if (pool.type === 'uploads') {
-      // 从用户上传中获取随机图片
-      console.log(`[DrawLimited] Fetching from user uploads pool`);
-      assetData = await this.getRandomUserUpload();
-      console.log(`[DrawLimited] User upload result:`, assetData);
+    if (pool.type === 'github') {
+      // 从GitHub仓库获取随机图片
+      console.log(`[DrawLimited] Fetching from GitHub pool: ${poolId}`);
+      assetData = await this.getRandomImageFromGithub();
+      console.log(`[DrawLimited] GitHub result:`, assetData);
       
-      // 如果用户投稿池没有图片，返回错误提示
+      // 如果GitHub获取失败，返回错误提示
       if (!assetData || !assetData.success) {
         // 先恢复扣掉的积分
         await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
         return jsonResponse({ 
           success: false, 
-          error: 'user_uploads_empty',
-          message: '用户投稿池暂无图片，请尝试其他卡池' 
+          error: 'github_empty',
+          message: 'GitHub图库暂无图片，请尝试其他卡池' 
         });
       }
     } else {
@@ -1690,6 +1690,63 @@ class GachaService {
     } catch (e) {
       console.error('[Random Upload Error]:', e);
       return { success: false, message: 'Failed to get upload' };
+    }
+  }
+
+  /**
+   * [新增] 从GitHub仓库获取随机图片
+   * 使用GitHub API列出目录中的文件，然后随机选择一个
+   */
+  async getRandomImageFromGithub() {
+    try {
+      const { OWNER, REPO, BRANCH, PATH_PREFIX, CDN_BASE } = TECHNICAL_CONFIG.GITHUB;
+      
+      // 使用GitHub API获取目录内容
+      // 注意：未认证的API有速率限制(60请求/小时)，生产环境建议缓存文件列表
+      const apiUrl = `${TECHNICAL_CONFIG.GITHUB.API_BASE}/repos/${OWNER}/${REPO}/contents/${PATH_PREFIX}?ref=${BRANCH}`;
+      
+      const response = await fetch(apiUrl, {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Chouka-Worker'
+        }
+      });
+
+      if (!response.ok) {
+        console.error('[GitHub API Error]:', response.status, await response.text());
+        return { success: false, message: 'Failed to fetch file list from GitHub' };
+      }
+
+      const files = await response.json();
+      
+      // 过滤出图片文件
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+      const images = files.filter(file => {
+        if (file.type !== 'file') return false;
+        const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+        return imageExtensions.includes(ext);
+      });
+
+      if (images.length === 0) {
+        return { success: false, message: 'No images found in GitHub repository' };
+      }
+
+      // 随机选择一张图片
+      const randomImage = images[Math.floor(Math.random() * images.length)];
+      
+      // 构建CDN URL（使用jsDelivr加速）
+      const imageUrl = `${CDN_BASE}/${OWNER}/${REPO}@${BRANCH}/${randomImage.path}`;
+
+      return {
+        success: true,
+        imageUrl: imageUrl,
+        rarity: 'UR',
+        sourceName: 'GitHub Repository',
+        filename: randomImage.name
+      };
+    } catch (e) {
+      console.error('[GitHub Random Image Error]:', e);
+      return { success: false, message: 'Failed to get random image from GitHub' };
     }
   }
 
