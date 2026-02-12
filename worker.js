@@ -1572,7 +1572,10 @@ class GachaService {
         logDetail += `Lose`;
     }
 
-    await this.env.DB.batch(batch);
+    // 只有在有SQL语句时才执行batch（赢了才有更新，输了无更新）
+    if (batch.length > 0) {
+        await this.env.DB.batch(batch);
+    }
 
     // [修复] 更新内存中的用户数据（仅在赢时获得经验）
     if (isWin && expGain > 0) {
