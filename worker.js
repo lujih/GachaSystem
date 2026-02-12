@@ -981,8 +981,12 @@ async function uploadToGithub(env, path, content, extension, message) {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('[GitHub Upload] Failed:', error);
+      const errorText = await response.text();
+      console.error('[GitHub Upload] API Error:', response.status, response.statusText);
+      console.error('[GitHub Upload] Error Details:', errorText);
+      console.error('[GitHub Upload] Request URL:', apiUrl);
+      console.error('[GitHub Upload] Token exists:', !!githubToken);
+      console.error('[GitHub Upload] Token length:', githubToken ? githubToken.length : 0);
       return null;
     }
 
@@ -1639,7 +1643,8 @@ class GachaService {
       );
 
       if (!githubUrl) {
-        return jsonResponse({ error: 'Failed to upload to GitHub' }, 500);
+        console.error('[Upload] GitHub upload failed for user:', currentUser.username);
+        return jsonResponse({ error: 'Failed to upload to GitHub. Please check server logs or contact admin.' }, 500);
       }
 
       // 记录到数据库
