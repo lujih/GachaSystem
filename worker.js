@@ -26,7 +26,7 @@ const BUSINESS_CONFIG = {
         name: '原神限定',
         description: '原神角色精选',
         sources: [
-          { name: 'Genshin Impact', url: 'https://github_images.cszxorx.dpdns.org/', rarity: 'UR' }
+          { name: 'Genshin Impact', url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
         ],
         type: 'api'
       },
@@ -34,7 +34,7 @@ const BUSINESS_CONFIG = {
         name: 'GitHub图库',
         description: '从GitHub仓库随机获取图片',
         sources: [
-          { name: 'GitHub Random', url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
+          { name: 'GitHub Random', url: 'https://github_images.cszxorx.dpdns.org/', rarity: 'UR' }
         ],
         type: 'api'
       }
