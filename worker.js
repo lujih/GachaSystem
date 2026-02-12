@@ -33,9 +33,10 @@ const BUSINESS_CONFIG = {
       'github_repo': {
         name: 'GitHub图库',
         description: '从GitHub仓库随机获取图片',
-        sources: [], // 动态从GitHub API获取
-        type: 'github',
-        rarity: 'UR'
+        sources: [
+          { name: 'GitHub Random', url: 'https://github_images.cszxorx.dpdns.org/', rarity: 'UR' }
+        ],
+        type: 'api'
       }
     },
     DEFAULT_POOL: 'genshin'
@@ -1250,8 +1251,6 @@ class GachaService {
         count: pool.type === 'uploads' ? uploadCount.count : null
       }));
       
-      console.log('[GetLimitedPools] Returning pools:', pools.map(p => ({ id: p.id, type: p.type, available: p.available })));
-      
       return jsonResponse({ 
         success: true, 
         pools,
@@ -1282,7 +1281,7 @@ class GachaService {
     }
     
     const pool = CONFIG.LIMITED.POOLS[poolId];
-    console.log(`[DrawLimited] Selected pool:`, pool);
+    console.log(`[DrawLimited] poolId: ${poolId}, pool:`, pool);
     if (!pool) {
       return jsonResponse({ error: 'Invalid pool' }, 400);
     }
@@ -1299,15 +1298,13 @@ class GachaService {
 
     // 2. 获取资源
     let assetData;
-    if (pool.type === 'github') {
-      // 从GitHub仓库获取随机图片
-      console.log(`[DrawLimited] Fetching from GitHub pool: ${poolId}`);
-      assetData = await this.getRandomImageFromGithub();
-      console.log(`[DrawLimited] GitHub result:`, assetData);
+    if (poolId === 'github_repo') {
+      // GitHub图库使用随机图API
+      console.log(`[DrawLimited] Fetching from GitHub random API: ${pool.sources[0]?.url}`);
+      assetData = await this.fetchRandomImageAPI(pool.sources[0]?.url);
+      console.log(`[DrawLimited] GitHub API result:`, assetData);
       
-      // 如果GitHub获取失败，返回错误提示
       if (!assetData || !assetData.success) {
-        // 先恢复扣掉的积分
         await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
         return jsonResponse({ 
           success: false, 
@@ -1696,59 +1693,41 @@ class GachaService {
   }
 
   /**
-   * [新增] 从GitHub仓库获取随机图片
-   * 使用GitHub API列出目录中的文件，然后随机选择一个
+   * [新增] 从随机图API获取图片
+   * 用于支持返回302重定向的随机图API
    */
-  async getRandomImageFromGithub() {
+  async fetchRandomImageAPI(apiUrl) {
     try {
-      const { OWNER, REPO, BRANCH, PATH_PREFIX, CDN_BASE } = TECHNICAL_CONFIG.GITHUB;
+      if (!apiUrl) {
+        return { success: false, message: 'API URL not provided' };
+      }
       
-      // 使用GitHub API获取目录内容
-      // 注意：未认证的API有速率限制(60请求/小时)，生产环境建议缓存文件列表
-      const apiUrl = `${TECHNICAL_CONFIG.GITHUB.API_BASE}/repos/${OWNER}/${REPO}/contents/${PATH_PREFIX}?ref=${BRANCH}`;
+      console.log(`[RandomImageAPI] Fetching from: ${apiUrl}`);
       
+      // 调用随机图API，跟随重定向获取最终图片URL
       const response = await fetch(apiUrl, {
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'Chouka-Worker'
-        }
+        method: 'HEAD',
+        redirect: 'follow'
       });
 
       if (!response.ok) {
-        console.error('[GitHub API Error]:', response.status, await response.text());
-        return { success: false, message: 'Failed to fetch file list from GitHub' };
+        console.error('[RandomImageAPI] Error:', response.status);
+        return { success: false, message: 'Failed to fetch random image' };
       }
 
-      const files = await response.json();
-      
-      // 过滤出图片文件
-      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-      const images = files.filter(file => {
-        if (file.type !== 'file') return false;
-        const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
-        return imageExtensions.includes(ext);
-      });
-
-      if (images.length === 0) {
-        return { success: false, message: 'No images found in GitHub repository' };
-      }
-
-      // 随机选择一张图片
-      const randomImage = images[Math.floor(Math.random() * images.length)];
-      
-      // 构建CDN URL（使用jsDelivr加速）
-      const imageUrl = `${CDN_BASE}/${OWNER}/${REPO}@${BRANCH}/${randomImage.path}`;
+      // 获取重定向后的最终URL
+      const imageUrl = response.url;
+      console.log(`[RandomImageAPI] Got image URL: ${imageUrl}`);
 
       return {
         success: true,
         imageUrl: imageUrl,
         rarity: 'UR',
-        sourceName: 'GitHub Repository',
-        filename: randomImage.name
+        sourceName: 'GitHub Repository'
       };
     } catch (e) {
-      console.error('[GitHub Random Image Error]:', e);
-      return { success: false, message: 'Failed to get random image from GitHub' };
+      console.error('[RandomImageAPI] Error:', e);
+      return { success: false, message: 'Failed to get random image' };
     }
   }
 
