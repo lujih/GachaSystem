@@ -1544,20 +1544,35 @@ async function handleLibraryApi(request, env) {
   const pageSize = parseInt(url.searchParams.get('pageSize') || '24');
   const offset = (page - 1) * pageSize;
 
+  // 1. 尝试从 KV 读取缓存
+  const cacheKey = `lib:p:${page}:s:${pageSize}`;
+  const countKey = `lib:count`;
+  
   try {
-    const [dataRes, countRes] = await Promise.all([
-      env.DB.prepare(
-        'SELECT url, username, created_at as ts FROM gallery ORDER BY created_at DESC LIMIT ? OFFSET ?'
-      ).bind(pageSize, offset).all(),
-      env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first()
-    ]);
+    const cachedData = await env.KV_CACHE.get(cacheKey, { type: 'json' });
+    if (cachedData) {
+      return jsonResponse(cachedData, 200, { 'X-Cache-Status': 'HIT' });
+    }
+
+    // 2. 优化 Count 查询：尝试从 KV 获取总数，如果没有再查库 (缓存 5 分钟)
+    let totalItems = await env.KV_CACHE.get(countKey, { type: 'json' });
+    if (totalItems === null) {
+       const countRes = await env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first();
+       totalItems = countRes.total || 0;
+       // 异步写入缓存，不阻塞主线程
+       env.ctx.waitUntil(env.KV_CACHE.put(countKey, JSON.stringify(totalItems), { expirationTtl: 300 }));
+    }
+
+    // 3. 查库获取数据
+    const dataRes = await env.DB.prepare(
+      'SELECT url, username, created_at as ts FROM gallery ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    ).bind(pageSize, offset).all();
 
     const items = dataRes.results || [];
-    const totalItems = countRes.total || 0;
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     const currentPage = Math.max(1, Math.min(page, totalPages));
 
-    return jsonResponse({
+    const responseData = {
       items,
       pagination: {
         currentPage,
@@ -1566,7 +1581,13 @@ async function handleLibraryApi(request, env) {
         pageSize,
         hasMore: currentPage < totalPages
       }
-    }, 200, {
+    };
+
+    // 4. 写入数据缓存 (60秒)
+    env.ctx.waitUntil(env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: 60 }));
+
+    return jsonResponse(responseData, 200, {
+      'X-Cache-Status': 'MISS',
       'Cache-Control': 'public, max-age=60',
       'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=600'
     });
@@ -3778,6 +3799,8 @@ function getLibraryHtml(items, pager) {
       transition: transform 0.3s ease, box-shadow 0.3s ease;
       cursor: zoom-in;
       position: relative;
+      content-visibility: auto; 
+      contain-intrinsic-size: 0 200px;
       opacity: 0;
     }
     
@@ -3925,7 +3948,7 @@ function getLibraryHtml(items, pager) {
         ${items.map((item, index) => `
           <div class="item" data-index="${index}" onclick="VirtualScroll.show('${item.url}')" style="opacity:1">
             <div class="img-wrapper">
-              <img data-src="${item.url}" class="lazy" alt="Image by ${item.username}">
+              <img src="${item.url}" loading="lazy" decoding="async" onload="this.classList.add('loaded')" alt="Image by ${item.username}">
             </div>
             <div class="item-user">
               <div class="user-tag"><i class="fas fa-user-circle"></i> ${item.username}</div>
@@ -3995,23 +4018,24 @@ function getLibraryHtml(items, pager) {
             }
         }
         this.lastRenderedIndex = this.allItems.length - 1;
-        this.setupImageLazyLoad();
       },
       
       createItemElement(item, index) {
         const div = document.createElement('div');
         div.className = 'item';
-        div.style.animation = 'fadeIn 0.5s ease forwards';
+        requestAnimationFrame(() => div.style.opacity = '1'); 
         div.dataset.index = index;
-        div.onclick = () => this.show(item.url); // 这里 this.show 是正确的，因为是在对象内部调用
+        div.onclick = () => this.show(item.url);
         
         const imgWrapper = document.createElement('div');
         imgWrapper.className = 'img-wrapper';
         
         const img = document.createElement('img');
-        img.setAttribute('data-src', item.url);
-        img.className = 'lazy';
+        img.src = item.url; 
+        img.loading = "lazy";
+        img.decoding = "async";
         img.alt = 'Image by ' + (item.username || 'Unknown');
+        img.onload = () => img.classList.add('loaded');
         imgWrapper.appendChild(img);
         
         const itemUser = document.createElement('div');
@@ -4089,38 +4113,6 @@ function getLibraryHtml(items, pager) {
           }
         } finally {
           this.isLoading = false;
-        }
-      },
-      
-      setupImageLazyLoad() {
-        const lazyImages = [].slice.call(document.querySelectorAll("img.lazy:not(.observing)"));
-        if ("IntersectionObserver" in window) {
-          const lazyImageObserver = new IntersectionObserver((entries, observer) => {
-            entries.forEach((entry) => {
-              if (entry.isIntersecting) {
-                const lazyImage = entry.target;
-                lazyImage.src = lazyImage.dataset.src;
-                lazyImage.onload = () => {
-                  lazyImage.classList.add("loaded");
-                  if(lazyImage.parentElement) lazyImage.parentElement.style.minHeight = 'auto';
-                };
-                lazyImage.classList.remove("lazy");
-                observer.unobserve(lazyImage);
-              }
-            });
-          }, {
-            root: document.getElementById('scrollContainer'),
-            rootMargin: "200px 0px"
-          });
-          lazyImages.forEach((lazyImage) => {
-            lazyImage.classList.add('observing');
-            lazyImageObserver.observe(lazyImage);
-          });
-        } else {
-          lazyImages.forEach((lazyImage) => {
-            lazyImage.src = lazyImage.dataset.src;
-            lazyImage.classList.add('loaded');
-          });
         }
       },
       
