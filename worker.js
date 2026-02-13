@@ -1273,44 +1273,43 @@ class GachaService {
     let poolId = CONFIG.LIMITED.DEFAULT_POOL;
     try {
       const body = await request.json();
-      console.log(`[DrawLimited] Raw body:`, JSON.stringify(body));
-      console.log(`[DrawLimited] body.poolId:`, body.poolId, `type:`, typeof body.poolId);
-      
-      // [修复] 严格检查 poolId，避免空字符串触发默认池
-      if (body.poolId && body.poolId.trim && body.poolId.trim() !== '') {
-        poolId = body.poolId.trim();
-        console.log(`[DrawLimited] Using provided poolId: ${poolId}`);
-      } else {
-        console.log(`[DrawLimited] poolId is empty/invalid, using default: ${poolId}`);
+      // 安全地处理 poolId，防止非字符串类型调用 trim 报错
+      if (body.poolId) {
+        const safeId = String(body.poolId).trim();
+        if (safeId !== '') {
+            poolId = safeId;
+        }
       }
     } catch (e) {
-      // 如果没有请求体，使用默认池
-      console.log(`[DrawLimited] Failed to parse body or no body:`, e.message);
-      console.log(`[DrawLimited] Using default poolId: ${poolId}`);
+      // 忽略 JSON 解析错误，使用默认池
+      console.log('[DrawLimited] No body or parse error, using default pool');
     }
     
     const pool = CONFIG.LIMITED.POOLS[poolId];
-    console.log(`[DrawLimited] poolId: ${poolId}, pool:`, pool);
     if (!pool) {
       return jsonResponse({ error: 'Invalid pool' }, 400);
     }
 
-    // 1. 扣费 (Write) - 利用 affected rows 判断余额是否充足
+    // 1. 扣费 (Write)
     const deductRes = await this.env.DB.prepare(
         'UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ? AND coins >= ?'
     ).bind(cost, currentUser.id, cost).run();
 
     if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
     
-    // 内存更新余额 (用于后续计算)
+    // 内存更新余额
     currentUser.coins = (currentUser.coins || cost) - cost;
 
-    // 2. 获取资源 - 直接请求API，不使用预抽卡
-    let assetData;
+    // 2. 获取资源
+    // 确保 sources 存在且不为空
+    if (!pool.sources || pool.sources.length === 0) {
+        // 退款
+        await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
+        return jsonResponse({ success: false, error: 'api_failed', message: '该卡池配置为空' });
+    }
+
     const source = pool.sources[Math.floor(Math.random() * pool.sources.length)];
-    console.log(`[DrawLimited] Fetching from API: ${source?.url}`);
-    assetData = await this.fetchRandomImageAPI(source?.url);
-    console.log(`[DrawLimited] API result:`, assetData);
+    const assetData = await this.fetchRandomImageAPI(source.url);
 
     // 3. 失败退款
     if (!assetData || !assetData.success) {
@@ -1318,12 +1317,11 @@ class GachaService {
       return jsonResponse({ 
         success: false, 
         error: 'api_failed',
-        message: assetData?.message || '卡池暂时空缺，积分已退还'
+        message: assetData?.message || '图源连接失败，积分已退还'
       });
     }
 
     // 4. 计算与 Batch 更新
-    // [修复] 升级时需要正确处理 exp 字段
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW['UR'] || 500;
     const currentTotalExp = (currentUser.total_exp || 0) + expGain;
     const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
@@ -1331,12 +1329,10 @@ class GachaService {
     
     let userSql, userParams;
     if (levelUpInfo.hasLevelUp) {
-        // 升级时：设置新等级和金币奖励，exp 重置为新等级的剩余经验
         const newExp = currentTotalExp - (globalThis.XP_TABLE[levelUpInfo.newLevel] || 0);
         userSql = 'UPDATE users SET level = ?, exp = ?, total_exp = total_exp + ?, coins = coins + ?';
         userParams = [levelUpInfo.newLevel, newExp, expGain, levelUpInfo.coinsReward];
     } else {
-        // 未升级时：正常累加经验
         userSql = 'UPDATE users SET exp = exp + ?, total_exp = total_exp + ?';
         userParams = [expGain, expGain];
     }
@@ -1348,7 +1344,7 @@ class GachaService {
 
     await this.env.DB.batch(batch);
 
-    // [修复] 更新内存中的用户数据，确保后续操作使用最新值
+    // 更新内存数据
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
     if (levelUpInfo.hasLevelUp) {
       currentUser.level = levelUpInfo.newLevel;
@@ -1360,7 +1356,6 @@ class GachaService {
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
-    // [优化] 限定池仅 UR 级图片进入精选图库
     if (assetData.rarity === 'UR') {
         this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now() }));
     }
@@ -1690,8 +1685,8 @@ class GachaService {
   }
 
   /**
-   * [新增] 从随机图API获取图片
-   * 支持返回302重定向或直接返回图片数据的API
+   * [修改] 从随机图API获取图片
+   * 增加 User-Agent 伪装，防止被图源接口拦截
    */
   async fetchRandomImageAPI(apiUrl) {
     try {
@@ -1701,20 +1696,28 @@ class GachaService {
       
       console.log(`[RandomImageAPI] Fetching from: ${apiUrl}`);
       
+      // 通用请求头，伪装成浏览器
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Referer': new URL(apiUrl).origin
+      };
+
       // 方法1：尝试 HEAD 请求（适用于返回302重定向的API）
-      let response;
+      // 很多API处理 HEAD 请求更宽松
       try {
-        response = await fetch(apiUrl, {
+        const headRes = await fetch(apiUrl, {
           method: 'HEAD',
+          headers: headers,
           redirect: 'follow'
         });
         
-        // 如果 HEAD 成功且发生了重定向（URL变化）
-        if (response.ok && response.url !== apiUrl) {
-          console.log(`[RandomImageAPI] HEAD redirect success: ${response.url}`);
+        // 如果 HEAD 成功且发生了重定向（URL变化），直接使用最终 URL
+        if (headRes.ok && headRes.url !== apiUrl) {
+          console.log(`[RandomImageAPI] HEAD redirect success: ${headRes.url}`);
           return {
             success: true,
-            imageUrl: response.url,
+            imageUrl: headRes.url,
             rarity: 'UR',
             sourceName: 'API Redirect'
           };
@@ -1724,62 +1727,41 @@ class GachaService {
       }
       
       // 方法2：使用 GET 请求（适用于直接返回图片或JSON的API）
-      response = await fetch(apiUrl, {
+      const response = await fetch(apiUrl, {
         method: 'GET',
+        headers: headers,
         redirect: 'follow'
       });
 
       if (!response.ok) {
         console.error('[RandomImageAPI] GET Error:', response.status, response.statusText);
-        // 尝试读取错误响应内容
-        let errorBody = '';
-        try {
-          errorBody = await response.text();
-          console.error('[RandomImageAPI] Error body:', errorBody.substring(0, 200));
-        } catch (e) {}
         return { 
           success: false, 
-          message: `API ${response.status}: ${errorBody || response.statusText}` 
+          message: `API returned ${response.status}` 
         };
       }
 
       // 获取最终URL（可能是重定向后的）
       const finalUrl = response.url;
-      
-      // 检查内容类型
       const contentType = response.headers.get('content-type') || '';
-      console.log(`[RandomImageAPI] Content-Type: ${contentType}`);
+      console.log(`[RandomImageAPI] Success. Content-Type: ${contentType}, URL: ${finalUrl}`);
       
-      // 如果直接返回图片数据
-      if (contentType.includes('image/')) {
-        console.log(`[RandomImageAPI] Direct image response: ${finalUrl}`);
-        return {
-          success: true,
-          imageUrl: finalUrl,
-          rarity: 'UR',
-          sourceName: 'API Direct'
-        };
-      }
-      
-      // 如果返回JSON，尝试解析图片URL
+      // 1. 如果返回 JSON，尝试解析
       if (contentType.includes('application/json')) {
-        const data = await response.json();
-        console.log(`[RandomImageAPI] JSON response:`, data);
-        
-        // 支持常见的JSON格式
-        const imageUrl = data.url || data.image || data.img || data.data?.url || data.data?.image;
-        if (imageUrl) {
-          return {
-            success: true,
-            imageUrl: imageUrl,
-            rarity: 'UR',
-            sourceName: 'API JSON'
-          };
+        try {
+            const data = await response.json();
+            // 兼容常见图床 API 返回格式
+            const imageUrl = data.url || data.img || data.image || data.data?.url || (Array.isArray(data) ? data[0].url : null);
+            if (imageUrl) {
+              return { success: true, imageUrl: imageUrl, rarity: 'UR', sourceName: 'API JSON' };
+            }
+        } catch(e) {
+            console.error('[RandomImageAPI] JSON parse error:', e);
         }
       }
       
-      // 默认返回最终URL
-      console.log(`[RandomImageAPI] Using final URL: ${finalUrl}`);
+      // 2. 默认行为：认为 URL 本身（或重定向后的 URL）就是图片
+      // 即使是 text/html，有些简易 API 也是直接通过 URL 访问图片的
       return {
         success: true,
         imageUrl: finalUrl,
@@ -1788,8 +1770,8 @@ class GachaService {
       };
       
     } catch (e) {
-      console.error('[RandomImageAPI] Error:', e);
-      return { success: false, message: 'Failed to get random image: ' + e.message };
+      console.error('[RandomImageAPI] Critical Error:', e);
+      return { success: false, message: 'Network error: ' + e.message };
     }
   }
 
