@@ -39,7 +39,7 @@ const BUSINESS_CONFIG = {
         type: 'api'
       }
     },
-    DEFAULT_POOL: 'github_repo'
+    DEFAULT_POOL: 'genshin'
   },
   
   // 游戏数值配置
