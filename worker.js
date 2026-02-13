@@ -243,6 +243,34 @@ export default {
 
 /**
  * =========================================
+ * 北京时间工具函数
+ * =========================================
+ */
+
+// 获取北京时间
+function getBeijingTime(date = new Date()) {
+  return new Date(date.getTime() + 8 * 60 * 60 * 1000);
+}
+
+// 获取北京日期字符串 (YYYY-MM-DD)
+function getBeijingDateStr(date = new Date()) {
+  return getBeijingTime(date).toISOString().split('T')[0];
+}
+
+// 获取北京时间的ISO字符串
+function getBeijingISOString(date = new Date()) {
+  return getBeijingTime(date).toISOString();
+}
+
+// 将UTC时间转换为北京时间
+function utcToBeijing(utcDateStr) {
+  if (!utcDateStr) return null;
+  const date = new Date(utcDateStr);
+  return new Date(date.getTime() + 8 * 60 * 60 * 1000);
+}
+
+/**
+ * =========================================
  * 2. 服务层 (Service Layer)
  * =========================================
  */
@@ -355,7 +383,7 @@ class UserService {
         0,
         0,
         null,
-        Date.now()
+        getBeijingISOString()
       ).run();
       
       return jsonResponse({ success: true });
@@ -374,19 +402,27 @@ class UserService {
 
     if (!user) return jsonResponse({ error: 'User not found' }, 404);
 
+    // 使用北京时间
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const lastDateStr = user.last_login_date ? user.last_login_date.split('T')[0] : null;
+    const beijingNow = getBeijingTime(now);
+    const todayStr = beijingNow.toISOString().split('T')[0];
+
+    // 将上次登录时间转换为北京时间进行比较
+    const lastDateStr = user.last_login_date ? (() => {
+      const lastBeijing = utcToBeijing(user.last_login_date);
+      return lastBeijing.toISOString().split('T')[0];
+    })() : null;
 
     if (lastDateStr === todayStr) {
       return jsonResponse({ error: 'Already checked in today' }, 400);
     }
 
+    // 计算连续签到（基于北京时间）
     let streak = user.login_streak || 0;
-    const yesterday = new Date(now);
+    const yesterday = new Date(beijingNow);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
-    
+
     if (lastDateStr === yesterdayStr) {
       streak += 1;
     } else {
@@ -396,9 +432,12 @@ class UserService {
     const streakBonusArr = CONFIG.LEVEL.CHECK_IN.STREAK_BONUS;
     const bonusIndex = Math.min(streak - 1, streakBonusArr.length - 1);
     const streakBonus = streakBonusArr[bonusIndex] || 0;
-    
+
     const coinsReward = CONFIG.LEVEL.CHECK_IN.BASE_COINS + streakBonus;
     const expReward = CONFIG.LEVEL.EXP_GAIN.CHECK_IN;
+
+    // 存储北京时间
+    const beijingISOString = beijingNow.toISOString();
 
     const result = await this.env.DB.prepare(`
       UPDATE users
@@ -407,7 +446,7 @@ class UserService {
           last_login_date = ?,
           login_streak = ?
       WHERE id = ? AND (last_login_date IS NULL OR substr(last_login_date, 1, 10) != ?)
-    `).bind(coinsReward, expReward, now.toISOString(), streak, currentUser.id, todayStr).run();
+    `).bind(coinsReward, expReward, beijingISOString, streak, currentUser.id, todayStr).run();
 
     if (result.meta.changes === 0) {
       return jsonResponse({ error: 'Already checked in today' }, 400);
@@ -415,7 +454,7 @@ class UserService {
 
     currentUser.total_exp = (currentUser.total_exp || 0) + expReward;
     currentUser.coins = (currentUser.coins || 0) + coinsReward;
-    
+
     const newLevelInfo = this.calculateLevelFromTotalExp(currentUser.total_exp);
     if (newLevelInfo.level > currentUser.level) {
       await this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?')
@@ -516,7 +555,7 @@ class UserService {
     const { level: calculatedLevel, currentExp } = this.calculateLevelFromTotalExp(totalExp);
 
     const token = crypto.randomUUID();
-    
+
     const sessionData = {
       id: user.id,
       username: user.username,
@@ -526,8 +565,18 @@ class UserService {
       exp: currentExp,
       total_exp: user.total_exp
     };
-    
-    await this.env.KV_CACHE.put(`session:${token}`, JSON.stringify(sessionData), { expirationTtl: CONFIG.TTL.SESSION });
+
+    // 计算到次日北京时间凌晨的秒数 + 7天
+    const now = new Date();
+    const beijingNow = getBeijingTime(now);
+    const tomorrowBeijing = new Date(beijingNow);
+    tomorrowBeijing.setDate(tomorrowBeijing.getDate() + 1);
+    tomorrowBeijing.setUTCHours(16, 0, 0, 0); // UTC 16:00 = 北京时间 00:00
+
+    const secondsUntilMidnight = Math.floor((tomorrowBeijing - beijingNow) / 1000);
+    const ttl = secondsUntilMidnight + CONFIG.TTL.SESSION;
+
+    await this.env.KV_CACHE.put(`session:${token}`, JSON.stringify(sessionData), { expirationTtl: ttl });
 
     return jsonResponse({
       success: true,
@@ -1223,7 +1272,8 @@ class GachaService {
 
       const fileBuffer = await file.arrayBuffer();
 
-      const timestamp = Date.now();
+      const beijingNow = getBeijingTime();
+      const timestamp = beijingNow.getTime();
       const randomStr = Math.random().toString(36).slice(2, 8);
       const extension = file.type.split('/')[1] || 'jpg';
       const filename = `${currentUser.id}_${timestamp}_${randomStr}.${extension}`;
@@ -1245,7 +1295,6 @@ class GachaService {
       await this.env.DB.prepare(
         'INSERT INTO user_uploads (user_id, username, r2_key, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
       ).bind(currentUser.id, currentUser.username, githubPath, githubUrl, rarity, 'pending', timestamp).run();
-
       console.log(`[Upload] User ${currentUser.username} uploaded image: ${githubPath}`);
 
       return jsonResponse({
@@ -1428,7 +1477,8 @@ async function handleAdminSaveAnnouncement(request, env) {
   
   const oldData = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
   
-  let newId = Date.now();
+  // 使用北京时间生成ID
+  let newId = getBeijingTime().getTime();
 
   if (!refreshId && oldData && oldData.id) {
     const isTitleSame = oldData.title === announcement.title;
@@ -3570,7 +3620,7 @@ function getHtmlPage() {
             }
             let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:15px; padding:15px;">';
             d.uploads.forEach(u => {
-              const dateStr = new Date(u.created_at).toLocaleString('zh-CN');
+              const dateStr = new Date(u.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
               const rarityClass = 'r-' + (u.rarity || 'N').toLowerCase();
               const rarityName = u.rarity || 'N';
               html += \`
@@ -3879,7 +3929,7 @@ function getLibraryHtml(items, pager) {
             </div>
             <div class="item-user">
               <div class="user-tag"><i class="fas fa-user-circle"></i> ${item.username}</div>
-              <div style="font-size:0.7rem; color:#CBD5E1;">${new Date(item.ts).toLocaleDateString()}</div>
+              <div style="font-size:0.7rem; color:#CBD5E1;">${new Date(item.ts).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}</div>
             </div>
           </div>
         `).join('')}
