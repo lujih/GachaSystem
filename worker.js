@@ -1273,11 +1273,20 @@ class GachaService {
     let poolId = CONFIG.LIMITED.DEFAULT_POOL;
     try {
       const body = await request.json();
-      poolId = body.poolId || poolId;
-      console.log(`[DrawLimited] Received poolId: ${poolId}, body:`, body);
+      console.log(`[DrawLimited] Raw body:`, JSON.stringify(body));
+      console.log(`[DrawLimited] body.poolId:`, body.poolId, `type:`, typeof body.poolId);
+      
+      // [修复] 严格检查 poolId，避免空字符串触发默认池
+      if (body.poolId && body.poolId.trim && body.poolId.trim() !== '') {
+        poolId = body.poolId.trim();
+        console.log(`[DrawLimited] Using provided poolId: ${poolId}`);
+      } else {
+        console.log(`[DrawLimited] poolId is empty/invalid, using default: ${poolId}`);
+      }
     } catch (e) {
       // 如果没有请求体，使用默认池
-      console.log(`[DrawLimited] No body found, using default poolId: ${poolId}`);
+      console.log(`[DrawLimited] Failed to parse body or no body:`, e.message);
+      console.log(`[DrawLimited] Using default poolId: ${poolId}`);
     }
     
     const pool = CONFIG.LIMITED.POOLS[poolId];
@@ -1308,8 +1317,8 @@ class GachaService {
       await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
       return jsonResponse({ 
         success: false, 
-        error: 'api_empty',
-        message: '卡池暂时空缺，积分已退还' 
+        error: 'api_failed',
+        message: assetData?.message || '卡池暂时空缺，积分已退还'
       });
     }
 
@@ -1722,7 +1731,16 @@ class GachaService {
 
       if (!response.ok) {
         console.error('[RandomImageAPI] GET Error:', response.status, response.statusText);
-        return { success: false, message: `API returned ${response.status}` };
+        // 尝试读取错误响应内容
+        let errorBody = '';
+        try {
+          errorBody = await response.text();
+          console.error('[RandomImageAPI] Error body:', errorBody.substring(0, 200));
+        } catch (e) {}
+        return { 
+          success: false, 
+          message: `API ${response.status}: ${errorBody || response.statusText}` 
+        };
       }
 
       // 获取最终URL（可能是重定向后的）
@@ -3047,9 +3065,16 @@ function getHtmlPage() {
             this._poolsLastFetch = now;
             this.limitedPools = data.pools;
             
-            // 设置默认池
-            if (!this.currentLimitedPool || !data.pools.find(p => p.id === this.currentLimitedPool)) {
+            // [修复] 只在首次加载或当前选择无效时才设置默认池
+            // 避免覆盖用户已做的选择
+            const currentPoolValid = this.currentLimitedPool && 
+                                     data.pools.find(p => p.id === this.currentLimitedPool);
+            if (!currentPoolValid) {
+              console.log('[LoadPools] Setting default pool:', data.defaultPool, 
+                          'previous:', this.currentLimitedPool);
               this.currentLimitedPool = data.defaultPool;
+            } else {
+              console.log('[LoadPools] Keeping current pool:', this.currentLimitedPool);
             }
             
             // 使用 requestAnimationFrame 渲染，避免阻塞
@@ -3106,7 +3131,15 @@ function getHtmlPage() {
           return;
         }
         
+        // [修复] 更新当前选中的池
         this.currentLimitedPool = poolId;
+        
+        // [修复] 同时更新缓存中的选择，防止loadLimitedPools重置
+        if (this._poolsCache) {
+          this._poolsLastFetch = Date.now();
+        }
+        
+        console.log('[PoolSelect] Selected pool:', poolId, 'currentLimitedPool:', this.currentLimitedPool);
         
         // 关闭下拉菜单
         document.getElementById('poolDropdown').style.display = 'none';
@@ -3599,10 +3632,14 @@ function getHtmlPage() {
           if (this.currentPool === 'ltd') {
               url = '/draw/limited';
               method = 'POST';
-              // 发送选择的池 ID，如果没有选择则默认 genshin
-              const poolId = this.currentLimitedPool || 'genshin';
+              // [修复] 确保使用当前选中的池，如果没有则使用后端返回的默认池
+              const poolId = this.currentLimitedPool;
+              console.log('[DrawDebug] Preparing limited draw, currentLimitedPool:', this.currentLimitedPool);
+              if (!poolId) {
+                console.warn('[DrawDebug] Warning: currentLimitedPool is empty!');
+              }
               body = JSON.stringify({ poolId: poolId });
-              console.log('[DrawDebug] Sending poolId:', poolId);
+              console.log('[DrawDebug] Request body:', body);
           }
 
           const fetchOptions = { method: method, headers: { 'X-User-ID': this.username, 'Content-Type': 'application/json' } };
