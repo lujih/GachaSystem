@@ -1296,33 +1296,21 @@ class GachaService {
     // 内存更新余额 (用于后续计算)
     currentUser.coins = (currentUser.coins || cost) - cost;
 
-    // 2. 获取资源
+    // 2. 获取资源 - 直接请求API，不使用预抽卡
     let assetData;
-    if (poolId === 'github_repo') {
-      // GitHub图库使用随机图API
-      console.log(`[DrawLimited] Fetching from GitHub random API: ${pool.sources[0]?.url}`);
-      assetData = await this.fetchRandomImageAPI(pool.sources[0]?.url);
-      console.log(`[DrawLimited] GitHub API result:`, assetData);
-      
-      if (!assetData || !assetData.success) {
-        await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
-        return jsonResponse({ 
-          success: false, 
-          error: 'github_empty',
-          message: 'GitHub图库暂无图片，请尝试其他卡池' 
-        });
-      }
-    } else {
-      // API 类型：使用原有逻辑
-      console.log(`[DrawLimited] Fetching from API pool: ${poolId}`);
-      const limitedRarityKey = 'LIMITED_UR';
-      assetData = await this.consumeGlobalBuffer(limitedRarityKey, pool.sources);
-    }
+    const source = pool.sources[Math.floor(Math.random() * pool.sources.length)];
+    console.log(`[DrawLimited] Fetching from API: ${source?.url}`);
+    assetData = await this.fetchRandomImageAPI(source?.url);
+    console.log(`[DrawLimited] API result:`, assetData);
 
-    // 3. 失败退款 (Write) - 仅针对 API 类型
+    // 3. 失败退款
     if (!assetData || !assetData.success) {
       await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
-      return jsonResponse({ success: false, message: '限定池暂时空缺，积分已退还' });
+      return jsonResponse({ 
+        success: false, 
+        error: 'api_empty',
+        message: '卡池暂时空缺，积分已退还' 
+      });
     }
 
     // 4. 计算与 Batch 更新
