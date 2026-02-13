@@ -1682,7 +1682,7 @@ class GachaService {
 
   /**
    * [新增] 从随机图API获取图片
-   * 用于支持返回302重定向的随机图API
+   * 支持返回302重定向或直接返回图片数据的API
    */
   async fetchRandomImageAPI(apiUrl) {
     try {
@@ -1692,30 +1692,86 @@ class GachaService {
       
       console.log(`[RandomImageAPI] Fetching from: ${apiUrl}`);
       
-      // 调用随机图API，跟随重定向获取最终图片URL
-      const response = await fetch(apiUrl, {
-        method: 'HEAD',
+      // 方法1：尝试 HEAD 请求（适用于返回302重定向的API）
+      let response;
+      try {
+        response = await fetch(apiUrl, {
+          method: 'HEAD',
+          redirect: 'follow'
+        });
+        
+        // 如果 HEAD 成功且发生了重定向（URL变化）
+        if (response.ok && response.url !== apiUrl) {
+          console.log(`[RandomImageAPI] HEAD redirect success: ${response.url}`);
+          return {
+            success: true,
+            imageUrl: response.url,
+            rarity: 'UR',
+            sourceName: 'API Redirect'
+          };
+        }
+      } catch (headError) {
+        console.log(`[RandomImageAPI] HEAD request failed, trying GET: ${headError.message}`);
+      }
+      
+      // 方法2：使用 GET 请求（适用于直接返回图片或JSON的API）
+      response = await fetch(apiUrl, {
+        method: 'GET',
         redirect: 'follow'
       });
 
       if (!response.ok) {
-        console.error('[RandomImageAPI] Error:', response.status);
-        return { success: false, message: 'Failed to fetch random image' };
+        console.error('[RandomImageAPI] GET Error:', response.status, response.statusText);
+        return { success: false, message: `API returned ${response.status}` };
       }
 
-      // 获取重定向后的最终URL
-      const imageUrl = response.url;
-      console.log(`[RandomImageAPI] Got image URL: ${imageUrl}`);
-
+      // 获取最终URL（可能是重定向后的）
+      const finalUrl = response.url;
+      
+      // 检查内容类型
+      const contentType = response.headers.get('content-type') || '';
+      console.log(`[RandomImageAPI] Content-Type: ${contentType}`);
+      
+      // 如果直接返回图片数据
+      if (contentType.includes('image/')) {
+        console.log(`[RandomImageAPI] Direct image response: ${finalUrl}`);
+        return {
+          success: true,
+          imageUrl: finalUrl,
+          rarity: 'UR',
+          sourceName: 'API Direct'
+        };
+      }
+      
+      // 如果返回JSON，尝试解析图片URL
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        console.log(`[RandomImageAPI] JSON response:`, data);
+        
+        // 支持常见的JSON格式
+        const imageUrl = data.url || data.image || data.img || data.data?.url || data.data?.image;
+        if (imageUrl) {
+          return {
+            success: true,
+            imageUrl: imageUrl,
+            rarity: 'UR',
+            sourceName: 'API JSON'
+          };
+        }
+      }
+      
+      // 默认返回最终URL
+      console.log(`[RandomImageAPI] Using final URL: ${finalUrl}`);
       return {
         success: true,
-        imageUrl: imageUrl,
+        imageUrl: finalUrl,
         rarity: 'UR',
-        sourceName: 'GitHub Repository'
+        sourceName: 'API'
       };
+      
     } catch (e) {
       console.error('[RandomImageAPI] Error:', e);
-      return { success: false, message: 'Failed to get random image' };
+      return { success: false, message: 'Failed to get random image: ' + e.message };
     }
   }
 
