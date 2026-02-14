@@ -3861,40 +3861,7 @@ function getLibraryHtml(items, pager) {
       gap: 6px;
     }
     
-    .loading-indicator {
-      text-align: center;
-      padding: 40px 0;
-      color: #94A3B8;
-      font-size: 0.9rem;
-      column-span: all; 
-      display: block;
-      width: 100%;
-      margin-top: 20px;
-    }
-    
-    .end-message {
-      display: inline-block;
-      padding: 8px 20px;
-      background: #F1F5F9;
-      border-radius: 20px;
-      color: #CBD5E1;
-      font-size: 0.85rem;
-      letter-spacing: 1px;
-    }
-    
-    .loading-spinner {
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid #E2E8F0;
-      border-top-color: var(--primary);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-right: 10px;
-      vertical-align: middle;
-    }
-    
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
     
     #backToTop {
       position: fixed; bottom: 30px; right: 30px;
@@ -3969,17 +3936,7 @@ function getLibraryHtml(items, pager) {
           </div>
         `).join('')}
         
-        ${pager.currentPage < pager.totalPages ? `
-          <div class="loading-indicator" id="loadingIndicator">
-            <div class="loading-spinner"></div> 加载更多...
-          </div>
-        ` : ''}
-        
-        ${pager.currentPage >= pager.totalPages && items.length > 0 ? `
-          <div class="loading-indicator">
-            <span class="end-message">- 到底啦 -</span>
-          </div>
-        ` : ''}
+
       </div>
     </div>
   </div>
@@ -4015,19 +3972,13 @@ function getLibraryHtml(items, pager) {
       
       renderNewItems() {
         const masonryContainer = document.getElementById('masonryContainer');
-        const loadingIndicator = document.getElementById('loadingIndicator');
         
         for (let i = this.lastRenderedIndex + 1; i < this.allItems.length; i++) {
             const item = this.allItems[i];
             if (!item) continue;
 
             const itemElement = this.createItemElement(item, i);
-            
-            if (loadingIndicator && loadingIndicator.parentNode === masonryContainer) {
-                loadingIndicator.before(itemElement);
-            } else {
-                masonryContainer.appendChild(itemElement);
-            }
+            masonryContainer.appendChild(itemElement);
         }
         this.lastRenderedIndex = this.allItems.length - 1;
       },
@@ -4073,21 +4024,23 @@ function getLibraryHtml(items, pager) {
       
       setupInfiniteScroll() {
         const scrollContainer = document.getElementById('scrollContainer');
-        const observer = new IntersectionObserver((entries) => {
-          if (entries[0].isIntersecting && !this.isLoading && this.currentPage < this.totalPages) {
+        
+        // 使用滚动事件监听代替 IntersectionObserver
+        const handleScroll = () => {
+          if (this.isLoading || this.currentPage >= this.totalPages) return;
+          
+          const scrollTop = scrollContainer.scrollTop;
+          const scrollHeight = scrollContainer.scrollHeight;
+          const clientHeight = scrollContainer.clientHeight;
+          
+          // 距离底部 300px 时触发加载
+          if (scrollTop + clientHeight >= scrollHeight - 300) {
             this.loadMore();
           }
-        }, {
-          root: scrollContainer,
-          rootMargin: '200px', 
-          threshold: 0.1
-        });
+        };
         
-        const loadingIndicator = document.getElementById('loadingIndicator');
-        if (loadingIndicator) {
-          observer.observe(loadingIndicator);
-          this.observer = observer;
-        }
+        scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+        this.scrollHandler = handleScroll;
       },
       
       async loadMore() {
@@ -4125,28 +4078,11 @@ function getLibraryHtml(items, pager) {
                 setTimeout(() => this.loadMore(), 100);
               }
             }
-            
-            if (this.currentPage >= this.totalPages) {
-              const indicator = document.getElementById('loadingIndicator');
-              if (indicator) {
-                  indicator.innerHTML = '<span class="end-message">- 到底啦 -</span>';
-                  if(this.observer) this.observer.disconnect();
-              }
-            }
           } else {
              this.currentPage = this.totalPages; 
-             const indicator = document.getElementById('loadingIndicator');
-             if (indicator) {
-               indicator.innerHTML = '<span class="end-message">- 到底啦 -</span>';
-               if(this.observer) this.observer.disconnect();
-             }
           }
         } catch (error) {
           console.error('加载更多失败:', error);
-          const indicator = document.getElementById('loadingIndicator');
-          if (indicator) {
-            indicator.innerHTML = '<span style="color: var(--danger); cursor:pointer;" onclick="VirtualScroll.loadMore()">加载失败，点击重试</span>';
-          }
         } finally {
           this.isLoading = false;
         }
