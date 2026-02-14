@@ -2075,6 +2075,109 @@ const NEUTRAL_CSS = `
   @media (max-width: 768px) and (min-width: 481px) {
     #profileModal .modal-content > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) { grid-template-columns: repeat(4, 1fr); }
   }
+  
+  /* 上传弹窗专用样式 */
+  .upload-drop-zone {
+    border: 2px dashed #C4B5FD; /* 浅紫色虚线 */
+    border-radius: 16px;
+    padding: 30px 20px;
+    text-align: center;
+    background: #FAF5FF; /* 极浅紫色背景 */
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .upload-drop-zone:hover, .upload-drop-zone.drag-over {
+    background: #F3E8FF;
+    border-color: #7C3AED;
+    transform: scale(1.01);
+  }
+  
+  .upload-icon {
+    font-size: 3rem;
+    color: #A78BFA;
+    margin-bottom: 12px;
+    transition: 0.3s;
+  }
+  
+  .upload-drop-zone:hover .upload-icon {
+    color: #7C3AED;
+    transform: translateY(-5px);
+  }
+
+  .upload-preview-container {
+    margin-top: 15px;
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    display: none; /* 默认隐藏 */
+    border: 1px solid #E9D5FF;
+  }
+  
+  .upload-preview-img {
+    width: 100%;
+    max-height: 250px;
+    object-fit: contain;
+    background: #000; /* 图片背景黑底，防止透明图看不清 */
+    display: block;
+  }
+  
+  .upload-remove-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  
+  .upload-remove-btn:hover {
+    background: #EF4444;
+  }
+
+  .form-select-wrapper {
+    position: relative;
+    margin-bottom: 20px;
+  }
+  
+  .form-select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #E2E8F0;
+    border-radius: 12px;
+    background: white;
+    font-size: 1rem;
+    color: var(--text-main);
+    appearance: none; /* 移除默认箭头 */
+    cursor: pointer;
+    font-family: var(--font);
+    outline: none;
+    transition: 0.2s;
+  }
+  
+  .form-select:focus {
+    border-color: #A78BFA;
+    box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2);
+  }
+  
+  .select-arrow {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-light);
+    pointer-events: none;
+  }
 </style>
 `;
 
@@ -2374,31 +2477,51 @@ function getHtmlPage() {
   <div id="uploadModal" class="modal">
     <div class="modal-content">
       <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
-      <h3>上传图片</h3>
-      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:15px;">选择图片上传，审核通过后可加入抽卡池。</p>
-      <div style="border:2px dashed #C4B5FD; border-radius:12px; padding:30px; text-align:center; background:#FAF5FF; margin-bottom:15px;" id="uploadDropZone">
-        <i class="fas fa-cloud-upload-alt" style="font-size:2rem; color:#7C3AED; margin-bottom:10px;"></i>
-        <div style="color:#6B7280; margin-bottom:10px;">点击或拖拽图片到此处</div>
-        <div style="font-size:0.8rem; color:#9CA3AF;">支持 JPG, PNG, GIF, WebP (最大 5MB)</div>
+      
+      <h3 style="margin-top:0; color:var(--text-main);">
+        <i class="fas fa-cloud-upload-alt" style="color:#7C3AED; margin-right:8px;"></i>上传图片
+      </h3>
+      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:20px;">
+        分享你的收藏到图鉴池（需审核）
+      </p>
+
+      <!-- 拖拽上传区 -->
+      <div class="upload-drop-zone" id="uploadDropZone">
+        <i class="fas fa-images upload-icon"></i>
+        <div style="color:var(--text-main); font-weight:600; margin-bottom:4px;">点击或拖拽图片到此处</div>
+        <div style="font-size:0.8rem; color:#9CA3AF;">支持 JPG, PNG, GIF, WebP (Max 5MB)</div>
         <input type="file" id="uploadInput" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;">
       </div>
-      <div id="uploadPreview" style="display:none; margin-bottom:15px;">
-        <img id="uploadPreviewImg" style="max-width:100%; max-height:200px; border-radius:8px; border:1px solid #E2E8F0;">
+
+      <!-- 图片预览区 -->
+      <div class="upload-preview-container" id="uploadPreview">
+        <div class="upload-remove-btn" onclick="App.clearUpload()" title="移除图片">
+          <i class="fas fa-times"></i>
+        </div>
+        <img id="uploadPreviewImg" class="upload-preview-img">
       </div>
-      <div style="margin-bottom:15px;">
-        <label style="display:block; margin-bottom:5px; color:#374151; font-size:0.9rem;">期望稀有度:</label>
-        <select id="uploadRarity" style="width:100%; padding:10px; border:2px solid #E2E8F0; border-radius:8px; font-family:var(--font);">
-          <option value="N">N (普通)</option>
-          <option value="R">R (稀有)</option>
-          <option value="SR">SR (超稀有)</option>
-          <option value="SSR">SSR (特级超稀有)</option>
-          <option value="UR">UR (极度稀有)</option>
-        </select>
+
+      <div style="margin-top: 20px;">
+        <label style="display:block; margin-bottom:8px; color:var(--text-main); font-weight:600; font-size:0.9rem;">
+          期望稀有度
+        </label>
+        <div class="form-select-wrapper">
+          <select id="uploadRarity" class="form-select">
+            <option value="N">N (普通)</option>
+            <option value="R">R (稀有)</option>
+            <option value="SR">SR (超稀有)</option>
+            <option value="SSR">SSR (特级超稀有)</option>
+            <option value="UR">UR (极度稀有)</option>
+          </select>
+          <i class="fas fa-chevron-down select-arrow"></i>
+        </div>
       </div>
-      <button class="btn" style="width:100%;" onclick="App.doUpload()" id="uploadBtn">
-        <i class="fas fa-upload"></i> 上传
+
+      <button class="btn" style="width:100%; background:linear-gradient(135deg, #8B5CF6, #6D28D9); box-shadow:0 4px 0 #5B21B6;" onclick="App.doUpload()" id="uploadBtn">
+        <i class="fas fa-paper-plane"></i> 提交审核
       </button>
-      <div id="uploadMsg" style="margin-top:15px; font-weight:bold; height:20px; color:#334155; text-align:center;"></div>
+      
+      <div id="uploadMsg" style="margin-top:15px; font-weight:bold; height:20px; font-size:0.9rem; transition:0.3s;"></div>
     </div>
   </div>
 
@@ -3425,32 +3548,93 @@ function getHtmlPage() {
       openDice() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('diceModal').classList.add('show'); document.getElementById('diceIcon').className = 'fas fa-dice-d6'; document.getElementById('diceMsg').innerText = ''; },
       openUpload() { 
         if(!this.username) return document.getElementById('authModal').classList.add('show'); 
-        document.getElementById('uploadModal').classList.add('show'); 
-        document.getElementById('uploadMsg').innerText = '';
-        document.getElementById('uploadPreview').style.display = 'none';
-        document.getElementById('uploadInput').value = '';
         
-        // 绑定文件选择事件
-        const input = document.getElementById('uploadInput');
-        const dropZone = document.getElementById('uploadDropZone');
+        const modal = document.getElementById('uploadModal');
+        modal.classList.add('show'); 
         
-        input.onchange = (e) => {
-          if(e.target.files && e.target.files[0]) {
-            this.previewUpload(e.target.files[0]);
+        // 重置状态
+        this.clearUpload();
+        
+        // 绑定拖拽事件 (只需要绑定一次，避免重复绑定)
+        if (!this._uploadEventsBound) {
+            const dropZone = document.getElementById('uploadDropZone');
+            const input = document.getElementById('uploadInput');
+            
+            // 点击触发文件选择
+            dropZone.onclick = (e) => {
+                // 防止点击预览区的删除按钮冒泡触发
+                if(e.target.closest('.upload-remove-btn')) return;
+                input.click();
+            };
+            
+            // 文件选择变化
+            input.onchange = (e) => {
+                if(e.target.files && e.target.files[0]) {
+                    this.handleFileSelect(e.target.files[0]);
+                }
+            };
+            
+            // 拖拽进入
+            dropZone.ondragover = (e) => { 
+                e.preventDefault(); 
+                dropZone.classList.add('drag-over');
+            };
+            
+            // 拖拽离开
+            dropZone.ondragleave = () => { 
+                dropZone.classList.remove('drag-over'); 
+            };
+            
+            // 放置文件
+            dropZone.ondrop = (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+                if(e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    // 将拖拽的文件赋值给 input，方便后续统一处理
+                    input.files = e.dataTransfer.files;
+                    this.handleFileSelect(e.dataTransfer.files[0]);
+                }
+            };
+            
+            this._uploadEventsBound = true;
+        }
+      },
+      // 处理文件选择并预览
+      handleFileSelect(file) {
+          const msg = document.getElementById('uploadMsg');
+          const preview = document.getElementById('uploadPreview');
+          const previewImg = document.getElementById('uploadPreviewImg');
+          const dropZone = document.getElementById('uploadDropZone');
+
+          // 基础校验
+          const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+          if(!allowedTypes.includes(file.type)) {
+              this.showUploadMsg('不支持的文件类型 (仅限 JPG, PNG, GIF, WebP)', 'error');
+              return;
           }
-        };
-        
-        dropZone.onclick = () => input.click();
-        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.background = '#E9D5FF'; };
-        dropZone.ondragleave = () => { dropZone.style.background = '#FAF5FF'; };
-        dropZone.ondrop = (e) => {
-          e.preventDefault();
-          dropZone.style.background = '#FAF5FF';
-          if(e.dataTransfer.files && e.dataTransfer.files[0]) {
-            input.files = e.dataTransfer.files;
-            this.previewUpload(e.dataTransfer.files[0]);
+          if(file.size > 5 * 1024 * 1024) {
+              this.showUploadMsg('文件过大，最大支持 5MB', 'error');
+              return;
           }
-        };
+
+          // 读取预览
+          const reader = new FileReader();
+          reader.onload = (e) => {
+              previewImg.src = e.target.result;
+              preview.style.display = 'block'; // 显示预览图
+              dropZone.style.display = 'none'; // 隐藏上传框
+              this.showUploadMsg('', 'normal'); // 清空错误
+          };
+          reader.readAsDataURL(file);
+      },
+
+      // 清除当前选择的文件
+      clearUpload() {
+          document.getElementById('uploadInput').value = '';
+          document.getElementById('uploadPreview').style.display = 'none';
+          document.getElementById('uploadDropZone').style.display = 'block';
+          document.getElementById('uploadPreviewImg').src = '';
+          this.showUploadMsg('', 'normal');
       },
       previewUpload(file) {
         const reader = new FileReader();
@@ -3460,40 +3644,38 @@ function getHtmlPage() {
         };
         reader.readAsDataURL(file);
       },
+      showUploadMsg(text, type) {
+          const el = document.getElementById('uploadMsg');
+          el.innerText = text;
+          if (type === 'error') {
+              el.style.color = '#EF4444';
+              this.animate('uploadModal', 'error'); // 震动反馈
+          } else if (type === 'success') {
+              el.style.color = '#10B981';
+          } else {
+              el.style.color = '#334155';
+          }
+      },
+
       async doUpload() {
         if(this.loading) return;
         
         const input = document.getElementById('uploadInput');
         const rarity = document.getElementById('uploadRarity').value;
-        const msg = document.getElementById('uploadMsg');
+        const btn = document.getElementById('uploadBtn');
         
         if(!input.files || !input.files[0]) {
-          msg.innerText = '请先选择图片';
-          msg.style.color = '#EF4444';
+          this.showUploadMsg('请先选择一张图片', 'error');
           return;
         }
         
         const file = input.files[0];
         
-        // 验证文件类型
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        if(!allowedTypes.includes(file.type)) {
-          msg.innerText = '不支持的文件类型';
-          msg.style.color = '#EF4444';
-          return;
-        }
-        
-        // 验证文件大小 (5MB)
-        if(file.size > 5 * 1024 * 1024) {
-          msg.innerText = '文件过大，最大支持5MB';
-          msg.style.color = '#EF4444';
-          return;
-        }
-        
+        // 开始上传
         this.loading = true;
-        msg.innerText = '上传中...';
-        msg.style.color = '#6B7280';
-        document.getElementById('uploadBtn').disabled = true;
+        this.showUploadMsg('正在上传到云端...', 'normal');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上传中...';
         
         try {
           const formData = new FormData();
@@ -3509,23 +3691,29 @@ function getHtmlPage() {
           const data = await res.json();
           
           if(data.error) {
-            msg.innerText = this.mapError(data.error);
-            msg.style.color = '#EF4444';
+            this.showUploadMsg(this.mapError(data.error), 'error');
             this.vibrate('failure');
           } else {
-            msg.innerText = '上传成功！等待审核';
-            msg.style.color = '#10B981';
+            this.showUploadMsg('上传成功！已进入审核队列', 'success');
             this.vibrate('success');
-            this.toast('图片上传成功', 'ok');
-            setTimeout(() => this.closeModals(), 1500);
+            // 成功动画
+            const previewImg = document.getElementById('uploadPreviewImg');
+            previewImg.style.transform = "scale(0.5)";
+            previewImg.style.opacity = "0";
+            previewImg.style.transition = "all 0.5s ease";
+
+            setTimeout(() => {
+                this.closeModals();
+                this.toast('图片上传成功', 'ok');
+            }, 1000);
           }
         } catch(e) {
-          msg.innerText = '上传失败';
-          msg.style.color = '#EF4444';
-          this.vibrate('failure');
+          console.error(e);
+          this.showUploadMsg('网络连接失败', 'error');
         } finally {
           this.loading = false;
-          document.getElementById('uploadBtn').disabled = false;
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane"></i> 提交审核';
         }
       },
       async playDice(prediction) {
