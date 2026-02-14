@@ -30,10 +30,10 @@ const BUSINESS_CONFIG = {
         type: 'api'
       },
       'github_repo': {
-        name: 'GitHub图库',
-        description: '从GitHub仓库随机获取图片',
+        name: '玩家共建池',
+        description: '由玩家上传的精选图片库，持续更新中',
         sources: [
-          { name: 'GitHub Random', url: 'https://github_images.cszxorx.dpdns.org/', rarity: 'UR' }
+          { name: 'Community Uploads', url: 'https://github_images.cszxorx.dpdns.org/', rarity: 'UR' } 
         ],
         type: 'api'
       }
@@ -777,7 +777,7 @@ async function uploadToGithub(env, path, content, extension, message) {
         'Authorization': `token ${githubToken}`,
         'Content-Type': 'application/json',
         'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'Chouka-Worker'
+        'User-Agent': 'Chouka-Worker-App' // 必须添加 User-Agent
       },
       body: JSON.stringify(requestBody)
     });
@@ -1274,32 +1274,41 @@ class GachaService {
 
       const beijingNow = getBeijingTime();
       const timestamp = beijingNow.getTime();
+      // 优化文件名：使用 用户ID_时间戳_随机码，避免中文或特殊符号导致API读取错误
       const randomStr = Math.random().toString(36).slice(2, 8);
+      // 获取后缀名，默认为 jpg
       const extension = file.type.split('/')[1] || 'jpg';
-      const filename = `${currentUser.id}_${timestamp}_${randomStr}.${extension}`;
-      const githubPath = `${CONFIG.GITHUB.PATH_PREFIX}/${filename}`;
+      const safeFilename = `${currentUser.id}_${timestamp}_${randomStr}.${extension}`;
+      
+      // 注意：确保这里的 images/ 对应您 GitHub 仓库里的实际图片存放目录
+      // 如果您的 API 读的是根目录，请改为 const githubPath = safeFilename;
+      const githubPath = `${CONFIG.GITHUB.PATH_PREFIX}/${safeFilename}`;
 
       const githubUrl = await uploadToGithub(
         this.env,
         githubPath,
         fileBuffer,
         extension,
-        `Upload image from user ${currentUser.username} at ${new Date().toISOString()}`
+        `User ${currentUser.username} upload: ${safeFilename}`
       );
 
       if (!githubUrl) {
         console.error('[Upload] GitHub upload failed for user:', currentUser.username);
-        return jsonResponse({ error: 'Failed to upload to GitHub. Please check server logs or contact admin.' }, 500);
+        return jsonResponse({ error: 'Failed to upload to GitHub. Please try again later.' }, 500);
       }
 
+      // 写入数据库记录，初始状态为 approved (如果是自建库且想直接生效) 
+      // 或者 pending (如果需要审核，但在GitHub上文件已经存在了，API可能会读到)
+      // 建议保持 pending，审核通过只影响 "我的上传" 列表的展示
       await this.env.DB.prepare(
         'INSERT INTO user_uploads (user_id, username, r2_key, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
       ).bind(currentUser.id, currentUser.username, githubPath, githubUrl, rarity, 'pending', timestamp).run();
-      console.log(`[Upload] User ${currentUser.username} uploaded image: ${githubPath}`);
+      
+      console.log(`[Upload] Success: ${githubPath}`);
 
       return jsonResponse({
         success: true,
-        message: 'Image uploaded successfully, awaiting review',
+        message: '上传成功！图片将进入审核队列，审核通过后将在图鉴中展示。', // 提示语优化
         imageUrl: githubUrl,
         uploadId: timestamp
       });
@@ -1340,34 +1349,48 @@ class GachaService {
       
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Referer': new URL(apiUrl).origin
+        // 明确告诉API我们接受什么
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
       };
 
+      // 优化策略 1: 优先尝试 HEAD 请求获取重定向地址
+      // 这比 GET 更快，因为它不下载图片内容，只拿 Header
       try {
-        const headRes = await fetch(apiUrl, { method: 'HEAD', headers, redirect: 'follow' });
-        if (headRes.ok && headRes.url !== apiUrl) {
+        const headRes = await fetch(apiUrl, { 
+            method: 'HEAD', 
+            headers, 
+            redirect: 'follow' // 让 fetch 跟随跳转，最终 res.url 就是真实图片地址
+        });
+        
+        if (headRes.ok) {
+          // 如果最终URL和请求URL不同，说明发生了重定向，这就是真实图片URL
+          // 或者如果 API 本身就直接返回图片，URL 也是可用的
           return {
             success: true,
             imageUrl: headRes.url,
-            rarity: 'UR',
-            sourceName: 'API Redirect'
+            rarity: 'UR', // 限定池默认 UR
+            sourceName: 'GitHub Repo'
           };
         }
-      } catch (headError) {}
+      } catch (headError) {
+        console.warn('[RandomImageAPI] HEAD failed, falling back to GET', headError);
+      }
 
+      // 优化策略 2: 如果 HEAD 失败 (有些API不支持 HEAD)，使用 GET
       const response = await fetch(apiUrl, { method: 'GET', headers, redirect: 'follow' });
 
       if (!response.ok) {
         return { success: false, message: `API returned ${response.status}` };
       }
 
-      const finalUrl = response.url;
       const contentType = response.headers.get('content-type') || '';
-      
+      const finalUrl = response.url;
+
+      // 情况 A: API 返回的是 JSON (例如 { "url": "..." })
       if (contentType.includes('application/json')) {
         try {
           const data = await response.json();
+          // 尝试匹配常见的字段名
           const imageUrl = data.url || data.img || data.image || data.data?.url || (Array.isArray(data) ? data[0].url : null);
           if (imageUrl) {
             return { success: true, imageUrl: imageUrl, rarity: 'UR', sourceName: 'API JSON' };
@@ -1375,11 +1398,13 @@ class GachaService {
         } catch(e) {}
       }
       
+      // 情况 B: API 返回的是图片 (通过 302 跳转到了最终图片，或者直接返回二进制流)
+      // 使用 finalUrl 作为图片地址
       return {
         success: true,
         imageUrl: finalUrl,
         rarity: 'UR',
-        sourceName: 'API'
+        sourceName: 'API Redirect'
       };
       
     } catch (e) {
