@@ -1556,11 +1556,11 @@ async function handleLibraryApi(request, env) {
 
     // 2. 优化 Count 查询：尝试从 KV 获取总数，如果没有再查库 (缓存 5 分钟)
     let totalItems = await env.KV_CACHE.get(countKey, { type: 'json' });
+    let shouldCacheCount = false;
     if (totalItems === null) {
        const countRes = await env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first();
        totalItems = countRes.total || 0;
-       // 异步写入缓存，不阻塞主线程
-       env.ctx.waitUntil(env.KV_CACHE.put(countKey, JSON.stringify(totalItems), { expirationTtl: 300 }));
+       shouldCacheCount = true;
     }
 
     // 3. 查库获取数据
@@ -1583,8 +1583,20 @@ async function handleLibraryApi(request, env) {
       }
     };
 
-    // 4. 写入数据缓存 (60秒)
-    env.ctx.waitUntil(env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: 60 }));
+    // 4. 写入缓存（同步等待以确保成功）
+    if (shouldCacheCount) {
+      try {
+        await env.KV_CACHE.put(countKey, JSON.stringify(totalItems), { expirationTtl: 300 });
+      } catch (cacheErr) {
+        console.error('Failed to cache count:', cacheErr);
+      }
+    }
+    
+    try {
+      await env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: 60 });
+    } catch (cacheErr) {
+      console.error('Failed to cache response:', cacheErr);
+    }
 
     return jsonResponse(responseData, 200, {
       'X-Cache-Status': 'MISS',
@@ -4086,12 +4098,33 @@ function getLibraryHtml(items, pager) {
         
         try {
           const response = await fetch(\`/api/library/items?page=\${nextPage}&pageSize=\${this.pageSize}\`);
+          if (!response.ok) {
+            throw new Error(\`HTTP error! status: \${response.status}\`);
+          }
           const data = await response.json();
           
+          // 更新总页数（后端可能重新计算）
+          if (data.pagination) {
+            this.totalPages = data.pagination.totalPages;
+            this.totalItems = data.pagination.totalItems;
+          }
+          
           if (data.items && data.items.length > 0) {
-            this.allItems = this.allItems.concat(data.items);
-            this.currentPage = nextPage;
-            this.renderNewItems();
+            // 防止重复添加（根据 URL 去重）
+            const existingUrls = new Set(this.allItems.map(item => item.url));
+            const newItems = data.items.filter(item => !existingUrls.has(item.url));
+            
+            if (newItems.length > 0) {
+              this.allItems = this.allItems.concat(newItems);
+              this.currentPage = data.pagination ? data.pagination.currentPage : nextPage;
+              this.renderNewItems();
+            } else if (this.currentPage < this.totalPages) {
+              // 如果没有新数据但还有下一页，尝试继续加载
+              this.currentPage = nextPage;
+              if (this.currentPage < this.totalPages) {
+                setTimeout(() => this.loadMore(), 100);
+              }
+            }
             
             if (this.currentPage >= this.totalPages) {
               const indicator = document.getElementById('loadingIndicator');
@@ -4103,7 +4136,10 @@ function getLibraryHtml(items, pager) {
           } else {
              this.currentPage = this.totalPages; 
              const indicator = document.getElementById('loadingIndicator');
-             if (indicator) indicator.remove();
+             if (indicator) {
+               indicator.innerHTML = '<span class="end-message">- 到底啦 -</span>';
+               if(this.observer) this.observer.disconnect();
+             }
           }
         } catch (error) {
           console.error('加载更多失败:', error);
