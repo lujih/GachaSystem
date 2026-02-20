@@ -2036,6 +2036,10 @@ const NEUTRAL_CSS = `
   .form-select { width: 100%; padding: 12px 15px; border: 2px solid #E2E8F0; border-radius: 12px; background: white; font-size: 1rem; color: var(--text-main); appearance: none; cursor: pointer; font-family: var(--font); outline: none; transition: 0.2s; }
   .form-select:focus { border-color: #A78BFA; box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2); }
   .select-arrow { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: var(--text-light); pointer-events: none; }
+  .modal-img { max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); object-fit: contain; animation: imgZoomIn 0.2s ease; }
+  @keyframes imgZoomIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .modal-close-img { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 1.2rem; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; }
+  .modal-close-img:hover { background: rgba(239,68,68,0.9); }
   .stat-card { background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 15px; text-align: center; }
   .stat-val { font-size: 1.5rem; font-weight: bold; color: var(--text-main); }
   .stat-label { font-size: 0.8rem; color: var(--text-light); }
@@ -2594,8 +2598,9 @@ function getHtmlPage() {
     </div>
   </div>
 
-  <div id="imgModal" class="modal" onclick="this.classList.remove('show')">
-    <img id="bigImg" style="max-width:95%; max-height:90vh; border-radius:8px;">
+  <div id="imgModal" class="modal" onclick="if(event.target === this) this.classList.remove('show')">
+    <button class="modal-close-img" onclick="document.getElementById('imgModal').classList.remove('show')"><i class="fas fa-times"></i></button>
+    <img id="bigImg" class="modal-img" alt="预览">
   </div>
 
   <script>
@@ -3915,6 +3920,10 @@ function getLibraryHtml(items, pager) {
     #backToTop:active { transform: scale(0.95); }
     .empty-state { text-align: center; padding: 100px 20px; color: #94A3B8; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; }
     .empty-state i { font-size: 4rem; margin-bottom: 20px; color: #E2E8F0; }
+    .modal-img { max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); object-fit: contain; animation: imgZoomIn 0.2s ease; }
+    @keyframes imgZoomIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .modal-close-img { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 1.2rem; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; }
+    .modal-close-img:hover { background: rgba(239,68,68,0.9); }
   </style>
   `;
 
@@ -3973,8 +3982,9 @@ function getLibraryHtml(items, pager) {
     <i class="fas fa-arrow-up"></i>
   </button>
 
-  <div id="imgModal" class="modal" onclick="this.classList.remove('show')">
-    <img id="bigImg" style="max-width:95%; max-height:90vh; border-radius:8px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+  <div id="imgModal" class="modal" onclick="if(event.target === this) this.classList.remove('show')">
+    <button class="modal-close-img" onclick="document.getElementById('imgModal').classList.remove('show')"><i class="fas fa-times"></i></button>
+    <img id="bigImg" class="modal-img" alt="预览" onload="this.classList.add('loaded')">
   </div>
 
   <script>
@@ -4126,9 +4136,13 @@ function getLibraryHtml(items, pager) {
       },
       
       show(url) {
+        const modal = document.getElementById('imgModal');
         const img = document.getElementById('bigImg');
+        img.classList.remove('loaded');
+        img.style.opacity = '0';
+        img.onload = () => { img.style.opacity = '1'; };
         img.src = url;
-        document.getElementById('imgModal').classList.add('show');
+        modal.classList.add('show');
       }
     };
     
