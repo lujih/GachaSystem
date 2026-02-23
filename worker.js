@@ -2248,7 +2248,7 @@ function getHtmlPage() {
     </div>
     <div class="header-right">
 <div class="user-pill" onclick="window.location.href='/user/profile'">
-          <img class="user-avatar" id="navAvatar" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><circle cx='18' cy='18' r='18' fill='%23ddd'/></svg>" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 36 36\\'><circle cx=\\'18\\' cy=\\'18\\' r=\\'18\\' fill=\\'%23ddd\\'/></svg>'" />
+          <img class="user-avatar" id="navAvatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=default" />
           <div class="user-info">
            <span class="user-name" id="navNickname">游客</span>
 <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
@@ -4197,7 +4197,7 @@ function getProfilePage() {
 
   <div class="glass-card" style="padding: 30px;">
     <div class="profile-header">
-      <img class="avatar-large" id="profileAvatar" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23ddd'/></svg>" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 100 100\\'><circle cx=\\'50\\' cy=\\'50\\' r=\\'50\\' fill=\\'%23ddd\\'/></svg>'" />
+      <img class="avatar-large" id="profileAvatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=default" />
       <h2 id="profileNickname" style="margin: 0 0 5px 0;">加载中...</h2>
       <div style="color: #94A3B8;">@<span id="profileUsername">...</span></div>
     </div>
