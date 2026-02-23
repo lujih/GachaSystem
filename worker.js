@@ -234,7 +234,7 @@ export default {
 
     if (pathname.startsWith('/auth') || pathname.startsWith('/user') || pathname.startsWith('/draw') || 
         pathname.startsWith('/shop') || pathname.startsWith('/game') || pathname.startsWith('/admin')) {
-      return jsonResponse({ error: 'Not Found' }, 404);
+      return jsonResponse({ error: '未找到' }, 404);
     }
 
     return new Response('Not Found', { status: 404 });
@@ -366,7 +366,7 @@ class UserService {
 
   async register(request) {
     const { username, nickname, password } = await request.json();
-    if (!username || !password) return jsonResponse({ error: 'Missing fields' }, 400);
+    if (!username || !password) return jsonResponse({ error: '缺少必要字段' }, 400);
 
     try {
       const hashedPassword = await this.hashPassword(password);
@@ -389,18 +389,18 @@ class UserService {
       return jsonResponse({ success: true });
     } catch (e) {
       console.error(e);
-      return jsonResponse({ error: 'Username Taken' }, 409);
+      return jsonResponse({ error: '用户名已被占用' }, 409);
     }
   }
 
   async checkIn(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
 
     const user = await this.env.DB.prepare(
       'SELECT id, login_streak, last_login_date FROM users WHERE id = ?'
     ).bind(currentUser.id).first();
 
-    if (!user) return jsonResponse({ error: 'User not found' }, 404);
+    if (!user) return jsonResponse({ error: '用户不存在' }, 404);
 
     // 使用北京时间
     const now = new Date();
@@ -414,7 +414,7 @@ class UserService {
     })() : null;
 
     if (lastDateStr === todayStr) {
-      return jsonResponse({ error: 'Already checked in today' }, 400);
+      return jsonResponse({ error: '今日已签到' }, 400);
     }
 
     // 计算连续签到（基于北京时间）
@@ -449,7 +449,7 @@ class UserService {
     `).bind(coinsReward, expReward, beijingISOString, streak, currentUser.id, todayStr).run();
 
     if (result.meta.changes === 0) {
-      return jsonResponse({ error: 'Already checked in today' }, 400);
+      return jsonResponse({ error: '今日已签到' }, 400);
     }
 
     currentUser.total_exp = (currentUser.total_exp || 0) + expReward;
@@ -482,18 +482,18 @@ class UserService {
   }
 
   async claimReward(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     
     const { targetLevel } = await request.json();
     const level = parseInt(targetLevel);
     
     if (isNaN(level) || !CONFIG.LEVEL.REWARDS.MILESTONES[level]) {
-      return jsonResponse({ error: 'Invalid reward level' }, 400);
+      return jsonResponse({ error: '无效的奖励等级' }, 400);
     }
 
     const user = await this.env.DB.prepare('SELECT level FROM users WHERE id = ?').bind(currentUser.id).first();
     if (user.level < level) {
-      return jsonResponse({ error: 'Level requirement not met' }, 403);
+      return jsonResponse({ error: '未达到等级要求' }, 403);
     }
 
     const claimed = await this.env.DB.prepare(
@@ -501,7 +501,7 @@ class UserService {
     ).bind(currentUser.id, level).first();
 
     if (claimed) {
-      return jsonResponse({ error: 'Reward already claimed' }, 409);
+      return jsonResponse({ error: '奖励已领取' }, 409);
     }
 
     const rewardConfig = CONFIG.LEVEL.REWARDS.MILESTONES[level];
@@ -544,11 +544,11 @@ class UserService {
       'SELECT id, username, nickname, password, coins, level, exp, total_exp FROM users WHERE username = ?'
     ).bind(username).first();
 
-    if (!user) return jsonResponse({ error: 'Invalid Credentials' }, 403);
+    if (!user) return jsonResponse({ error: '凭证无效' }, 403);
 
     const isPasswordValid = await this.verifyPassword(password, user.password);
     if (!isPasswordValid) {
-      return jsonResponse({ error: 'Invalid Credentials' }, 403);
+      return jsonResponse({ error: '凭证无效' }, 403);
     }
 
     const totalExp = user.total_exp || 0;
@@ -586,7 +586,7 @@ class UserService {
   }
 
   async getInfo(currentUser) {
-    if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+    if (!currentUser) return jsonResponse({ error: '未授权' }, 401);
 
     const cacheKey = `uinfo:${currentUser.id}`;
     const cachedData = await this.env.KV_CACHE.get(cacheKey, { type: 'json' });
@@ -608,7 +608,7 @@ class UserService {
     `;
 
     const userRes = await this.env.DB.prepare(sql).bind(currentUser.id).first();
-    if (!userRes) return jsonResponse({ error: 'User Not Found' }, 404);
+    if (!userRes) return jsonResponse({ error: '用户不存在' }, 404);
 
     const totalExp = userRes.total_exp || 0;
     const { level: calculatedLevel, currentExp } = this.calculateLevelFromTotalExp(totalExp);
@@ -642,7 +642,7 @@ class UserService {
   }
 
   async getInventory(currentUser) {
-    if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+    if (!currentUser) return jsonResponse({ error: '未授权' }, 401);
     
     const cacheKey = `uinv:${currentUser.id}`;
     const cached = await this.env.KV_CACHE.get(cacheKey, { type: 'json' });
@@ -669,7 +669,7 @@ class UserService {
   }
 
   async getTitles(currentUser) {
-    if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+    if (!currentUser) return jsonResponse({ error: '未授权' }, 401);
     
     const titles = await this.env.DB.prepare(
       'SELECT title_id, is_equipped, unlocked_at FROM user_titles WHERE user_id = ? ORDER BY unlocked_at DESC'
@@ -682,20 +682,20 @@ class UserService {
   }
 
   async equipTitle(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+    if (!currentUser) return jsonResponse({ error: '未授权' }, 401);
     const { titleId } = await request.json();
     
     if (!titleId) {
       await this.env.DB.prepare('UPDATE user_titles SET is_equipped = 0 WHERE user_id = ?').bind(currentUser.id).run();
       await this.invalidateUserCache(currentUser.id);
-      return jsonResponse({ success: true, message: 'Title unequipped' });
+      return jsonResponse({ success: true, message: '称号已卸下' });
     }
 
     const hasTitle = await this.env.DB.prepare(
       'SELECT id FROM user_titles WHERE user_id = ? AND title_id = ?'
     ).bind(currentUser.id, titleId).first();
 
-    if (!hasTitle) return jsonResponse({ error: 'Title not owned' }, 403);
+    if (!hasTitle) return jsonResponse({ error: '未拥有该称号' }, 403);
 
     const batch = [
       this.env.DB.prepare('UPDATE user_titles SET is_equipped = 0 WHERE user_id = ?').bind(currentUser.id),
@@ -706,15 +706,15 @@ class UserService {
      
     await this.invalidateUserCache(currentUser.id);
      
-    return jsonResponse({ success: true, message: 'Title equipped', title: { name: titleId } });
+    return jsonResponse({ success: true, message: '称号已佩戴', title: { name: titleId } });
   }
 
   async updateProfile(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+    if (!currentUser) return jsonResponse({ error: '未授权' }, 401);
     const { nickname } = await request.json();
     
     if (!nickname || nickname.length > 20) {
-      return jsonResponse({ error: 'Invalid Nickname' }, 400);
+      return jsonResponse({ error: '无效的昵称' }, 400);
     }
 
     try {
@@ -726,7 +726,7 @@ class UserService {
       return jsonResponse({ success: true, nickname });
     } catch(e) {
       console.error('Update profile error:', e);
-      return jsonResponse({ error: 'Update failed' }, 500);
+      return jsonResponse({ error: '更新失败' }, 500);
     }
   }  
 }
@@ -897,7 +897,7 @@ class GachaService {
   }
 
   async draw(currentUser) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     
     const targetSource = CONFIG.SOURCES[Math.floor(Math.random() * CONFIG.SOURCES.length)];
     const targetRarity = targetSource.rarity;
@@ -961,7 +961,7 @@ class GachaService {
   }
 
   async getLimitedPools(currentUser) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     
     try {
       const uploadCount = await this.env.DB.prepare(
@@ -985,12 +985,12 @@ class GachaService {
       });
     } catch (e) {
       console.error('[Get Pools Error]:', e);
-      return jsonResponse({ error: 'Failed to get pools' }, 500);
+      return jsonResponse({ error: '获取卡池失败' }, 500);
     }
   }
 
   async drawLimited(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     const cost = CONFIG.LIMITED.COST;
     
     let poolId = CONFIG.LIMITED.DEFAULT_POOL;
@@ -1006,14 +1006,14 @@ class GachaService {
 
     const pool = CONFIG.LIMITED.POOLS[poolId];
     if (!pool) {
-      return jsonResponse({ error: 'Invalid pool' }, 400);
+      return jsonResponse({ error: '无效的卡池' }, 400);
     }
 
     const deductRes = await this.env.DB.prepare(
       'UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ? AND coins >= ?'
     ).bind(cost, currentUser.id, cost).run();
 
-    if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
+    if (deductRes.meta.changes === 0) return jsonResponse({ error: '积分不足' }, 403);
     
     currentUser.coins = (currentUser.coins || cost) - cost;
 
@@ -1073,11 +1073,11 @@ class GachaService {
   }
 
   async craft(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     const { targetRarity } = await request.json();
     const recipe = { 'R': 'N', 'SR': 'R', 'SSR': 'SR', 'UR': 'SSR' };
     const costRarity = recipe[targetRarity];
-    if (!costRarity) return jsonResponse({ error: 'Invalid Recipe' }, 400);
+    if (!costRarity) return jsonResponse({ error: '无效的配方' }, 400);
 
     const deductRes = await this.env.DB.prepare(
       'UPDATE inventory SET count = count - 5 WHERE user_id = ? AND rarity = ? AND count >= 5'
@@ -1134,13 +1134,13 @@ class GachaService {
   }
 
   async shopBuy(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     const { targetRarity } = await request.json();
     const price = CONFIG.GAME.SHOP[targetRarity];
-    if (!price) return jsonResponse({ error: 'Invalid Pack' }, 400);
+    if (!price) return jsonResponse({ error: '无效的礼包' }, 400);
 
     const deductRes = await this.env.DB.prepare('UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?').bind(price, currentUser.id, price).run();
-    if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
+    if (deductRes.meta.changes === 0) return jsonResponse({ error: '积分不足' }, 403);
     
     currentUser.coins = (currentUser.coins || price) - price;
 
@@ -1189,14 +1189,14 @@ class GachaService {
   }
 
   async playDice(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     const { betAmount, prediction } = await request.json();
     const bet = parseInt(betAmount);
-    if (isNaN(bet) || bet < 10 || bet > 1000) return jsonResponse({ error: 'Invalid Bet' }, 400);
-    if (!['small', 'big'].includes(prediction)) return jsonResponse({ error: 'Invalid Prediction' }, 400);
+    if (isNaN(bet) || bet < 10 || bet > 1000) return jsonResponse({ error: '无效的投注' }, 400);
+    if (!['small', 'big'].includes(prediction)) return jsonResponse({ error: '无效的预测' }, 400);
 
     const deductRes = await this.env.DB.prepare('UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?').bind(bet, currentUser.id, bet).run();
-    if (deductRes.meta.changes === 0) return jsonResponse({ error: 'Not Enough Points' }, 403);
+    if (deductRes.meta.changes === 0) return jsonResponse({ error: '积分不足' }, 403);
     
     currentUser.coins = (currentUser.coins || bet) - bet;
 
@@ -1252,23 +1252,23 @@ class GachaService {
   }
 
   async uploadImage(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
 
     try {
       const formData = await request.formData();
       const file = formData.get('image');
       const rarity = formData.get('rarity') || 'N';
 
-      if (!file) return jsonResponse({ error: 'No image provided' }, 400);
+      if (!file) return jsonResponse({ error: '未提供图片' }, 400);
 
       const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
       if (!allowedTypes.includes(file.type)) {
-        return jsonResponse({ error: 'Invalid file type. Only JPEG, PNG, GIF, WebP allowed' }, 400);
+        return jsonResponse({ error: '无效的文件类型，仅允许 JPEG, PNG, GIF, WebP' }, 400);
       }
 
       const maxSize = 5 * 1024 * 1024;
       if (file.size > maxSize) {
-        return jsonResponse({ error: 'File too large. Max 5MB' }, 400);
+        return jsonResponse({ error: '文件过大，最大 5MB' }, 400);
       }
 
       const fileBuffer = await file.arrayBuffer();
@@ -1295,7 +1295,7 @@ class GachaService {
 
       if (!githubUrl) {
         console.error('[Upload] GitHub upload failed for user:', currentUser.username);
-        return jsonResponse({ error: 'Failed to upload to GitHub. Please try again later.' }, 500);
+        return jsonResponse({ error: '上传到 GitHub 失败，请稍后重试' }, 500);
       }
 
       // 写入数据库记录，初始状态为 approved (如果是自建库且想直接生效) 
@@ -1316,7 +1316,7 @@ class GachaService {
 
     } catch (e) {
       console.error('[Upload Error]:', e);
-      return jsonResponse({ error: 'Upload failed: ' + e.message }, 500);
+      return jsonResponse({ error: '上传失败: ' + e.message }, 500);
     }
   }
 
@@ -1410,12 +1410,12 @@ class GachaService {
       
     } catch (e) {
       console.error('[RandomImageAPI] Error:', e);
-      return { success: false, message: 'Network error: ' + e.message };
+      return { success: false, message: '网络错误: ' + e.message };
     }
   }
 
   async getUserUploads(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: 'Login Required' }, 401);
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     
     try {
       const url = new URL(request.url);
@@ -1454,7 +1454,7 @@ class GachaService {
       
     } catch (e) {
       console.error('[Get Uploads Error]:', e);
-      return jsonResponse({ error: 'Failed to get uploads: ' + e.message }, 500);
+      return jsonResponse({ error: '获取上传失败: ' + e.message }, 500);
     }
   }
 }
@@ -1499,7 +1499,7 @@ async function handleGetAnnouncement(env) {
 
 async function handleAdminSaveAnnouncement(request, env) {
   const { password, announcement, refreshId } = await request.json();
-  if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
+  if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
   
   const oldData = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
   
@@ -1560,7 +1560,7 @@ async function handleLibrary(request, env, url) {
 
   } catch (e) {
     console.error('Library Error:', e);
-    return new Response('Gallery Database Error', { status: 500 });
+    return new Response('Gallery 数据库错误', { status: 500 });
   }
 }
 
@@ -1632,7 +1632,7 @@ async function handleLibraryApi(request, env) {
 
   } catch (e) {
     console.error('Library API Error:', e);
-    return jsonResponse({ error: 'Database Error' }, 500);
+    return jsonResponse({ error: '数据库错误' }, 500);
   }
 }
 
@@ -1643,7 +1643,7 @@ async function handleAdminVerify(request, env) {
 
 async function handleAdminUsers(request, env) {
   const { password } = await request.json();
-  if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
+  if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
   
   try {
     const usersResult = await env.DB.prepare(
@@ -1666,13 +1666,13 @@ async function handleAdminUsers(request, env) {
     return jsonResponse({ success: true, users });
   } catch (error) {
     console.error('Error fetching users:', error);
-    return jsonResponse({ error: 'Database error' }, 500);
+    return jsonResponse({ error: '数据库错误' }, 500);
   }
 }
 
 async function handleAdminSaveLog(request, env) {
   const { password, logs } = await request.json();
-  if (password !== env.admin) return jsonResponse({ error: 'Auth Failed' }, 403);
+  if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
   await env.RECENT_REQUESTS.put(CONFIG.KEYS.CHANGELOG, JSON.stringify(logs));
   return jsonResponse({ success: true });
 }
@@ -1682,11 +1682,11 @@ async function handleAdminUpdatePoints(request, env) {
     const { password, targetId, amount } = await request.json();
     
     if (password !== env.admin) {
-      return jsonResponse({ error: 'Auth Failed' }, 403);
+      return jsonResponse({ error: '认证失败' }, 403);
     }
 
     if (!targetId || amount === undefined || isNaN(amount)) {
-      return jsonResponse({ error: 'Invalid parameters' }, 400);
+      return jsonResponse({ error: '参数无效' }, 400);
     }
 
     const user = await env.DB.prepare(
@@ -1694,7 +1694,7 @@ async function handleAdminUpdatePoints(request, env) {
     ).bind(targetId).first();
 
     if (!user) {
-      return jsonResponse({ error: 'User not found' }, 404);
+      return jsonResponse({ error: '用户不存在' }, 404);
     }
 
     await env.DB.prepare(
@@ -1711,7 +1711,7 @@ async function handleAdminUpdatePoints(request, env) {
 
   } catch (e) {
     console.error('Update points error:', e);
-    return jsonResponse({ error: 'Internal server error' }, 500);
+    return jsonResponse({ error: '服务器内部错误' }, 500);
   }
 }
 
@@ -1720,7 +1720,7 @@ async function handleAdminDeleteUser(request, env) {
     const { password, targetId } = await request.json();
 
     if (password !== env.admin) {
-      return jsonResponse({ error: 'Auth Failed' }, 403);
+      return jsonResponse({ error: '认证失败' }, 403);
     }
 
     const user = await env.DB.prepare(
@@ -1728,7 +1728,7 @@ async function handleAdminDeleteUser(request, env) {
     ).bind(targetId).first();
 
     if (!user) {
-      return jsonResponse({ error: 'User not found' }, 404);
+      return jsonResponse({ error: '用户不存在' }, 404);
     }
 
     await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id).run();
@@ -1739,7 +1739,7 @@ async function handleAdminDeleteUser(request, env) {
 
   } catch (e) {
     console.error('Delete user error:', e);
-    return jsonResponse({ error: 'Internal server error' }, 500);
+    return jsonResponse({ error: '服务器内部错误' }, 500);
   }
 }
 
@@ -1748,7 +1748,7 @@ async function handleAdminUploads(request, env) {
     const { password, status = 'pending', limit = 50, offset = 0 } = await request.json();
 
     if (password !== env.admin) {
-      return jsonResponse({ error: 'Auth Failed' }, 403);
+      return jsonResponse({ error: '认证失败' }, 403);
     }
 
     let sql = `
@@ -1779,7 +1779,7 @@ async function handleAdminUploads(request, env) {
 
   } catch (e) {
     console.error('[Admin Uploads Error]:', e);
-    return jsonResponse({ error: 'Internal server error' }, 500);
+    return jsonResponse({ error: '服务器内部错误' }, 500);
   }
 }
 
@@ -1788,11 +1788,11 @@ async function handleAdminReviewUpload(request, env) {
     const { password, uploadId, action, rarity } = await request.json();
 
     if (password !== env.admin) {
-      return jsonResponse({ error: 'Auth Failed' }, 403);
+      return jsonResponse({ error: '认证失败' }, 403);
     }
 
     if (!uploadId || !['approved', 'rejected'].includes(action)) {
-      return jsonResponse({ error: 'Invalid parameters' }, 400);
+      return jsonResponse({ error: '参数无效' }, 400);
     }
 
     const reviewedAt = Date.now();
@@ -1821,7 +1821,7 @@ async function handleAdminReviewUpload(request, env) {
 
   } catch (e) {
     console.error('[Admin Review Upload Error]:', e);
-    return jsonResponse({ error: 'Internal server error' }, 500);
+    return jsonResponse({ error: '服务器内部错误' }, 500);
   }
 }
 
@@ -3079,7 +3079,7 @@ function getHtmlPage() {
                 this.toast(\`签到成功！金币 +\${data.checkIn.coins}\${bonus}\`, 'ok');
                 this.fetchUserInfo(); // 刷新金币显示
             } else {
-                this.toast(data.error === 'Already checked in today' ? '今天已经签到过了' : data.error, 'warn');
+                this.toast(data.error === '今日已签到' ? '今天已经签到过了' : data.error, 'warn');
             }
         } catch(e) {
             this.toast('网络请求失败', 'warn');
@@ -3120,17 +3120,17 @@ function getHtmlPage() {
       },
       mapError(err) {
         const map = {
-          'Not Enough Points': '积分不足！',
+          '积分不足': '积分不足！',
           'Username Taken': '用户名或昵称已被占用',
           'Nickname Taken': '用户名或昵称已被占用',
-          'User Not Found': '用户不存在',
+          '用户不存在': '用户不存在',
           'Invalid Password': '密码错误',
-          'Auth Failed': '认证失败',
+          '认证失败': '认证失败',
           'Missing fields': '请填写完整信息',
-          'Invalid Credentials': '账号或密码错误',
+          '凭证无效': '账号或密码错误',
           'Invalid level': '无效的等级',
           'Level not reached yet': '尚未达到该等级',
-          'Reward already claimed': '奖励已领取',
+          '奖励已领取': '奖励已领取',
           'No special reward for this level': '该等级没有特殊奖励'
         };
         return map[err] || err;
@@ -4431,7 +4431,7 @@ function getProfilePage() {
                 document.getElementById('rewardModal').classList.remove('show');
                 this.fetchUserInfo();
             } else {
-                const msg = data.error === 'Reward already claimed' ? '该奖励已经领取过了' : data.error;
+                const msg = data.error === '奖励已领取' ? '该奖励已经领取过了' : data.error;
                 alert(msg);
             }
         } catch(e) { alert('网络错误'); }
