@@ -556,10 +556,11 @@ class UserService {
 
     const token = crypto.randomUUID();
 
-    const sessionData = {
+const sessionData = {
       id: user.id,
       username: user.username,
       nickname: user.nickname,
+      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.username}`,
       coins: user.coins || 0,
       level: calculatedLevel,
       exp: currentExp,
@@ -1650,9 +1651,10 @@ async function handleAdminUsers(request, env) {
       'SELECT username, nickname, draw_count, coins, level, exp, total_exp, last_login_date, login_streak, created_at FROM users ORDER BY created_at DESC'
     ).all();
     
-    const users = usersResult.results ? usersResult.results.map(user => ({
+const users = usersResult.results ? usersResult.results.map(user => ({
       username: user.username,
       nickname: user.nickname || user.username,
+      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.username}`,
       drawCount: user.draw_count || 0,
       coins: user.coins || 0,
       level: user.level || 1,
@@ -2088,7 +2090,7 @@ const NEUTRAL_CSS = `
   .logo span { color: var(--primary); }
   .logo-subtitle { font-size: 0.85rem; color: var(--text-light); margin-top: 4px; font-weight: 500; }
   .header-right { display: flex; align-items: center; }
-  .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; color: white; font-size: 1rem; }
+  .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; color: white; font-size: 1rem; object-fit: cover; }
   .user-info { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
   .user-name { font-weight: 700; color: var(--text-main); }
   
@@ -2097,7 +2099,7 @@ const NEUTRAL_CSS = `
   @media(min-width: 768px) { .main-grid { grid-template-columns: 360px 1fr; align-items: start; } }
   .back-nav { margin-bottom: 20px; }
   .profile-header { text-align: center; margin-bottom: 30px; }
-  .avatar-large { width: 100px; height: 100px; margin: 0 auto 15px; background: linear-gradient(135deg, var(--primary), var(--secondary)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: white; box-shadow: 0 8px 20px rgba(59,130,246,0.3); }
+  .avatar-large { width: 100px; height: 100px; margin: 0 auto 15px; background: linear-gradient(135deg, var(--primary), var(--secondary)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: white; box-shadow: 0 8px 20px rgba(59,130,246,0.3); object-fit: cover; }
   .exp-bar-container { background: white; padding: 15px; border-radius: 12px; border: 1px solid #E2E8F0; margin-bottom: 20px; }
   .exp-bar { height: 10px; background: #F1F5F9; border-radius: 5px; overflow: hidden; }
   .exp-bar-fill { height: 100%; background: linear-gradient(90deg, #3B82F6, #8B5CF6); width: 0%; transition: width 0.5s ease; }
@@ -2245,11 +2247,9 @@ function getHtmlPage() {
       <div class="logo-subtitle">抽卡收集系统</div>
     </div>
     <div class="header-right">
-       <div class="user-pill" onclick="window.location.href='/user/profile'">
-         <div class="user-avatar">
-           <i class="fas fa-user-astronaut"></i>
-         </div>
-         <div class="user-info">
+<div class="user-pill" onclick="window.location.href='/user/profile'">
+          <img class="user-avatar" id="navAvatar" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><circle cx='18' cy='18' r='18' fill='%23ddd'/></svg>" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 36 36\\'><circle cx=\\'18\\' cy=\\'18\\' r=\\'18\\' fill=\\'%23ddd\\'/></svg>'" />
+          <div class="user-info">
            <span class="user-name" id="navNickname">游客</span>
 <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
               <span class="user-level-badge" id="navLevel">Lv.1</span>
@@ -2503,7 +2503,7 @@ function getHtmlPage() {
                 <button class="btn secondary" onclick="App.loadAdminUsers()" style="font-size:0.8rem;"><i class="fas fa-sync"></i></button>
             </div>
             <div style="max-height:350px; overflow-y:auto; border:1px solid #F1F5F9; border-radius:8px;">
-                <table class="admin-table"><thead><tr><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>注册时间</th><th>最后登录</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="6" style="text-align:center; padding:20px;">加载中...</td></tr></tbody></table>
+                <table class="admin-table"><thead><tr><th width="50">头像</th><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>注册时间</th><th>最后登录</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="7" style="text-align:center; padding:20px;">加载中...</td></tr></tbody></table>
             </div>
         </div>
         <div id="view-uploads" style="display:none;">
@@ -2889,8 +2889,11 @@ function getHtmlPage() {
       updateUI(user) {
         // --- 1. 更新顶部导航栏 (Header) ---
         // 必须做非空检查，防止报错中断代码执行
-        const navNick = document.getElementById('navNickname');
+const navNick = document.getElementById('navNickname');
         if (navNick) navNick.innerText = user.nickname || user.username;
+
+        const navAvatar = document.getElementById('navAvatar');
+        if (navAvatar && user.avatar) navAvatar.src = user.avatar;
 
         const navLevel = document.getElementById('navLevel');
         if (navLevel) navLevel.innerText = 'Lv.' + (user.level || 1);
@@ -3759,8 +3762,9 @@ function getHtmlPage() {
         const tbody = document.getElementById('userTbody'); 
         
         // [优化] 表格骨架屏：生成5行，每行显示灰色条状
-        const skeletonRow = \`
+const skeletonRow = \`
             <tr>
+                <td><div class="skeleton" style="height:32px; width:32px; border-radius:50%;"></div></td>
                 <td><div class="skeleton" style="height:20px; width:80%; margin-bottom:4px;"></div><div class="skeleton" style="height:12px; width:50%;"></div></td>
                 <td><div class="skeleton" style="height:20px; width:40%;"></div></td>
                 <td><div class="skeleton" style="height:20px; width:60%;"></div></td>
@@ -3775,15 +3779,15 @@ function getHtmlPage() {
             const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); 
             const data = await res.json(); 
             if(data.success && data.users.length) { 
-                tbody.innerHTML = data.users.map(u => {
+tbody.innerHTML = data.users.map(u => {
                     const formatDate = (ts) => ts ? new Date(ts).toLocaleString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
-                    return \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td style="font-size:0.75rem; color:#94A3B8;">\${formatDate(u.createdAt)}</td><td style="font-size:0.75rem; color:#94A3B8;">\${formatDate(u.lastLoginDate)}</td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">删</button></td></tr>\`;
-                }).join(''); 
-            } else { 
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">暂无用户</td></tr>'; 
+                    return \`<tr><td><img src="\${u.avatar}" style="width:32px; height:32px; border-radius:50%; object-fit:cover; background:#f0f0f0;" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 32 32\\'><circle cx=\\'16\\' cy=\\'16\\' r=\\'16\\' fill=\\'%23ddd\\'/></svg>'" /></td><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td style="font-size:0.75rem; color:#94A3B8;">\${formatDate(u.createdAt)}</td><td style="font-size:0.75rem; color:#94A3B8;">\${formatDate(u.lastLoginDate)}</td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">删</button></td></tr>\`;
+                }).join('');
+} else { 
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">暂无用户</td></tr>'; 
             }
         } catch(e) { 
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">加载失败</td></tr>'; 
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:red;">加载失败</td></tr>';
         }
       },
       async adminEditPoints(userId) { const val = prompt('输入要增加或减少的积分:'); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
@@ -4193,7 +4197,7 @@ function getProfilePage() {
 
   <div class="glass-card" style="padding: 30px;">
     <div class="profile-header">
-      <div class="avatar-large"><i class="fas fa-user-astronaut"></i></div>
+      <img class="avatar-large" id="profileAvatar" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23ddd'/></svg>" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 100 100\\'><circle cx=\\'50\\' cy=\\'50\\' r=\\'50\\' fill=\\'%23ddd\\'/></svg>'" />
       <h2 id="profileNickname" style="margin: 0 0 5px 0;">加载中...</h2>
       <div style="color: #94A3B8;">@<span id="profileUsername">...</span></div>
     </div>
@@ -4325,12 +4329,15 @@ function getProfilePage() {
         } catch(e) { console.error('Failed to load inventory', e); }
       },
 
-      updateUI(user) {
+updateUI(user) {
         document.getElementById('profileNickname').innerText = user.nickname || user.username;
         document.getElementById('profileUsername').innerText = user.username;
         document.getElementById('profileCoins').innerText = user.coins || 0;
         document.getElementById('profileLevel').innerText = user.level || 1;
         document.getElementById('profileCount').innerText = user.drawCount || 0;
+
+        const profileAvatar = document.getElementById('profileAvatar');
+        if (profileAvatar && user.avatar) profileAvatar.src = user.avatar;
 
         // 更新经验条
         const exp = user.exp || 0;
