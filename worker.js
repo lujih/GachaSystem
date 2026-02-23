@@ -2057,9 +2057,9 @@ const NEUTRAL_CSS = `
   .stat-label { font-size: 0.8rem; color: var(--text-light); }
   .box-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-weight: 800; font-size: 1rem; padding: 0 4px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; }
-  .grid-item { border-radius: 8px; overflow: hidden; background: #F1F5F9; cursor: pointer; border: 1px solid #E2E8F0; transition: 0.2s; }
-  .grid-item:hover { border-color: var(--primary); transform: translateY(-2px); }
-  .grid-item img { width: 100%; height: auto; display: block; }
+.grid-item { border-radius: 8px; overflow: hidden; cursor: pointer; border: 1px solid #E2E8F0; transition: 0.2s; }
+.grid-item:hover { border-color: var(--primary); transform: translateY(-2px); }
+.grid-item img { width: 100%; height: auto; display: block; background: #F1F5F9; }
   .input-group input { width: 100%; padding: 12px; border: 2px solid #E2E8F0; border-radius: 10px; font-family: var(--font); font-size: 1rem; text-align: center; color: var(--text-main); margin-bottom: 20px; outline: none; background: #F8FAFC; }
   .input-group input:focus { border-color: var(--primary); background: white; }
   .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; border: 1px solid rgba(255,255,255,0.1); }
