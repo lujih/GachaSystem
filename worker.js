@@ -1905,10 +1905,10 @@ const NEUTRAL_CSS = `
   .btn.secondary:active { box-shadow: 0 0 0 #CBD5E1; }
   .btn.danger { background: var(--danger); box-shadow: 0 4px 0 #B91C1C; }
   .btn.danger:active { box-shadow: 0 0 0 #B91C1C; }
-  .glass-card { background: var(--card-bg); border: 1px solid #E2E8F0; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
-  .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: none; justify-content: center; align-items: center; z-index: 2000; opacity: 0; transition: 0.2s; }
+  .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.5); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: none; justify-content: center; align-items: center; z-index: 2000; opacity: 0; transition: 0.2s; }
   .modal.show { display: flex; opacity: 1; }
-  .modal-content { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 24px; border-radius: var(--radius); width: 90%; max-width: 450px; text-align: center; transform: scale(0.95); transition: 0.2s; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); max-height: 90vh; overflow-y: auto; position: relative; border: 1px solid rgba(255, 255, 255, 0.5); }
+  .modal-content { background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: var(--radius); width: 90%; max-width: 450px; text-align: center; transform: scale(0.95); transition: 0.2s; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1); max-height: 90vh; overflow-y: auto; position: relative; border: 1px solid rgba(255, 255, 255, 0.4); }
   .modal.show .modal-content { transform: scale(1); }
   .placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--text-light); text-align: center; font-size: 0.9rem; }
   .placeholder i { font-size: 3rem; margin-bottom: 16px; display: block; color: #CBD5E1; }
@@ -2640,6 +2640,10 @@ function getHtmlPage() {
         this.loadShowcase();
         this.loadChangelog();
         this.checkAnnouncement();
+        // 预加载限定池数据，避免首次点击卡顿
+        if (this.username) {
+          this.loadLimitedPools();
+        }
       },
       // [优化] 限定池相关状态缓存
       _poolsCache: null,
@@ -3920,7 +3924,7 @@ function getLibraryHtml(items, pager) {
     #backToTop:active { transform: scale(0.95); }
     .empty-state { text-align: center; padding: 100px 20px; color: #94A3B8; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; }
     .empty-state i { font-size: 4rem; margin-bottom: 20px; color: #E2E8F0; }
-    .modal-img { max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); object-fit: contain; animation: imgZoomIn 0.2s ease; }
+.modal-img { max-width: 90vw; max-height: 85vh; width: auto; height: auto; border-radius: 8px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: imgZoomIn 0.2s ease; display: block; }
     @keyframes imgZoomIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     .modal-close-img { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 1.2rem; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; }
     .modal-close-img:hover { background: rgba(239,68,68,0.9); }
