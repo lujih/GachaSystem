@@ -622,9 +622,10 @@ const sessionData = {
       currentTitle = { name: userRes.active_title };
     }
 
-    const responseData = {
+const responseData = {
       username: userRes.username,
       nickname: userRes.nickname,
+      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${userRes.username}`,
       coins: userRes.coins,
       drawCount: userRes.draw_count,
       wins: userRes.wins,
