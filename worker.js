@@ -3934,8 +3934,8 @@ function getLibraryHtml(items, pager) {
     @media (min-width: 1280px) { .masonry-container { column-count: 5; } }
     .item { break-inside: avoid; margin-bottom: 16px; background: white; border-radius: 12px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 2px 5px rgba(0,0,0,0.03); transition: transform 0.3s ease, box-shadow 0.3s ease; cursor: zoom-in; position: relative; content-visibility: auto; contain-intrinsic-size: 0 200px; opacity: 0; }
     .item:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); border-color: var(--primary); z-index: 2; }
-    .img-wrapper { width: 100%; min-height: 150px; background: #F1F5F9; position: relative; }
-    .item img { width: 100%; height: auto; display: block; opacity: 0; transition: opacity 0.6s ease; object-fit: cover; }
+.img-wrapper { width: 100%; background: #F1F5F9; position: relative; }
+    .item img { width: 100%; height: auto; display: block; opacity: 0; transition: opacity 0.6s ease; }
     .item img.loaded { opacity: 1; }
     .item-user { padding: 10px 12px; background: white; font-size: 0.85rem; color: var(--text-main); display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; }
     .user-tag { font-weight: bold; color: #64748B; display: flex; align-items: center; gap: 6px; }
