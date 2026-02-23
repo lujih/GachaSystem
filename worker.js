@@ -2022,7 +2022,6 @@ const NEUTRAL_CSS = `
     .user-info { min-width: 0; display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; }
     .user-name { font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65px; }
     .user-level-badge { font-size: 0.6rem; padding: 1px 4px; }
-    .user-title { font-size: 0.6rem; padding: 1px 3px; max-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none; }
     .user-chevron { display: none; }
   }
   @media (max-width: 768px) { .modal-content { max-width: 90%; } .shop-grid { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); } }
@@ -2092,7 +2091,7 @@ const NEUTRAL_CSS = `
   .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; color: white; font-size: 1rem; }
   .user-info { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
   .user-name { font-weight: 700; color: var(--text-main); }
-  .user-title { font-size: 0.7rem; color: var(--text-light); background: #F1F5F9; padding: 2px 6px; border-radius: 4px; }
+  
   .user-chevron { font-size: 0.8rem; color: #94A3B8; margin-left: 4px; }
   .main-grid { width: 100%; max-width: 900px; display: grid; grid-template-columns: 1fr; gap: 24px; }
   @media(min-width: 768px) { .main-grid { grid-template-columns: 360px 1fr; align-items: start; } }
@@ -2180,13 +2179,6 @@ function getHtmlPage() {
       font-weight: 700;
       color: var(--text-main);
     }
-    .user-title {
-      font-size: 0.7rem;
-      color: var(--text-light);
-      background: #F1F5F9;
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
     .user-chevron { font-size: 0.8rem; color: #94A3B8; margin-left: 4px; }
     .user-level-badge { background: linear-gradient(135deg, #3B82F6, #8B5CF6); color: white; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; }
     .main-grid { width: 100%; max-width: 900px; display: grid; grid-template-columns: 1fr; gap: 24px; }
@@ -2259,10 +2251,9 @@ function getHtmlPage() {
          </div>
          <div class="user-info">
            <span class="user-name" id="navNickname">游客</span>
-           <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
-             <span class="user-level-badge" id="navLevel">Lv.1</span>
-             <span class="user-title" id="navTitle"></span>
-           </div>
+<div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+              <span class="user-level-badge" id="navLevel">Lv.1</span>
+            </div>
          </div>
          <i class="fas fa-chevron-right user-chevron"></i>
        </div>
@@ -2903,20 +2894,6 @@ function getHtmlPage() {
 
         const navLevel = document.getElementById('navLevel');
         if (navLevel) navLevel.innerText = 'Lv.' + (user.level || 1);
-
-        const navTitle = document.getElementById('navTitle');
-        if (navTitle) {
-          if (user.title) { 
-            navTitle.innerHTML = user.title.name; 
-            navTitle.className = 'title-badge'; 
-            // 如果后端返回了颜色则使用，否则默认
-            navTitle.style.backgroundColor = user.title.color || '#3B82F6'; 
-          } else { 
-            navTitle.innerHTML = ''; 
-            navTitle.className = 'user-title';
-            navTitle.style.backgroundColor = 'transparent';
-          }
-        }
 
         // --- 2. 更新本地状态 (仅基础数据) ---
         // 注意：库存数据(this.inventory)不再此处更新，改为由 fetchInventory 独立处理
