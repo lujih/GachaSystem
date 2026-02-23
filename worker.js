@@ -739,9 +739,9 @@ async function uploadToGithub(env, path, content, extension, message) {
     const repoOwner = env.GITHUB_OWNER || TECHNICAL_CONFIG.GITHUB.OWNER;
     const repoName = env.GITHUB_REPO || TECHNICAL_CONFIG.GITHUB.REPO;
 
-    if (!githubToken) {
-      console.error('[GitHub Upload] Missing GITHUB_TOKEN');
-      return null;
+if (!githubToken) {
+      console.error('[GitHub Upload] Missing GITHUB_TOKEN - please configure GITHUB_TOKEN in Cloudflare Dashboard');
+      return { error: 'GitHub Token 未配置，请联系管理员' };
     }
 
     const base64Content = btoa(String.fromCharCode(...new Uint8Array(content)));
@@ -785,8 +785,9 @@ async function uploadToGithub(env, path, content, extension, message) {
       body: JSON.stringify(requestBody)
     });
 
-    if (!response.ok) {
-      console.error('[GitHub Upload] API Error:', response.status, response.statusText);
+if (!response.ok) {
+      const errText = await response.text();
+      console.error('[GitHub Upload] API Error:', response.status, response.statusText, errText);
       return null;
     }
 
@@ -1287,7 +1288,7 @@ class GachaService {
       // 如果您的 API 读的是根目录，请改为 const githubPath = safeFilename;
       const githubPath = `${CONFIG.GITHUB.PATH_PREFIX}/${safeFilename}`;
 
-      const githubUrl = await uploadToGithub(
+const githubUrl = await uploadToGithub(
         this.env,
         githubPath,
         fileBuffer,
@@ -1298,6 +1299,10 @@ class GachaService {
       if (!githubUrl) {
         console.error('[Upload] GitHub upload failed for user:', currentUser.username);
         return jsonResponse({ error: '上传到 GitHub 失败，请稍后重试' }, 500);
+      }
+
+      if (githubUrl.error) {
+        return jsonResponse({ error: githubUrl.error }, 500);
       }
 
       // 写入数据库记录，初始状态为 approved (如果是自建库且想直接生效) 
