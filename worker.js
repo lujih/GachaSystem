@@ -687,6 +687,7 @@ class UserService {
     
     if (!titleId) {
       await this.env.DB.prepare('UPDATE user_titles SET is_equipped = 0 WHERE user_id = ?').bind(currentUser.id).run();
+      await this.invalidateUserCache(currentUser.id);
       return jsonResponse({ success: true, message: 'Title unequipped' });
     }
 
@@ -2021,7 +2022,7 @@ const NEUTRAL_CSS = `
     .user-info { min-width: 0; display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; }
     .user-name { font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65px; }
     .user-level-badge { font-size: 0.6rem; padding: 1px 4px; }
-    .user-title { font-size: 0.6rem; padding: 1px 3px; max-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-title { font-size: 0.6rem; padding: 1px 3px; max-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none; }
     .user-chevron { display: none; }
   }
   @media (max-width: 768px) { .modal-content { max-width: 90%; } .shop-grid { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); } }
