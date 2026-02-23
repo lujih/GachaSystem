@@ -2670,17 +2670,16 @@ function getHtmlPage() {
         btn.innerHTML = \`<i class="fas \${icon}"></i> 召唤\`;
       },
       
-      togglePoolDropdown() {
+togglePoolDropdown(e) {
+        if (e) e.stopPropagation();
         const dropdown = document.getElementById('poolDropdown');
         const arrow = document.getElementById('poolDropdownArrow');
         const isVisible = dropdown.style.display === 'block';
         
         if (!isVisible) {
-          // 切换到限定池模式并展开下拉
           this.switchPool('ltd');
           this.loadLimitedPools(false, true);
         } else {
-          // 收起下拉
           dropdown.style.display = 'none';
           if (arrow) arrow.style.transform = 'rotate(0deg)';
           if (this._closeDropdownHandler) {
@@ -2690,25 +2689,25 @@ function getHtmlPage() {
         }
       },
       
-      expandPoolDropdown() {
+expandPoolDropdown() {
         const dropdown = document.getElementById('poolDropdown');
         const arrow = document.getElementById('poolDropdownArrow');
-        if (dropdown.style.display !== 'block') {
-          dropdown.style.display = 'block';
-          if (arrow) arrow.style.transform = 'rotate(180deg)';
-          // 点击外部关闭
-          this._closeDropdownHandler = (e) => {
-            if (!dropdown.contains(e.target) && e.target.id !== 'tab-ltd') {
-              dropdown.style.display = 'none';
-              if (arrow) arrow.style.transform = 'rotate(0deg)';
-              document.removeEventListener('click', this._closeDropdownHandler);
-              this._closeDropdownHandler = null;
-            }
-          };
-          requestAnimationFrame(() => {
-            document.addEventListener('click', this._closeDropdownHandler);
-          });
+        dropdown.style.display = 'block';
+        if (arrow) arrow.style.transform = 'rotate(180deg)';
+        if (this._closeDropdownHandler) {
+          document.removeEventListener('click', this._closeDropdownHandler);
         }
+        this._closeDropdownHandler = (e) => {
+          if (!dropdown.contains(e.target) && e.target.closest('#tab-ltd') !== document.getElementById('tab-ltd')) {
+            dropdown.style.display = 'none';
+            if (arrow) arrow.style.transform = 'rotate(0deg)';
+            document.removeEventListener('click', this._closeDropdownHandler);
+            this._closeDropdownHandler = null;
+          }
+        };
+        setTimeout(() => {
+          document.addEventListener('click', this._closeDropdownHandler);
+        }, 0);
       },
       
       async loadLimitedPools(forceRefresh = false, expandDropdown = false) {
