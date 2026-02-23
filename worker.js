@@ -2644,7 +2644,7 @@ function getHtmlPage() {
       _poolsLoading: false,
       _poolsLastFetch: 0,
       
-      switchPool(pool) {
+switchPool(pool) {
         if(this.loading) return;
         this.currentPool = pool;
         const isLtd = pool === 'ltd';
@@ -2655,7 +2655,7 @@ function getHtmlPage() {
         activeTab.classList.add('active');
         if (isLtd) activeTab.classList.add('limited');
         
-        // 2. 显示/隐藏限定池选择器（不触发列表刷新）
+        // 2. 隐藏限定池选择器（不触发列表刷新）
         const poolDropdown = document.getElementById('poolDropdown');
         const arrow = document.getElementById('poolDropdownArrow');
         if (poolDropdown) {
@@ -2670,16 +2670,23 @@ function getHtmlPage() {
         btn.innerHTML = \`<i class="fas \${icon}"></i> 召唤\`;
       },
       
-togglePoolDropdown(e) {
-        if (e) e.stopPropagation();
+      togglePoolDropdown() {
         const dropdown = document.getElementById('poolDropdown');
         const arrow = document.getElementById('poolDropdownArrow');
         const isVisible = dropdown.style.display === 'block';
         
         if (!isVisible) {
-          this.switchPool('ltd');
-          this.loadLimitedPools(false, true);
+          // 只有在已经是限定池模式时才展开下拉
+          if (this.currentPool === 'ltd') {
+            dropdown.style.display = 'block';
+            if (arrow) arrow.style.transform = 'rotate(180deg)';
+            this.loadLimitedPools(false, true);
+          } else {
+            // 切换到限定池模式但不展开下拉
+            this.switchPool('ltd');
+          }
         } else {
+          // 收起下拉
           dropdown.style.display = 'none';
           if (arrow) arrow.style.transform = 'rotate(0deg)';
           if (this._closeDropdownHandler) {
@@ -2689,25 +2696,25 @@ togglePoolDropdown(e) {
         }
       },
       
-expandPoolDropdown() {
+      expandPoolDropdown() {
         const dropdown = document.getElementById('poolDropdown');
         const arrow = document.getElementById('poolDropdownArrow');
-        dropdown.style.display = 'block';
-        if (arrow) arrow.style.transform = 'rotate(180deg)';
-        if (this._closeDropdownHandler) {
-          document.removeEventListener('click', this._closeDropdownHandler);
+        if (dropdown.style.display !== 'block') {
+          dropdown.style.display = 'block';
+          if (arrow) arrow.style.transform = 'rotate(180deg)';
+          // 点击外部关闭
+          this._closeDropdownHandler = (e) => {
+            if (!dropdown.contains(e.target) && e.target.id !== 'tab-ltd') {
+              dropdown.style.display = 'none';
+              if (arrow) arrow.style.transform = 'rotate(0deg)';
+              document.removeEventListener('click', this._closeDropdownHandler);
+              this._closeDropdownHandler = null;
+            }
+          };
+          requestAnimationFrame(() => {
+            document.addEventListener('click', this._closeDropdownHandler);
+          });
         }
-        this._closeDropdownHandler = (e) => {
-          if (!dropdown.contains(e.target) && e.target.closest('#tab-ltd') !== document.getElementById('tab-ltd')) {
-            dropdown.style.display = 'none';
-            if (arrow) arrow.style.transform = 'rotate(0deg)';
-            document.removeEventListener('click', this._closeDropdownHandler);
-            this._closeDropdownHandler = null;
-          }
-        };
-        setTimeout(() => {
-          document.addEventListener('click', this._closeDropdownHandler);
-        }, 0);
       },
       
       async loadLimitedPools(forceRefresh = false, expandDropdown = false) {
