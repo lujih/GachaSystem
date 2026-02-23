@@ -1905,10 +1905,10 @@ const NEUTRAL_CSS = `
   .btn.secondary:active { box-shadow: 0 0 0 #CBD5E1; }
   .btn.danger { background: var(--danger); box-shadow: 0 4px 0 #B91C1C; }
   .btn.danger:active { box-shadow: 0 0 0 #B91C1C; }
-  .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.5); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
-  .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: none; justify-content: center; align-items: center; z-index: 2000; opacity: 0; transition: 0.2s; }
+  .glass-card { background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.55); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: none; justify-content: center; align-items: center; z-index: 2000; opacity: 0; transition: 0.2s; }
   .modal.show { display: flex; opacity: 1; }
-  .modal-content { background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: var(--radius); width: 90%; max-width: 450px; text-align: center; transform: scale(0.95); transition: 0.2s; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1); max-height: 90vh; overflow-y: auto; position: relative; border: 1px solid rgba(255, 255, 255, 0.4); }
+  .modal-content { background: rgba(255, 255, 255, 0.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); padding: 24px; border-radius: var(--radius); width: 90%; max-width: 450px; text-align: center; transform: scale(0.95); transition: 0.2s; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1); max-height: 90vh; overflow-y: auto; position: relative; border: 1px solid rgba(255, 255, 255, 0.5); }
   .modal.show .modal-content { transform: scale(1); }
   .placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--text-light); text-align: center; font-size: 0.9rem; }
   .placeholder i { font-size: 3rem; margin-bottom: 16px; display: block; color: #CBD5E1; }
@@ -2016,11 +2016,12 @@ const NEUTRAL_CSS = `
     .logo { font-size: 1.3rem; }
     .logo-subtitle { font-size: 0.75rem; margin-top: 2px; }
     .header-right { justify-content: flex-end; }
-    .user-pill { font-size: 0.8rem; padding: 6px 10px 6px 8px; gap: 6px; max-width: none; margin: 0; }
-    .user-avatar { width: 24px; height: 24px; font-size: 0.8rem; }
-    .user-info { min-width: 0; }
-    .user-name { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
-    .user-title { font-size: 0.65rem; padding: 1px 4px; }
+    .user-pill { font-size: 0.75rem; padding: 5px 8px 5px 6px; gap: 4px; max-width: none; margin: 0; flex-wrap: wrap; justify-content: flex-end; }
+    .user-avatar { width: 22px; height: 22px; font-size: 0.7rem; flex-shrink: 0; }
+    .user-info { min-width: 0; display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; }
+    .user-name { font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65px; }
+    .user-level-badge { font-size: 0.6rem; padding: 1px 4px; }
+    .user-title { font-size: 0.6rem; padding: 1px 3px; max-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .user-chevron { display: none; }
   }
   @media (max-width: 768px) { .modal-content { max-width: 90%; } .shop-grid { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); } }
@@ -2075,7 +2076,7 @@ const NEUTRAL_CSS = `
   .md-content img { max-width: 100%; border-radius: 6px; }
   .admin-textarea { width: 100%; height: 200px; padding: 10px; border: 1px solid #E2E8F0; border-radius: 8px; font-family: monospace; resize: vertical; margin-bottom: 10px; }
   .toggle-wrapper { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; background: #F1F5F9; padding: 10px; border-radius: 8px; }
-  .showcase-box { background: white; border-radius: var(--radius); border: 1px solid #E2E8F0; padding: 20px; box-shadow: var(--shadow); }
+  .showcase-box { background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.55); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
   .gacha-card { background: white; border-radius: var(--radius); border: 1px solid #E2E8F0; padding: 6px; box-shadow: var(--shadow); }
   .stage { position: relative; aspect-ratio: 3/4; width: 100%; background: #F8FAFC; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; background-image: radial-gradient(#CBD5E1 1px, transparent 1px); background-size: 20px 20px; }
   .stage img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: 0.3s; }
@@ -2216,7 +2217,7 @@ function getHtmlPage() {
     .grid-item img { width: 100%; height: 100%; object-fit: cover; }
     .input-group input { width: 100%; padding: 12px; border: 2px solid #E2E8F0; border-radius: 10px; font-family: var(--font); font-size: 1rem; text-align: center; color: var(--text-main); margin-bottom: 20px; outline: none; background: #F8FAFC; }
     .input-group input:focus { border-color: var(--primary); background: white; }
-    .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #1E293B; color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; backdrop-filter: blur(8px); background: rgba(30, 41, 59, 0.9); border: 1px solid rgba(255,255,255,0.1); }
+    .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #1E293B; color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; backdrop-filter: blur(10px); background: rgba(30, 41, 59, 0.88); border: 1px solid rgba(255,255,255,0.12); }
     @keyframes slideDown { from { transform: translate(-50%, -50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
     .log-container { padding: 20px; text-align: left; }
     .log-header { font-size: 1rem; font-weight: 800; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: var(--primary); }
@@ -2510,7 +2511,7 @@ function getHtmlPage() {
                 <button class="btn secondary" onclick="App.loadAdminUsers()" style="font-size:0.8rem;"><i class="fas fa-sync"></i></button>
             </div>
             <div style="max-height:350px; overflow-y:auto; border:1px solid #F1F5F9; border-radius:8px;">
-                <table class="admin-table"><thead><tr><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="4" style="text-align:center; padding:20px;">加载中...</td></tr></tbody></table>
+                <table class="admin-table"><thead><tr><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>注册时间</th><th>最后登录</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="6" style="text-align:center; padding:20px;">加载中...</td></tr></tbody></table>
             </div>
         </div>
         <div id="view-uploads" style="display:none;">
@@ -2682,12 +2683,26 @@ function getHtmlPage() {
         const isVisible = dropdown.style.display === 'block';
         
         if (!isVisible) {
-          // 切换到限定池并显示下拉
+          // 切换到限定池模式并展开下拉
           this.switchPool('ltd');
+          this.loadLimitedPools(false, true);
+        } else {
+          // 收起下拉
+          dropdown.style.display = 'none';
+          if (arrow) arrow.style.transform = 'rotate(0deg)';
+          if (this._closeDropdownHandler) {
+            document.removeEventListener('click', this._closeDropdownHandler);
+            this._closeDropdownHandler = null;
+          }
+        }
+      },
+      
+      expandPoolDropdown() {
+        const dropdown = document.getElementById('poolDropdown');
+        const arrow = document.getElementById('poolDropdownArrow');
+        if (dropdown.style.display !== 'block') {
           dropdown.style.display = 'block';
           if (arrow) arrow.style.transform = 'rotate(180deg)';
-          // 加载池列表（带缓存）
-          this.loadLimitedPools();
           // 点击外部关闭
           this._closeDropdownHandler = (e) => {
             if (!dropdown.contains(e.target) && e.target.id !== 'tab-ltd') {
@@ -2700,17 +2715,10 @@ function getHtmlPage() {
           requestAnimationFrame(() => {
             document.addEventListener('click', this._closeDropdownHandler);
           });
-        } else {
-          dropdown.style.display = 'none';
-          if (arrow) arrow.style.transform = 'rotate(0deg)';
-          if (this._closeDropdownHandler) {
-            document.removeEventListener('click', this._closeDropdownHandler);
-            this._closeDropdownHandler = null;
-          }
         }
       },
       
-      async loadLimitedPools(forceRefresh = false) {
+      async loadLimitedPools(forceRefresh = false, expandDropdown = false) {
         if (!this.username || this._poolsLoading) return;
         
         // 检查缓存（5分钟内有效）
@@ -2720,6 +2728,10 @@ function getHtmlPage() {
         if (!forceRefresh && cacheValid && this.limitedPools) {
           // 使用缓存，只更新UI
           this._renderPoolList();
+          // 需要展开时展开
+          if (expandDropdown) {
+            this.expandPoolDropdown();
+          }
           return;
         }
         
@@ -2747,7 +2759,13 @@ function getHtmlPage() {
             }
             
             // 使用 requestAnimationFrame 渲染，避免阻塞
-            requestAnimationFrame(() => this._renderPoolList());
+            requestAnimationFrame(() => {
+              this._renderPoolList();
+              // 加载完成后展开下拉
+              if (expandDropdown) {
+                this.expandPoolDropdown();
+              }
+            });
           }
         } catch (e) { 
           console.error('Load pools failed', e);
@@ -3768,6 +3786,8 @@ function getHtmlPage() {
                 <td><div class="skeleton" style="height:20px; width:80%; margin-bottom:4px;"></div><div class="skeleton" style="height:12px; width:50%;"></div></td>
                 <td><div class="skeleton" style="height:20px; width:40%;"></div></td>
                 <td><div class="skeleton" style="height:20px; width:60%;"></div></td>
+                <td><div class="skeleton" style="height:16px; width:80%;"></div></td>
+                <td><div class="skeleton" style="height:16px; width:80%;"></div></td>
                 <td><div class="skeleton" style="height:24px; width:40px;"></div></td>
             </tr>
         \`;
@@ -3777,12 +3797,15 @@ function getHtmlPage() {
             const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); 
             const data = await res.json(); 
             if(data.success && data.users.length) { 
-                tbody.innerHTML = data.users.map(u => \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">删</button></td></tr>\`).join(''); 
+                tbody.innerHTML = data.users.map(u => {
+                    const formatDate = (ts) => ts ? new Date(ts).toLocaleString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
+                    return \`<tr><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td style="font-size:0.75rem; color:#94A3B8;">\${formatDate(u.createdAt)}</td><td style="font-size:0.75rem; color:#94A3B8;">\${formatDate(u.lastLoginDate)}</td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">删</button></td></tr>\`;
+                }).join(''); 
             } else { 
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">暂无用户</td></tr>'; 
-            } 
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">暂无用户</td></tr>'; 
+            }
         } catch(e) { 
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">加载失败</td></tr>'; 
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">加载失败</td></tr>'; 
         }
       },
       async adminEditPoints(userId) { const val = prompt('输入要增加或减少的积分:'); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
