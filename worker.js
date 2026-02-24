@@ -33,7 +33,7 @@ const BUSINESS_CONFIG = {
         name: '玩家共建池',
         description: '由玩家上传的精选图片库，持续更新中',
         sources: [
-          { name: 'Community Uploads', url: 'https://github_images.cszxorx.dpdns.org/?format=json', rarity: 'UR' } 
+          { name: 'Community Uploads', url: 'https://github_images.mahiro-seeker.dpdns.org/?format=json', rarity: 'UR' } 
         ],
         type: 'api'
       }
