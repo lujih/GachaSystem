@@ -1283,37 +1283,32 @@ class GachaService {
       const extension = file.type.split('/')[1] || 'jpg';
       const safeFilename = `${currentUser.id}_${timestamp}_${randomStr}.${extension}`;
       
-      // 注意：确保这里的 images/ 对应您 GitHub 仓库里的实际图片存放目录
-      // 如果您的 API 读的是根目录，请改为 const githubPath = safeFilename;
-      const githubPath = `${CONFIG.GITHUB.PATH_PREFIX}/${safeFilename}`;
-
-      const githubUrl = await uploadToGithub(
-        this.env,
-        githubPath,
-        fileBuffer,
-        extension,
-        `User ${currentUser.username} upload: ${safeFilename}`
-      );
-
-      if (!githubUrl || (typeof githubUrl === 'object' && githubUrl.error)) {
-        const errMsg = githubUrl?.error || '上传到 GitHub 失败，请稍后重试';
-        console.error('[Upload] GitHub upload failed for user:', currentUser.username, errMsg);
-        return jsonResponse({ error: errMsg }, 500);
-      }
-
-      // 写入数据库记录，初始状态为 approved (如果是自建库且想直接生效) 
-      // 或者 pending (如果需要审核，但在GitHub上文件已经存在了，API可能会读到)
-      // 建议保持 pending，审核通过只影响 "我的上传" 列表的展示
-      await this.env.DB.prepare(
-        'INSERT INTO user_uploads (user_id, username, r2_key, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).bind(currentUser.id, currentUser.username, githubPath, githubUrl, rarity, 'pending', timestamp).run();
+      // 保存到R2临时存储，而不是直接上传到GitHub
+      const r2Key = `uploads/pending/${safeFilename}`;
+      const r2Url = `${CONFIG.R2_DOMAIN}/${r2Key}`;
       
-      console.log(`[Upload] Success: ${githubPath}`);
+      // 上传到R2临时存储
+      await this.env.R2_BUCKET.put(r2Key, fileBuffer, {
+        httpMetadata: {
+          contentType: file.type,
+          cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable`
+        }
+      });
+
+      // 写入数据库记录，初始状态为 pending
+      // url字段存储R2临时URL，审核通过后会更新为GitHub CDN URL
+      // github_path字段存储GitHub目标路径
+      const githubPath = `${CONFIG.GITHUB.PATH_PREFIX}/${safeFilename}`;
+      await this.env.DB.prepare(
+        'INSERT INTO user_uploads (user_id, username, r2_key, github_path, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(currentUser.id, currentUser.username, r2Key, githubPath, r2Url, rarity, 'pending', timestamp).run();
+      
+      console.log(`[Upload] Success: ${r2Key} (pending review)`);
 
       return jsonResponse({
         success: true,
-        message: '上传成功！图片将进入审核队列，审核通过后将在图鉴中展示。', // 提示语优化
-        imageUrl: githubUrl,
+        message: '上传成功！图片已进入审核队列，审核通过后将在图鉴中展示。',
+        imageUrl: r2Url,
         uploadId: timestamp
       });
 
@@ -1800,27 +1795,72 @@ async function handleAdminReviewUpload(request, env) {
       return jsonResponse({ error: '参数无效' }, 400);
     }
 
+    // 获取上传记录信息
+    const upload = await env.DB.prepare(
+      'SELECT id, user_id, username, r2_key, github_path, url, rarity, status FROM user_uploads WHERE id = ?'
+    ).bind(uploadId).first();
+
+    if (!upload) {
+      return jsonResponse({ error: '上传记录不存在' }, 404);
+    }
+
     const reviewedAt = Date.now();
 
     if (action === 'approved') {
       const validRarity = rarity || 'N';
+      
+      // 从R2读取图片
+      const r2Object = await env.R2_BUCKET.get(upload.r2_key);
+      if (!r2Object) {
+        return jsonResponse({ error: '图片文件不存在' }, 404);
+      }
+      
+      const fileBuffer = await r2Object.arrayBuffer();
+      const extension = upload.r2_key.split('.').pop() || 'jpg';
+      
+      // 上传到GitHub
+      const githubUrl = await uploadToGithub(
+        env,
+        upload.github_path,
+        fileBuffer,
+        extension,
+        `Approved upload from user ${upload.username} (ID: ${upload.id})`
+      );
+
+      if (!githubUrl || (typeof githubUrl === 'object' && githubUrl.error)) {
+        const errMsg = githubUrl?.error || '上传到 GitHub 失败';
+        console.error('[Review] GitHub upload failed:', errMsg);
+        return jsonResponse({ error: `审核通过但GitHub上传失败: ${errMsg}` }, 500);
+      }
+
+      // 更新数据库：设置状态、稀有度、审核时间，并更新URL为GitHub CDN URL
       await env.DB.prepare(
-        'UPDATE user_uploads SET status = ?, rarity = ?, reviewed_at = ? WHERE id = ?'
-      ).bind('approved', validRarity, reviewedAt, uploadId).run();
+        'UPDATE user_uploads SET status = ?, rarity = ?, reviewed_at = ?, url = ? WHERE id = ?'
+      ).bind('approved', validRarity, reviewedAt, githubUrl, uploadId).run();
+      
+      // 可选：从R2删除临时文件以节省空间
+      try {
+        await env.R2_BUCKET.delete(upload.r2_key);
+        console.log(`[Review] Deleted R2 temp file: ${upload.r2_key}`);
+      } catch (deleteErr) {
+        console.warn(`[Review] Failed to delete R2 temp file: ${deleteErr.message}`);
+      }
       
       return jsonResponse({ 
         success: true, 
-        message: 'Upload approved',
-        rarity: validRarity
+        message: '上传已审核通过并发布到GitHub',
+        rarity: validRarity,
+        githubUrl: githubUrl
       });
     } else {
+      // 拒绝上传：只更新状态，不删除R2文件（可保留一段时间供复查）
       await env.DB.prepare(
         'UPDATE user_uploads SET status = ?, reviewed_at = ? WHERE id = ?'
       ).bind('rejected', reviewedAt, uploadId).run();
       
       return jsonResponse({ 
         success: true, 
-        message: 'Upload rejected'
+        message: '上传已拒绝'
       });
     }
 
