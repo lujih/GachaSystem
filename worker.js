@@ -4229,7 +4229,7 @@ function getProfilePage() {
     .container { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
     
     /* Header */
-    .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
     .back-btn {
       width: 44px; height: 44px; border-radius: 12px; border: none;
       background: rgba(255,255,255,0.08); color: var(--text-main);
@@ -4238,6 +4238,13 @@ function getProfilePage() {
     }
     .back-btn:hover { background: rgba(255,255,255,0.15); transform: translateX(-2px); }
     .page-title { font-family: var(--font-display); font-size: 1.5rem; margin: 0; letter-spacing: 1px; }
+    .logout-header-btn {
+      width: 44px; height: 44px; border-radius: 12px; border: none;
+      background: rgba(239, 68, 68, 0.15); color: var(--danger);
+      font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s ease;
+    }
+    .logout-header-btn:hover { background: rgba(239, 68, 68, 0.25); transform: translateX(2px); }
     
     /* Profile Card */
     .profile-card {
@@ -4271,7 +4278,17 @@ function getProfilePage() {
       box-shadow: 0 4px 12px rgba(124, 58, 237, 0.5);
       border: 2px solid var(--bg-card);
     }
-    .nickname { font-family: var(--font-display); font-size: 1.4rem; margin: 0 0 4px 0; letter-spacing: 0.5px; }
+    .nickname-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 4px 0; }
+    .nickname { font-family: var(--font-display); font-size: 1.4rem; letter-spacing: 0.5px; }
+    .edit-nickname-btn {
+      width: 32px; height: 32px; border-radius: 50%; border: none;
+      background: rgba(124, 58, 237, 0.15); color: var(--primary-light);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem; transition: all 0.2s ease;
+    }
+    .edit-nickname-btn:hover {
+      background: rgba(124, 58, 237, 0.3); transform: scale(1.1);
+    }
     .username { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 8px; }
     
     /* Title Badge */
@@ -4362,7 +4379,7 @@ function getProfilePage() {
     .total-inv { text-align: center; margin-top: 12px; font-size: 0.85rem; color: var(--text-muted); }
     
     /* Action Buttons */
-    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+    .action-grid { display: flex; justify-content: center; margin-top: 20px; }
     .btn {
       padding: 14px 20px; border-radius: 12px; font-weight: 600;
       font-family: var(--font-body); font-size: 0.95rem;
@@ -4466,6 +4483,9 @@ function getProfilePage() {
         <i class="fas fa-arrow-left"></i>
       </button>
       <h1 class="page-title">个人档案</h1>
+      <button class="logout-header-btn" onclick="App.logout()" aria-label="退出登录">
+        <i class="fas fa-sign-out-alt"></i>
+      </button>
     </div>
 
     <div class="profile-card">
@@ -4473,7 +4493,12 @@ function getProfilePage() {
         <img class="avatar" id="profileAvatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=default" alt="用户头像">
         <span class="level-badge" id="profileLevelBadge">Lv.1</span>
       </div>
-      <h2 class="nickname" id="profileNickname">加载中...</h2>
+      <div class="nickname-row">
+        <h2 class="nickname" id="profileNickname">加载中...</h2>
+        <button class="edit-nickname-btn" onclick="App.editProfile()" aria-label="修改昵称">
+          <i class="fas fa-edit"></i>
+        </button>
+      </div>
       <div class="username">@<span id="profileUsername">...</span></div>
       <div class="title-display">
         <span class="title-badge" id="currentTitleBadge" style="display:none;">
@@ -4520,14 +4545,6 @@ function getProfilePage() {
       <div class="total-inv">召唤总数: <strong id="profileTotalCards">0</strong></div>
     </div>
 
-    <div class="action-grid">
-      <button class="btn btn-secondary" onclick="App.editProfile()">
-        <i class="fas fa-edit"></i> 修改昵称
-      </button>
-      <button class="btn btn-secondary" onclick="App.logout()">
-        <i class="fas fa-sign-out-alt"></i> 退出登录
-      </button>
-    </div>
   </div>
 
   <!-- 称号管理弹窗 -->
