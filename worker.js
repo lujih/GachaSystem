@@ -4420,6 +4420,26 @@ function getProfilePage() {
     .title-item.active .check { display: block; }
     .no-title { text-align: center; color: var(--text-muted); padding: 20px; }
     
+    /* Reward List */
+    .reward-list { max-height: 350px; overflow-y: auto; }
+    .reward-item {
+      padding: 14px; border-radius: 10px; margin-bottom: 10px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .reward-item.reached { border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.08); }
+    .reward-level { font-family: var(--font-display); font-size: 1rem; }
+    .reward-item.reached .reward-level { color: var(--success); }
+    .reward-item:not(.reached) .reward-level { color: var(--text-muted); }
+    .reward-desc { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+    .reward-btn {
+      padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 0.85rem;
+      cursor: pointer; border: none; transition: all 0.2s;
+    }
+    .reward-btn.claim { background: var(--success); color: white; }
+    .reward-btn.claim:hover { background: #059669; }
+    .reward-btn.disabled { background: rgba(255,255,255,0.1); color: var(--text-muted); cursor: not-allowed; }
+    
     /* Toast */
     .toast {
       position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-20px);
@@ -4465,10 +4485,15 @@ function getProfilePage() {
       </div>
 
       <div class="stats-row">
-        <div class="stat-box">
+        <div class="stat-box" onclick="App.openRewardModal()" style="cursor:pointer;">
           <div class="stat-icon coins"><i class="fas fa-coins"></i></div>
           <div class="stat-value coins" id="profileCoins">-</div>
           <div class="stat-label">当前积分</div>
+        </div>
+        <div class="stat-box" onclick="App.openRewardModal()" style="cursor:pointer;">
+          <div class="stat-icon" style="color:var(--warning);"><i class="fas fa-gift"></i></div>
+          <div class="stat-value" style="color:var(--warning);">等级奖励</div>
+          <div class="stat-label">查看奖励</div>
         </div>
       </div>
 
@@ -4515,9 +4540,26 @@ function getProfilePage() {
     </div>
   </div>
 
+  <!-- 等级奖励弹窗 -->
+  <div id="rewardModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="rewardModalTitle">
+    <div class="modal-content">
+      <button class="modal-close" onclick="App.closeRewardModal()" aria-label="关闭"><i class="fas fa-times"></i></button>
+      <h3 class="modal-title" id="rewardModalTitle"><i class="fas fa-gift"></i> 等级奖励</h3>
+      <div class="reward-list" id="rewardList"></div>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
 
   <script>
+    const MILESTONES = {
+      5: { coins: 500, title: '新手收藏家' },
+      10: { coins: 1000, title: '初级收藏家' },
+      20: { coins: 2000, title: '高级收藏家' },
+      30: { coins: 3000, title: '资深收藏家' },
+      50: { coins: 5000, title: '传说人物' },
+      100: { coins: 10000, title: '卡片之神' }
+    };
     
     const App = {
       username: localStorage.getItem('moe_username'),
@@ -4618,6 +4660,58 @@ function getProfilePage() {
 
       closeTitleModal() {
         document.getElementById('titleModal').classList.remove('show');
+      },
+
+      openRewardModal() {
+        const modal = document.getElementById('rewardModal');
+        const list = document.getElementById('rewardList');
+        const currentLevel = parseInt(document.getElementById('profileLevelBadge').textContent.replace('Lv.','')) || 1;
+        
+        let html = '';
+        for (const [lvl, reward] of Object.entries(MILESTONES)) {
+          const level = parseInt(lvl);
+          const isReached = currentLevel >= level;
+          let desc = \`金币 \${reward.coins}\`;
+          if (reward.title) desc += \` + 称号 [\${reward.title}]\`;
+          
+          html += \`
+            <div class="reward-item \${isReached ? 'reached' : ''}">
+              <div>
+                <div class="reward-level">Lv.\${level}</div>
+                <div class="reward-desc">\${desc}</div>
+              </div>
+              \${isReached 
+                ? \`<button class="reward-btn claim" onclick="App.claimReward(\${level})">领取</button>\` 
+                : '<span class="reward-btn disabled">未达标</span>'
+              }
+            </div>\`;
+        }
+        list.innerHTML = html;
+        modal.classList.add('show');
+      },
+
+      closeRewardModal() {
+        document.getElementById('rewardModal').classList.remove('show');
+      },
+
+      async claimReward(level) {
+        if(!confirm(\`确定领取 Lv.\${level} 的奖励吗？\`)) return;
+        try {
+          const res = await fetch('/user/claim-reward', {
+            method: 'POST',
+            headers: { 'X-User-ID': this.username },
+            body: JSON.stringify({ targetLevel: level })
+          });
+          const data = await res.json();
+          if(data.success) {
+            this.showToast('领取成功！', 'success');
+            document.getElementById('rewardModal').classList.remove('show');
+            this.fetchUserInfo();
+          } else {
+            const msg = data.error === '奖励已领取' ? '该奖励已经领取过了' : data.error;
+            this.showToast(msg, 'error');
+          }
+        } catch(e) { this.showToast('网络错误', 'error'); }
       },
 
       async equipTitle(titleId) {
