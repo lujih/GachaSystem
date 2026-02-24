@@ -3982,7 +3982,7 @@ function getLibraryHtml(items, pager) {
         ${items.map((item, index) => `
           <div class="item" data-index="${index}" onclick="VirtualScroll.show('${item.url}')" style="opacity:1">
             <div class="img-wrapper">
-              <img src="${item.url}" loading="lazy" decoding="async" onload="this.classList.add('loaded')" alt="Image by ${item.username}">
+               <img src="${item.url}" loading="lazy" decoding="async" onload="this.classList.add('loaded')" onerror="this.src='https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif'; this.onerror=null;" alt="Image by ${item.username}">
             </div>
             <div class="item-user">
               <div class="user-tag"><i class="fas fa-user-circle"></i> ${item.username}</div>
@@ -4055,6 +4055,10 @@ function getLibraryHtml(items, pager) {
         img.decoding = "async";
         img.alt = 'Image by ' + (item.username || 'Unknown');
         img.onload = () => img.classList.add('loaded');
+        img.onerror = () => { 
+          img.src = 'https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif';
+          img.onerror = null;
+        };
         imgWrapper.appendChild(img);
         
         const itemUser = document.createElement('div');
@@ -4151,6 +4155,11 @@ function getLibraryHtml(items, pager) {
              if (container.scrollTop > 300) btn.classList.add('show');
              else btn.classList.remove('show');
         };
+      },
+      
+      setupImageLazyLoad() {
+        // 图片已经使用 loading="lazy"，这里可以添加额外的懒加载逻辑
+        // 例如，观察图片进入视口时加载高清版本
       },
       
       show(url) {
