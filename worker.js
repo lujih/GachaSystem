@@ -4278,16 +4278,17 @@ function getProfilePage() {
       box-shadow: 0 4px 12px rgba(124, 58, 237, 0.5);
       border: 2px solid var(--bg-card);
     }
-    .nickname-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 4px 0; }
-    .nickname { font-family: var(--font-display); font-size: 1.4rem; letter-spacing: 0.5px; }
+    .nickname-row { position: relative; display: flex; justify-content: center; margin: 0 0 4px 0; }
+    .nickname { font-family: var(--font-display); font-size: 1.4rem; letter-spacing: 0.5px; margin-right: 40px; }
     .edit-nickname-btn {
+      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
       width: 32px; height: 32px; border-radius: 50%; border: none;
       background: rgba(124, 58, 237, 0.15); color: var(--primary-light);
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       font-size: 0.9rem; transition: all 0.2s ease;
     }
     .edit-nickname-btn:hover {
-      background: rgba(124, 58, 237, 0.3); transform: scale(1.1);
+      background: rgba(124, 58, 237, 0.3); transform: translateY(-50%) scale(1.1);
     }
     .username { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 8px; }
     
