@@ -841,11 +841,19 @@ class GachaService {
 
     if (cachedAsset && cachedAsset.success) {
       this.ctx.waitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, slotIndex));
+      // 确保缓存的asset有imageHash字段（旧数据可能没有）
+      if (cachedAsset.imageHash === undefined) {
+        cachedAsset.imageHash = null;
+      }
       return cachedAsset;
     }
 
     const freshAsset = await this.fetchAndUploadRandom(sourceList);
     this.ctx.waitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, slotIndex));
+    // 确保新asset也有imageHash字段
+    if (freshAsset.imageHash === undefined) {
+      freshAsset.imageHash = null;
+    }
     return freshAsset;
   }
 
@@ -895,7 +903,7 @@ class GachaService {
     } catch (e) {
       console.error('Fetch/Compress Error:', e);
     }
-    return { success: false, rarity: 'N', imageUrl: CONFIG.DEFAULT_IMG };
+    return { success: false, rarity: 'N', imageUrl: CONFIG.DEFAULT_IMG, imageHash: null };
   }
 
   calculateLevelUpRaw(currentUser, expGained) {
@@ -1855,27 +1863,27 @@ async function updateLeaderboard(env, newItem) {
 
 async function updateGalleryIndex(env, newItem) {
   try {
-    // 优先使用图片哈希去重，如果提供了哈希值
-    if (newItem.imageHash) {
-      // 检查该用户是否已经拥有相同哈希的图片
-      const existingByHash = await env.DB.prepare(
-        'SELECT 1 FROM gallery WHERE user_id = ? AND image_hash = ? LIMIT 1'
-      ).bind(newItem.userId, newItem.imageHash).first();
-      
-      if (existingByHash) {
-        // 用户已拥有相同图片，跳过插入
-        return;
-      }
-      
-      // 尝试插入包括 image_hash 列
+    // 优先使用图片哈希去重，如果提供了有效的哈希值（非空字符串）
+    if (newItem.imageHash && typeof newItem.imageHash === 'string' && newItem.imageHash.length > 0) {
       try {
+        // 检查该用户是否已经拥有相同哈希的图片
+        const existingByHash = await env.DB.prepare(
+          'SELECT 1 FROM gallery WHERE user_id = ? AND image_hash = ? LIMIT 1'
+        ).bind(newItem.userId, newItem.imageHash).first();
+        
+        if (existingByHash) {
+          // 用户已拥有相同图片，跳过插入
+          return;
+        }
+        
+        // 尝试插入包括 image_hash 列
         await env.DB.prepare(
           'INSERT INTO gallery (url, user_id, username, created_at, image_hash) VALUES (?, ?, ?, ?, ?)'
         ).bind(newItem.url, newItem.userId, newItem.username, newItem.ts, newItem.imageHash).run();
         return;
-      } catch (insertErr) {
-        // 如果插入失败（可能因为 image_hash 列不存在），回退到旧逻辑
-        console.warn('Insert with image_hash failed, falling back:', insertErr.message);
+      } catch (hashErr) {
+        // 如果哈希去重失败（可能因为 image_hash 列不存在），回退到 URL 去重
+        console.warn('Image hash deduplication failed, falling back to URL deduplication:', hashErr.message);
       }
     }
     
