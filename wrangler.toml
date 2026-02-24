@@ -1,6 +1,6 @@
 name = "chouka"
 main = "worker.js"
-compatibility_date = "2026-01-25"
+compatibility_date = "2026-02-24"
 keep_vars = true
 
 # 环境变量（需要在 Cloudflare Dashboard 或命令行配置）
