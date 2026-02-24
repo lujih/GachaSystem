@@ -4278,17 +4278,17 @@ function getProfilePage() {
       box-shadow: 0 4px 12px rgba(124, 58, 237, 0.5);
       border: 2px solid var(--bg-card);
     }
-    .nickname-row { position: relative; display: flex; justify-content: center; margin: 0 0 4px 0; }
-    .nickname { font-family: var(--font-display); font-size: 1.4rem; letter-spacing: 0.5px; margin-right: 40px; }
+    .nickname-row { position: relative; display: flex; justify-content: center; align-items: center; margin: 0 0 4px 0; }
+    .nickname { font-family: var(--font-display); font-size: 1.4rem; letter-spacing: 0.5px; }
     .edit-nickname-btn {
-      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+      position: relative; margin-left: 8px;
       width: 32px; height: 32px; border-radius: 50%; border: none;
       background: rgba(124, 58, 237, 0.15); color: var(--primary-light);
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       font-size: 0.9rem; transition: all 0.2s ease;
     }
     .edit-nickname-btn:hover {
-      background: rgba(124, 58, 237, 0.3); transform: translateY(-50%) scale(1.1);
+      background: rgba(124, 58, 237, 0.3); transform: scale(1.1);
     }
     .username { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 8px; }
     
@@ -4300,6 +4300,12 @@ function getProfilePage() {
       border: 1px solid var(--primary-light);
       color: var(--primary-light); padding: 6px 14px; border-radius: 20px;
       font-size: 0.85rem; font-weight: 600;
+      transition: all 0.2s ease;
+    }
+    .title-badge:hover {
+      background: linear-gradient(135deg, rgba(124, 58, 237, 0.3), rgba(139, 92, 246, 0.4));
+      border-color: var(--primary);
+      transform: translateY(-1px);
     }
     
     /* Stats Row */
@@ -4502,10 +4508,10 @@ function getProfilePage() {
       </div>
       <div class="username">@<span id="profileUsername">...</span></div>
       <div class="title-display">
-        <span class="title-badge" id="currentTitleBadge" style="display:none;">
+        <span class="title-badge" id="currentTitleBadge" style="display:none;cursor:pointer;" onclick="App.openTitleModal()">
           <i class="fas fa-crown"></i> <span id="titleName"></span>
         </span>
-        <span class="title-badge" id="noTitleBadge" style="background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);color:var(--text-muted);">
+        <span class="title-badge" id="noTitleBadge" style="background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);color:var(--text-muted);cursor:pointer;" onclick="App.openTitleModal()">
           <i class="fas fa-crown"></i> 暂无称号
         </span>
       </div>
