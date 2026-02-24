@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS gallery (
     user_id INTEGER,
     username TEXT, -- 保留作为快照，或者仅使用 user_id 并在查询时 JOIN
     created_at INTEGER NOT NULL,
-    image_hash TEXT, -- 图片哈希值，用于去重
     CONSTRAINT fk_gallery_user FOREIGN KEY (user_id) 
         REFERENCES users(id) ON DELETE CASCADE
 ) STRICT;
@@ -116,12 +115,6 @@ CREATE INDEX IF NOT EXISTS idx_user_titles_user ON user_titles(user_id);
 CREATE INDEX IF NOT EXISTS idx_gallery_created_at ON gallery(created_at DESC);
 -- gallery: 个人主页查看自己的图库
 CREATE INDEX IF NOT EXISTS idx_gallery_user ON gallery(user_id, created_at DESC);
--- gallery: 图片哈希去重查询
-CREATE INDEX IF NOT EXISTS idx_gallery_user_hash ON gallery(user_id, image_hash);
 
 -- 索引：抽卡时需要快速随机获取已通过的卡片
 CREATE INDEX IF NOT EXISTS idx_uploads_pool ON user_uploads(status, rarity);
-
--- 迁移：为现有表添加 image_hash 列（如果不存在）
--- 注意：如果列已存在，SQLite 会报错，但可以安全忽略
--- ALTER TABLE gallery ADD COLUMN image_hash TEXT;
