@@ -3996,7 +3996,7 @@ function getLibraryHtml(items, pager) {
     </div>
   </div>
 
-  <button id="backToTop" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+  <button id="backToTop" onclick="document.getElementById('scrollContainer').scrollTo({top: 0, behavior: 'smooth'})">
     <i class="fas fa-arrow-up"></i>
   </button>
 
