@@ -1072,7 +1072,7 @@ class GachaService {
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
     this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
     if (assetData.rarity === 'UR') {
-      this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now() }));
+      this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now(), isLimited: true }));
     }
 
     return jsonResponse({
@@ -1534,7 +1534,8 @@ async function handleAdminSaveAnnouncement(request, env) {
 async function handleShowcase(env) {
   if (!env.RECENT_REQUESTS) return jsonResponse([]);
   const list = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.LEADERBOARD)) || [];
-  const result = list.sort(() => 0.5 - Math.random()).slice(0, 6);
+  const filtered = list.filter(item => !item.isLimited);
+  const result = filtered.sort(() => 0.5 - Math.random()).slice(0, 6);
   
   return jsonResponse(result, 200, {
     'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`,
@@ -2216,9 +2217,9 @@ function getHtmlPage() {
         gap: 8px;
       }
     }
-.grid-item { border-radius: 8px; overflow: hidden; background: #F1F5F9; cursor: pointer; border: 1px solid #E2E8F0; transition: 0.2s; }
+.grid-item { border-radius: 8px; overflow: hidden; background: #F1F5F9; cursor: pointer; border: 1px solid #E2E8F0; transition: 0.2s; aspect-ratio: 1; }
     .grid-item:hover { border-color: var(--primary); transform: translateY(-2px); }
-    .grid-item img { width: 100%; height: auto; display: block; }
+    .grid-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .input-group input { width: 100%; padding: 12px; border: 2px solid #E2E8F0; border-radius: 10px; font-family: var(--font); font-size: 1rem; text-align: center; color: var(--text-main); margin-bottom: 20px; outline: none; background: #F8FAFC; }
     .input-group input:focus { border-color: var(--primary); background: white; }
     .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #1E293B; color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; backdrop-filter: blur(10px); background: rgba(30, 41, 59, 0.88); border: 1px solid rgba(255,255,255,0.12); }
