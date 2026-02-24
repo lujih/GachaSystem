@@ -33,7 +33,7 @@ const BUSINESS_CONFIG = {
         name: '玩家共建池',
         description: '由玩家上传的精选图片库，持续更新中',
         sources: [
-          { name: 'Community Uploads', url: 'https://github_images.cszxorx.dpdns.org/', rarity: 'UR' } 
+          { name: 'Community Uploads', url: 'https://github_images.cszxorx.dpdns.org/?format=json', rarity: 'UR' } 
         ],
         type: 'api'
       }
@@ -1360,34 +1360,35 @@ class GachaService {
       
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        // 明确告诉API我们接受什么
-        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+        'Accept': 'application/json,image/webp,image/apng,image/*,*/*;q=0.8'
       };
 
       // 优化策略 1: 优先尝试 HEAD 请求获取重定向地址
-      // 这比 GET 更快，因为它不下载图片内容，只拿 Header
       try {
         const headRes = await fetch(apiUrl, { 
             method: 'HEAD', 
             headers, 
-            redirect: 'follow' // 让 fetch 跟随跳转，最终 res.url 就是真实图片地址
+            redirect: 'follow' 
         });
         
         if (headRes.ok) {
-          // 如果最终URL和请求URL不同，说明发生了重定向，这就是真实图片URL
-          // 或者如果 API 本身就直接返回图片，URL 也是可用的
-          return {
-            success: true,
-            imageUrl: headRes.url,
-            rarity: 'UR', // 限定池默认 UR
-            sourceName: 'GitHub Repo'
-          };
+          const contentType = headRes.headers.get('content-type') || '';
+          // 【核心修复】如果 API 返回的是 JSON 格式，坚决不能把 API 自己的地址当做图片地址！
+          // 必须跳过，进入下方的 GET 请求去老老实实解析 JSON
+          if (!contentType.includes('application/json')) {
+            return {
+              success: true,
+              imageUrl: headRes.url,
+              rarity: 'UR', 
+              sourceName: 'API Redirect (HEAD)'
+            };
+          }
         }
       } catch (headError) {
         console.warn('[RandomImageAPI] HEAD failed, falling back to GET', headError);
       }
 
-      // 优化策略 2: 如果 HEAD 失败 (有些API不支持 HEAD)，使用 GET
+      // 优化策略 2: 使用 GET 请求 (处理 JSON 接口 或 不支持 HEAD 的接口)
       const response = await fetch(apiUrl, { method: 'GET', headers, redirect: 'follow' });
 
       if (!response.ok) {
@@ -1397,11 +1398,11 @@ class GachaService {
       const contentType = response.headers.get('content-type') || '';
       const finalUrl = response.url;
 
-      // 情况 A: API 返回的是 JSON (例如 { "url": "..." })
+      // 情况 A: API 返回的是 JSON (你的图床 Worker 加了 ?format=json 就会走这里)
       if (contentType.includes('application/json')) {
         try {
           const data = await response.json();
-          // 尝试匹配常见的字段名
+          // 精准匹配你图床 Worker 返回的字段 `url`
           const imageUrl = data.url || data.img || data.image || data.data?.url || (Array.isArray(data) ? data[0].url : null);
           if (imageUrl) {
             return { success: true, imageUrl: imageUrl, rarity: 'UR', sourceName: 'API JSON' };
@@ -1409,8 +1410,7 @@ class GachaService {
         } catch(e) {}
       }
       
-      // 情况 B: API 返回的是图片 (通过 302 跳转到了最终图片，或者直接返回二进制流)
-      // 使用 finalUrl 作为图片地址
+      // 情况 B: API 返回的是图片流 (或通过 302 跳转到了最终图片)
       return {
         success: true,
         imageUrl: finalUrl,
