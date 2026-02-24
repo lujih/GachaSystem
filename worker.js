@@ -126,6 +126,18 @@ const CONFIG = {
   DEFAULT_IMG: TECHNICAL_CONFIG.INFRASTRUCTURE.DEFAULT_IMG
 };
 
+async function computeImageHash(buffer) {
+  try {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  } catch (e) {
+    console.error('Failed to compute image hash:', e);
+    return null;
+  }
+}
+
 const DEFAULT_CHANGELOG = [
   { 
     date: new Date().toISOString().split('T')[0], 
@@ -860,6 +872,7 @@ class GachaService {
           throw new Error('Compressed image too small');
         }
 
+        const imageHash = await computeImageHash(compressedBuffer);
         const timestamp = Date.now();
         const randomStr = Math.random().toString(36).slice(2, 8);
         const filename = `images/${source.rarity}_${timestamp}_${randomStr}.webp`;
@@ -875,7 +888,8 @@ class GachaService {
           success: true,
           imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`,
           rarity: source.rarity,
-          sourceName: source.name
+          sourceName: source.name,
+          imageHash
         };
       }
     } catch (e) {
@@ -943,7 +957,7 @@ class GachaService {
     }
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: timestamp }));
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: timestamp, imageHash: assetData.imageHash }));
     
     if (assetData.rarity === 'UR') {
       this.ctx.waitUntil(updateLeaderboard(this.env, {
@@ -1063,7 +1077,7 @@ class GachaService {
     }
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now(), imageHash: assetData.imageHash }));
     if (assetData.rarity === 'UR') {
       this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now(), isLimited: true }));
     }
@@ -1126,7 +1140,7 @@ class GachaService {
     if (assetData.rarity === 'UR') {
       this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now() }));
     }
-    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now(), imageHash: assetData.imageHash }));
 
     return jsonResponse({
       success: true, rarity: assetData.rarity, imageUrl: assetData.imageUrl, expGained: expGain,
@@ -1182,7 +1196,7 @@ class GachaService {
     }
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now(), imageHash: assetData.imageHash }));
 
     return jsonResponse({
       success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain,
@@ -1841,9 +1855,40 @@ async function updateLeaderboard(env, newItem) {
 
 async function updateGalleryIndex(env, newItem) {
   try {
-    await env.DB.prepare(
-      'INSERT INTO gallery (url, user_id, username, created_at) VALUES (?, ?, ?, ?)'
-    ).bind(newItem.url, newItem.userId, newItem.username, newItem.ts).run();
+    // 优先使用图片哈希去重，如果提供了哈希值
+    if (newItem.imageHash) {
+      // 检查该用户是否已经拥有相同哈希的图片
+      const existingByHash = await env.DB.prepare(
+        'SELECT 1 FROM gallery WHERE user_id = ? AND image_hash = ? LIMIT 1'
+      ).bind(newItem.userId, newItem.imageHash).first();
+      
+      if (existingByHash) {
+        // 用户已拥有相同图片，跳过插入
+        return;
+      }
+      
+      // 尝试插入包括 image_hash 列
+      try {
+        await env.DB.prepare(
+          'INSERT INTO gallery (url, user_id, username, created_at, image_hash) VALUES (?, ?, ?, ?, ?)'
+        ).bind(newItem.url, newItem.userId, newItem.username, newItem.ts, newItem.imageHash).run();
+        return;
+      } catch (insertErr) {
+        // 如果插入失败（可能因为 image_hash 列不存在），回退到旧逻辑
+        console.warn('Insert with image_hash failed, falling back:', insertErr.message);
+      }
+    }
+    
+    // 回退到 URL 去重（旧逻辑）
+    const existingByUrl = await env.DB.prepare(
+      'SELECT 1 FROM gallery WHERE url = ? LIMIT 1'
+    ).bind(newItem.url).first();
+    
+    if (!existingByUrl) {
+      await env.DB.prepare(
+        'INSERT INTO gallery (url, user_id, username, created_at) VALUES (?, ?, ?, ?)'
+      ).bind(newItem.url, newItem.userId, newItem.username, newItem.ts).run();
+    }
   } catch (e) {
     console.error('Failed to update gallery D1:', e);
   }
