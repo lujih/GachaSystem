@@ -2075,10 +2075,10 @@ const NEUTRAL_CSS = `
     .logo { font-size: 1.3rem; }
     .logo-subtitle { font-size: 0.75rem; margin-top: 2px; }
     .header-right { justify-content: flex-end; }
-    .user-pill { font-size: 0.75rem; padding: 5px 8px 5px 6px; gap: 4px; max-width: none; margin: 0; flex-wrap: wrap; justify-content: flex-end; }
-    .user-avatar { width: 22px; height: 22px; font-size: 0.7rem; flex-shrink: 0; }
-    .user-info { min-width: 0; display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; }
-    .user-name { font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65px; }
+    .user-pill { font-size: 0.8rem; padding: 6px 12px 6px 8px; gap: 8px; margin: 0; flex-shrink: 0; flex-wrap: nowrap; white-space: nowrap; }
+    .user-avatar { width: 28px; height: 28px; font-size: 0.8rem; flex-shrink: 0; }
+    .user-info { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+    .user-name { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
     .user-level-badge { font-size: 0.6rem; padding: 1px 4px; }
     .user-chevron { display: none; }
   }
@@ -4614,6 +4614,37 @@ function getProfilePage() {
       <div class="total-inv">召唤总数: <strong id="profileTotalCards">0</strong></div>
     </div>
 
+    <!-- 新增：关于按钮 -->
+    <div style="text-align: center; margin-top: 32px; margin-bottom: 10px;">
+      <button class="btn btn-secondary" style="font-size: 0.85rem; padding: 10px 20px; border-radius: 20px; color: var(--text-muted); background: transparent; border-color: rgba(255,255,255,0.1);" onclick="App.openAboutModal()">
+        <i class="fas fa-info-circle"></i> 关于系统
+      </button>
+    </div>
+
+  </div>
+
+  <!-- 新增：关于弹窗 -->
+  <div id="aboutModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle">
+    <div class="modal-content" style="text-align: center;">
+      <button class="modal-close" onclick="App.closeAboutModal()" aria-label="关闭"><i class="fas fa-times"></i></button>
+      <i class="fas fa-cube" style="font-size: 3rem; color: var(--primary); margin-bottom: 16px; text-shadow: 0 0 20px rgba(124, 58, 237, 0.5);"></i>
+      <h3 class="modal-title" id="aboutModalTitle" style="margin-bottom: 4px; letter-spacing: 1px;">Gacha System</h3>
+      <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 24px;">Version 1.0.0</div>
+      
+      <div style="text-align: left; font-size: 0.9rem; color: var(--text-main); line-height: 1.6; background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 24px;">
+        <p style="margin-top: 0; color: var(--primary-light); font-weight: 600;">基于 Serverless 构建的抽卡收集系统</p>
+        <ul style="padding-left: 20px; margin-bottom: 0; color: var(--text-muted);">
+          <li style="margin-bottom: 6px;">Cloudflare Workers + D1 + R2</li>
+          <li style="margin-bottom: 6px;">物理 Hash 去重图库</li>
+          <li style="margin-bottom: 6px;">全局级卡池缓冲队列</li>
+          <li>多级称号与成就系统</li>
+        </ul>
+      </div>
+      
+      <div style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">
+        &copy; 2024 Gacha System. All rights reserved.
+      </div>
+    </div>
   </div>
 
   <!-- 称号管理弹窗 -->
@@ -4778,6 +4809,15 @@ function getProfilePage() {
 
       closeRewardModal() {
         document.getElementById('rewardModal').classList.remove('show');
+      },
+      // 新增：打开关于弹窗
+      openAboutModal() {
+        document.getElementById('aboutModal').classList.add('show');
+      },
+
+      // 新增：关闭关于弹窗
+      closeAboutModal() {
+        document.getElementById('aboutModal').classList.remove('show');
       },
 
       async claimReward(level) {
