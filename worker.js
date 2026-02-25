@@ -38,10 +38,18 @@ const BUSINESS_CONFIG = {
         type: 'api'
       },
       'beautiful_legs': {
-        name: 'Beautiful Legs',
+        name: '美腿精选',
         description: '精选美腿图片',
         sources: [
           { name: 'Beautiful Legs API', url: 'https://api.lolimi.cn/API/meizi/api?type=value', rarity: 'UR' }
+        ],
+        type: 'api'
+      },
+      'illustration': {
+        name: '精选插画',
+        description: '精选画师GTZ taejune的插画',
+        sources: [
+          { name: 'GTZ taejune API', url: 'https://api.r10086.com/樱道随机图片api接口.php?图片系列=P站系列1', rarity: 'UR' }
         ],
         type: 'api'
       }
