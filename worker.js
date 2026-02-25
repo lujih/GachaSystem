@@ -37,11 +37,11 @@ const BUSINESS_CONFIG = {
         ],
         type: 'api'
       },
-      'Beautiful legs': {
-        name: '美腿限定',
-        description: '高清美女腿图片',
+      'beautiful_legs': {
+        name: 'Beautiful Legs',
+        description: '精选美腿图片',
         sources: [
-          { name: 'Beautiful legs', url: 'https://api.lolimi.cn/API/meizi/api?type=value', rarity: 'UR' } 
+          { name: 'Beautiful Legs API', url: 'https://api.lolimi.cn/api/beauty?type=json', rarity: 'UR' }
         ],
         type: 'api'
       }
@@ -1399,7 +1399,7 @@ class GachaService {
         try {
           const data = await response.json();
           // 精准匹配你图床 Worker 返回的字段 `url`
-          const imageUrl = data.url || data.img || data.image || data.data?.url || (Array.isArray(data) ? data[0].url : null);
+          const imageUrl = data.url || data.img || data.image || data.text || data.data?.url || (Array.isArray(data) ? data[0].url : null);
           if (imageUrl) {
             return { success: true, imageUrl: imageUrl, rarity: 'UR', sourceName: 'API JSON' };
           }
