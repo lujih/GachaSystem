@@ -41,7 +41,7 @@ const BUSINESS_CONFIG = {
         name: 'Beautiful Legs',
         description: '精选美腿图片',
         sources: [
-          { name: 'Beautiful Legs API', url: 'https://api.lolimi.cn/api/beauty?type=json', rarity: 'UR' }
+          { name: 'Beautiful Legs API', url: 'https://api.lolimi.cn/API/meizi/api?type=value', rarity: 'UR' }
         ],
         type: 'api'
       }
