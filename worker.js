@@ -36,6 +36,14 @@ const BUSINESS_CONFIG = {
           { name: 'Community Uploads', url: 'https://github_images.mahiro-seeker.dpdns.org/?format=json', rarity: 'UR' } 
         ],
         type: 'api'
+      },
+      'Beautiful legs': {
+        name: '美腿限定',
+        description: '高清美女腿图片',
+        sources: [
+          { name: 'Beautiful legs', url: 'https://api.lolimi.cn/API/meizi/api?type=value', rarity: 'UR' } 
+        ],
+        type: 'api'
       }
     },
     DEFAULT_POOL: 'genshin'
