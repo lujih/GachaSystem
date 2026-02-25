@@ -2037,6 +2037,10 @@ const NEUTRAL_CSS = `
   .switch input:checked + .slider { background: #F59E0B; }
   .switch input:checked + .slider:before { transform: translateX(22px); background: #0F172A; }
   .form-hint { font-size: 0.75rem; color: #64748B; margin-top: 6px; }
+  .switch-wrapper { display: flex; flex-direction: column; gap: 8px; }
+  @media (max-width: 480px) {
+    .switch-wrapper { width: 100%; }
+  }
   .admin-btn { padding: 10px 20px; border-radius: 10px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; display: inline-flex; align-items: center; gap: 8px; }
   .admin-btn.primary { background: linear-gradient(135deg, #F59E0B, #D97706); color: #0F172A; }
   .admin-btn.primary:hover { background: linear-gradient(135deg, #FBBF24, #F59E0B); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
@@ -2154,7 +2158,10 @@ const NEUTRAL_CSS = `
     .admin-btn { width: 100%; justify-content: center; }
     .admin-btn.primary { order: -1; }
     #view-ann .form-row > div { width: 100%; }
-    .switch { width: 100%; }
+    .switch { width: 100%; height: 36px; }
+    .switch .slider { border-radius: 36px; }
+    .switch .slider:before { width: 28px; height: 28px; }
+    .switch input:checked + .slider:before { transform: translateX(28px); }
   }
   .upload-drop-zone { border: 2px dashed #C4B5FD; border-radius: 16px; padding: 30px 20px; text-align: center; background: #FAF5FF; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden; }
   .upload-drop-zone:hover, .upload-drop-zone.drag-over { background: #F3E8FF; border-color: #7C3AED; transform: scale(1.01); }
@@ -2663,8 +2670,8 @@ function getHtmlPage() {
               <input type="text" id="adminAnnTitle" class="admin-input" placeholder="例如：新春活动开启！">
             </div>
             
-            <div class="form-row" style="display: flex; gap: 24px; align-items: flex-start;">
-              <div>
+            <div class="form-row" style="display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap;">
+              <div class="switch-wrapper">
                 <label class="form-label">启用状态</label>
                 <label class="switch">
                   <input type="checkbox" id="adminAnnEnable">
@@ -2672,7 +2679,7 @@ function getHtmlPage() {
                 </label>
               </div>
               
-              <div>
+              <div class="switch-wrapper">
                 <label class="form-label">强制弹窗</label>
                 <label class="switch">
                   <input type="checkbox" id="adminAnnRefresh">
