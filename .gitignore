@@ -1,0 +1,6 @@
+# 1. 忽略特定文件
+AGENTS.md
+
+# 2. 忽略文件夹
+.opencode/
+openspec/

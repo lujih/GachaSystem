@@ -860,9 +860,9 @@ class GachaService {
           throw new Error('Compressed image too small');
         }
 
-        const timestamp = Date.now();
-        const randomStr = Math.random().toString(36).slice(2, 8);
-        const filename = `images/${source.rarity}_${timestamp}_${randomStr}.webp`;
+        // 使用图片内容的 Hash 作为文件名，实现物理去重
+        const hashStr = await calculateHash(compressedBuffer);
+        const filename = `images/${source.rarity}_${hashStr}.webp`;
 
         await this.env.R2_BUCKET.put(filename, compressedBuffer, {
           httpMetadata: {
@@ -1881,9 +1881,15 @@ async function updateLeaderboard(env, newItem) {
 
 async function updateGalleryIndex(env, newItem) {
   try {
-    await env.DB.prepare(
-      'INSERT INTO gallery (url, user_id, username, created_at) VALUES (?, ?, ?, ?)'
-    ).bind(newItem.url, newItem.userId, newItem.username, newItem.ts).run();
+    // 使用 ON CONFLICT 实现：如果是新图就插入；如果是重复图，就更新为最新抽到的玩家，并刷新时间使其置顶
+    await env.DB.prepare(`
+      INSERT INTO gallery (url, user_id, username, created_at) 
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(url) DO UPDATE SET 
+        user_id = excluded.user_id,
+        username = excluded.username,
+        created_at = excluded.created_at
+    `).bind(newItem.url, newItem.userId, newItem.username, newItem.ts).run();
   } catch (e) {
     console.error('Failed to update gallery D1:', e);
   }
@@ -1904,6 +1910,13 @@ function safeJsonParse(str) {
   } catch { 
     return null; 
   } 
+}
+
+// 计算图片文件的 Hash 值（用于去重）
+async function calculateHash(buffer) {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
 
 const Html = {
