@@ -110,8 +110,15 @@ const TECHNICAL_CONFIG = {
   },
 
   INFRASTRUCTURE: {
-    R2_DOMAIN: "https://cft1.cszxorx.dpdns.org",
-    DEFAULT_IMG: "https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif"
+    R2_DOMAIN: 'https://your-r2-domain.r2.cloudflarestorage.com',
+    GITHUB: {
+      TOKEN: '',
+      OWNER: '',
+      REPO: '',
+      BRANCH: 'main',
+      API_BASE: 'https://api.github.com',
+      CDN_BASE: 'https://cdn.jsdelivr.net/gh'
+    }
   },
 
   GITHUB: {
@@ -130,8 +137,7 @@ const CONFIG = {
   ...TECHNICAL_CONFIG,
   KEYS: TECHNICAL_CONFIG.KEYS,
   TTL: TECHNICAL_CONFIG.TTL,
-  R2_DOMAIN: TECHNICAL_CONFIG.INFRASTRUCTURE.R2_DOMAIN,
-  DEFAULT_IMG: TECHNICAL_CONFIG.INFRASTRUCTURE.DEFAULT_IMG
+  R2_DOMAIN: TECHNICAL_CONFIG.INFRASTRUCTURE.R2_DOMAIN
 };
 
 const DEFAULT_CHANGELOG = [
@@ -889,7 +895,7 @@ class GachaService {
     } catch (e) {
       console.error('Fetch/Compress Error:', e);
     }
-    return { success: false, rarity: 'N', imageUrl: CONFIG.DEFAULT_IMG };
+    return { success: false, rarity: 'N', imageUrl: null };
   }
 
   calculateLevelUpRaw(currentUser, expGained) {
