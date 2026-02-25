@@ -2000,13 +2000,56 @@ const NEUTRAL_CSS = `
   .r-n { background: var(--r-n); } .r-r { background: var(--r-r); } .r-sr { background: var(--r-sr); } .r-ssr { background: linear-gradient(135deg, var(--r-ssr), #D97706); }
   .r-ur { background: linear-gradient(45deg, var(--r-ur), #EC4899, #8B5CF6); background-size: 200% 200%; animation: rainbow 3s ease infinite; border-color: #FFF; }
   @keyframes rainbow { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-  .admin-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.85rem; text-align: left; }
-  .admin-table th { color: var(--text-light); font-weight: bold; padding: 8px; border-bottom: 2px solid #E2E8F0; }
-  .admin-table td { padding: 8px; border-bottom: 1px solid #F1F5F9; }
-  .admin-input { width: 100%; padding: 6px; border: 1px solid #E2E8F0; border-radius: 6px; font-family: var(--font); }
-  .admin-tabs { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 2px solid #F1F5F9; padding-bottom: 10px; }
-  .admin-tab { padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: bold; cursor: pointer; color: var(--text-light); transition: 0.2s; }
-  .admin-tab.active { background: #E0F2FE; color: var(--primary); }
+  .admin-modal-content { background: linear-gradient(145deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98)); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 0; border-radius: 16px; width: 90%; max-width: 720px; max-height: 90vh; overflow: hidden; position: relative; border: 1px solid rgba(148, 163, 184, 0.15); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05); transform: scale(0.95); transition: transform 0.2s ease; }
+  .admin-modal.show .admin-modal-content { transform: scale(1); }
+  .admin-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid rgba(148, 163, 184, 0.15); background: rgba(0,0,0,0.2); }
+  .admin-modal-header h3 { margin: 0; font-size: 1.25rem; font-weight: 600; color: #F8FAFC; display: flex; align-items: center; gap: 10px; }
+  .admin-modal-header h3 i { color: #F59E0B; }
+  .admin-modal-close { background: rgba(148, 163, 184, 0.1); border: none; width: 36px; height: 36px; border-radius: 10px; color: #94A3B8; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .admin-modal-close:hover { background: rgba(239, 68, 68, 0.2); color: #EF4444; transform: rotate(90deg); }
+  .admin-modal-body { padding: 20px 24px; max-height: calc(90vh - 140px); overflow-y: auto; }
+  .admin-tabs { display: flex; gap: 4px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 12px; margin-bottom: 20px; }
+  .admin-tab { padding: 10px 16px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; cursor: pointer; color: #94A3B8; transition: all 0.2s; border: none; background: transparent; display: flex; align-items: center; gap: 8px; }
+  .admin-tab:hover { color: #E2E8F0; background: rgba(255,255,255,0.05); }
+  .admin-tab.active { background: linear-gradient(135deg, #F59E0B, #D97706); color: #0F172A; font-weight: 600; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3); }
+  .admin-tab-badge { background: rgba(239, 68, 68, 0.9); color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; }
+  .admin-input { width: 100%; padding: 10px 14px; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; font-size: 0.9rem; background: rgba(0,0,0,0.3); color: #F8FAFC; transition: all 0.2s; }
+  .admin-input:focus { outline: none; border-color: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
+  .admin-input::placeholder { color: #64748B; }
+  .admin-textarea { width: 100%; padding: 12px 14px; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; font-size: 0.9rem; background: rgba(0,0,0,0.3); color: #F8FAFC; min-height: 120px; resize: vertical; font-family: inherit; transition: all 0.2s; }
+  .admin-textarea:focus { outline: none; border-color: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
+  .admin-textarea::placeholder { color: #64748B; }
+  .admin-table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 12px 0; font-size: 0.85rem; }
+  .admin-table th { color: #94A3B8; font-weight: 600; padding: 12px; text-align: left; border-bottom: 1px solid rgba(148, 163, 184, 0.15); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .admin-table td { padding: 12px; border-bottom: 1px solid rgba(148, 163, 184, 0.08); color: #E2E8F0; }
+  .admin-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .admin-table input { background: rgba(0,0,0,0.3); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 6px 10px; color: #F8FAFC; font-size: 0.85rem; }
+  .admin-table input:focus { outline: none; border-color: #F59E0B; }
+  .admin-section-title { font-size: 0.9rem; font-weight: 600; color: #E2E8F0; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+  .admin-card { background: rgba(0,0,0,0.2); border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .admin-card:hover { border-color: rgba(245, 158, 11, 0.3); }
+  .form-label { display: block; font-size: 0.85rem; font-weight: 500; color: #94A3B8; margin-bottom: 8px; }
+  .form-row { margin-bottom: 16px; }
+  .switch { position: relative; display: inline-block; width: 48px; height: 26px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider { position: absolute; cursor: pointer; inset: 0; background: rgba(148, 163, 184, 0.2); border-radius: 26px; transition: 0.3s; }
+  .switch .slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: #94A3B8; border-radius: 50%; transition: 0.3s; }
+  .switch input:checked + .slider { background: #F59E0B; }
+  .switch input:checked + .slider:before { transform: translateX(22px); background: #0F172A; }
+  .form-hint { font-size: 0.75rem; color: #64748B; margin-top: 6px; }
+  .admin-btn { padding: 10px 20px; border-radius: 10px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; display: inline-flex; align-items: center; gap: 8px; }
+  .admin-btn.primary { background: linear-gradient(135deg, #F59E0B, #D97706); color: #0F172A; }
+  .admin-btn.primary:hover { background: linear-gradient(135deg, #FBBF24, #F59E0B); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
+  .admin-btn.secondary { background: rgba(148, 163, 184, 0.15); color: #E2E8F0; }
+  .admin-btn.secondary:hover { background: rgba(148, 163, 184, 0.25); }
+  .admin-btn.danger { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+  .admin-btn.danger:hover { background: rgba(239, 68, 68, 0.25); }
+  .admin-btn.small { padding: 6px 12px; font-size: 0.75rem; }
+  .admin-scroll { max-height: 400px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 12px; background: rgba(0,0,0,0.15); }
+  .admin-scroll::-webkit-scrollbar { width: 6px; }
+  .admin-scroll::-webkit-scrollbar-track { background: transparent; }
+  .admin-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 3px; }
+  .admin-scroll::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
   .user-pill { background: white; padding: 6px 14px; border-radius: 8px; border: 1px solid #E2E8F0; font-size: 0.85rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; }
   .title-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: white; font-size: 0.7rem; font-weight: bold; vertical-align: middle; margin-left: 6px; text-shadow: 0 1px 1px rgba(0,0,0,0.2); }
   .user-badge { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; }
@@ -2528,105 +2571,104 @@ function getHtmlPage() {
     </div>
   </div>
 
-  <div id="adminModal" class="modal">
-    <div class="modal-content" style="max-width:650px;">
-      <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
-      <h3 style="margin-top:0;">管理面板</h3>
-      <div id="adminLogin">
-        <div class="input-group"><input type="password" id="adminPass" placeholder="请输入管理员密码..."></div>
-        <button class="btn" style="width:100%;" onclick="App.verifyAdmin()">确认</button>
+  <div id="adminModal" class="modal admin-modal">
+    <div class="modal-content admin-modal-content" style="max-width:720px;">
+      <div class="admin-modal-header">
+        <h3><i class="fas fa-cog"></i>管理面板</h3>
+        <button class="admin-modal-close" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
       </div>
-      <div id="adminPanel" style="display:none; text-align:left;">
-        <div class="admin-tabs">
-            <div class="admin-tab active" onclick="App.switchAdminTab('log')" id="tab-log">更新日志</div>
-            <div class="admin-tab" onclick="App.switchAdminTab('users')" id="tab-users">用户管理</div>
-            <div class="admin-tab" onclick="App.switchAdminTab('uploads')" id="tab-uploads">上传审核</div>
-            <div class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann">系统公告</div>
+      <div class="admin-modal-body">
+        <div id="adminLogin">
+          <div class="input-group"><input type="password" id="adminPass" class="admin-input" placeholder="请输入管理员密码..."></div>
+          <button class="admin-btn primary" style="width:100%; margin-top:12px;" onclick="App.verifyAdmin()">确认</button>
         </div>
-        <div id="view-log">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <span style="font-weight:bold; font-size:0.9rem;">可视化编辑器</span>
-            <button class="btn secondary" style="padding:4px 8px; font-size:0.8rem;" onclick="App.addAdminRow()">+ 新增一行</button>
+        <div id="adminPanel" style="display:none; text-align:left;">
+          <div class="admin-tabs">
+            <button class="admin-tab active" onclick="App.switchAdminTab('log')" id="tab-log"><i class="fas fa-list-alt"></i>更新日志</button>
+            <button class="admin-tab" onclick="App.switchAdminTab('users')" id="tab-users"><i class="fas fa-users"></i>用户管理</button>
+            <button class="admin-tab" onclick="App.switchAdminTab('uploads')" id="tab-uploads"><i class="fas fa-upload"></i>上传审核<span class="admin-tab-badge" id="uploadsCountBadge" style="display:none;">0</span></button>
+            <button class="admin-tab" onclick="App.switchAdminTab('ann')" id="tab-ann"><i class="fas fa-bullhorn"></i>系统公告</button>
+          </div>
+          <div id="view-log">
+            <div class="admin-section-title">
+              <span><i class="fas fa-edit" style="color:#F59E0B;margin-right:8px;"></i>可视化编辑器</span>
+              <button class="admin-btn secondary small" onclick="App.addAdminRow()">+ 新增一行</button>
             </div>
-            <div style="max-height:300px; overflow-y:auto; margin-bottom:10px; border:1px solid #F1F5F9; border-radius:8px;">
-            <table class="admin-table" id="adminTable"><thead><tr><th width="80">日期</th><th width="60">版本</th><th>内容</th><th width="100">标签</th><th width="40"></th></tr></thead><tbody id="adminTbody"></tbody></table>
+            <div class="admin-scroll">
+              <table class="admin-table" id="adminTable"><thead><tr><th width="90">日期</th><th width="70">版本</th><th>内容</th><th width="100">标签</th><th width="50"></th></tr></thead><tbody id="adminTbody"></tbody></table>
             </div>
-            <button class="btn" style="width:100%;" onclick="App.saveAdminLog()">保存更改</button>
-        </div>
-        <div id="view-users" style="display:none;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <span style="font-weight:bold; font-size:0.9rem;">注册用户列表</span>
-                <button class="btn secondary" onclick="App.loadAdminUsers()" style="font-size:0.8rem;"><i class="fas fa-sync"></i></button>
+            <button class="admin-btn primary" style="width:100%; margin-top:16px;" onclick="App.saveAdminLog()">保存更改</button>
+          </div>
+          <div id="view-users" style="display:none;">
+            <div class="admin-section-title">
+              <span><i class="fas fa-user-friends" style="color:#F59E0B;margin-right:8px;"></i>注册用户列表</span>
+              <button class="admin-btn secondary small" onclick="App.loadAdminUsers()"><i class="fas fa-sync"></i>刷新</button>
             </div>
-            <div style="max-height:350px; overflow-y:auto; border:1px solid #F1F5F9; border-radius:8px;">
-                <table class="admin-table"><thead><tr><th width="50">头像</th><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>注册时间</th><th>最后登录</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="7" style="text-align:center; padding:20px;">加载中...</td></tr></tbody></table>
+            <div class="admin-scroll">
+              <table class="admin-table"><thead><tr><th width="50">头像</th><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>注册时间</th><th>最后登录</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="7" style="text-align:center; padding:40px; color:#64748B;"><i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>加载中...</td></tr></tbody></table>
             </div>
-        </div>
-        <div id="view-uploads" style="display:none;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <span style="font-weight:bold; font-size:0.9rem;">
-                    待审核上传 
-                    <span id="uploadsCountBadge" style="background:var(--primary); color:white; padding:2px 8px; border-radius:12px; font-size:0.75rem;">0</span>
-                </span>
-                <div style="display:flex; gap:8px;">
-                    <select id="uploadStatusFilter" onchange="App.loadAdminUploads()" style="padding:4px 8px; border:1px solid #E2E8F0; border-radius:6px; font-size:0.8rem;">
-                        <option value="pending">待审核</option>
-                        <option value="approved">已通过</option>
-                        <option value="rejected">已拒绝</option>
-                    </select>
-                    <button class="btn secondary" onclick="App.loadAdminUploads()" style="font-size:0.8rem; padding:4px 10px;"><i class="fas fa-sync"></i></button>
-                </div>
+          </div>
+          <div id="view-uploads" style="display:none;">
+            <div class="admin-section-title">
+              <span><i class="fas fa-cloud-upload-alt" style="color:#F59E0B;margin-right:8px;"></i>待审核上传</span>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <select id="uploadStatusFilter" onchange="App.loadAdminUploads()" class="admin-input" style="width:auto; padding:6px 12px;">
+                  <option value="pending">待审核</option>
+                  <option value="approved">已通过</option>
+                  <option value="rejected">已拒绝</option>
+                </select>
+                <button class="admin-btn secondary small" onclick="App.loadAdminUploads()"><i class="fas fa-sync"></i></button>
+              </div>
             </div>
-            <div id="uploadsContainer" style="max-height:400px; overflow-y:auto; border:1px solid #F1F5F9; border-radius:8px;">
-                <div style="text-align:center; padding:40px; color:var(--text-light);">
-                    <i class="fas fa-images" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
-                    加载中...
-                </div>
+            <div id="uploadsContainer" class="admin-scroll" style="min-height:200px;">
+              <div style="text-align:center; padding:60px; color:#64748B;">
+                <i class="fas fa-images" style="font-size:2.5rem; margin-bottom:16px; display:block; opacity:0.5;"></i>
+                加载中...
+              </div>
             </div>
-        </div>
-        <div id="view-ann" style="display:none;">
+          </div>
+          <div id="view-ann" style="display:none;">
             <div class="form-row">
-                <label class="form-label">公告标题</label>
-                <input type="text" id="adminAnnTitle" class="admin-input" placeholder="例如：新春活动开启！">
+              <label class="form-label">公告标题</label>
+              <input type="text" id="adminAnnTitle" class="admin-input" placeholder="例如：新春活动开启！">
             </div>
             
-            <div class="form-row" style="display: flex; gap: 20px; align-items: flex-start;">
-                <!-- 启用开关 -->
-                <div>
-                    <label class="form-label">启用状态</label>
-                    <label class="switch">
-                        <input type="checkbox" id="adminAnnEnable">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                
-                <!-- 强制推送开关 -->
-                <div>
-                    <label class="form-label">强制弹窗</label>
-                    <label class="switch">
-                        <input type="checkbox" id="adminAnnRefresh">
-                        <span class="slider"></span>
-                    </label>
-                    <div class="form-hint" style="max-width: 200px;">开启后，所有用户将再次看到此公告（用于重要更新）。</div>
-                </div>
+            <div class="form-row" style="display: flex; gap: 24px; align-items: flex-start;">
+              <div>
+                <label class="form-label">启用状态</label>
+                <label class="switch">
+                  <input type="checkbox" id="adminAnnEnable">
+                  <span class="slider"></span>
+                </label>
+              </div>
+              
+              <div>
+                <label class="form-label">强制弹窗</label>
+                <label class="switch">
+                  <input type="checkbox" id="adminAnnRefresh">
+                  <span class="slider"></span>
+                </label>
+                <div class="form-hint">开启后，所有用户将再次看到此公告</div>
+              </div>
             </div>
 
             <div class="form-row">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <label class="form-label">公告内容 (Markdown)</label>
-                    <a href="https://markdown.com.cn/basic-syntax/" target="_blank" style="font-size:0.75rem; color:var(--primary); text-decoration:none;">语法参考</a>
-                </div>
-                <textarea id="adminAnnContent" class="admin-textarea" placeholder="## 标题&#10;- 内容列表&#10;- 支持 **加粗**"></textarea>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <label class="form-label" style="margin-bottom:0;">公告内容 (Markdown)</label>
+                <a href="https://markdown.com.cn/basic-syntax/" target="_blank" style="font-size:0.75rem; color:#F59E0B; text-decoration:none;">语法参考</a>
+              </div>
+              <textarea id="adminAnnContent" class="admin-textarea" placeholder="## 标题&#10;- 内容列表&#10;- 支持 **加粗**"></textarea>
             </div>
 
-            <div style="display:flex; gap:10px;">
-                <button class="btn" style="flex:2" onclick="App.saveAnnouncement()">
-                    <i class="fas fa-save"></i> 保存并发布
-                </button>
-                <button class="btn secondary" style="flex:1" onclick="App.previewAnnouncement()">
-                    <i class="fas fa-eye"></i> 预览
-                </button>
+            <div style="display:flex; gap:12px;">
+              <button class="admin-btn primary" style="flex:2" onclick="App.saveAnnouncement()">
+                <i class="fas fa-save"></i> 保存并发布
+              </button>
+              <button class="admin-btn secondary" style="flex:1" onclick="App.previewAnnouncement()">
+                <i class="fas fa-eye"></i> 预览
+              </button>
             </div>
+          </div>
         </div>
       </div>
     </div>
@@ -3824,7 +3866,7 @@ const navNick = document.getElementById('navNickname');
         const tbody = document.getElementById('userTbody'); 
         
         // [优化] 表格骨架屏：生成5行，每行显示灰色条状
-const skeletonRow = \`
+        const skeletonRow = \`
             <tr>
                 <td><div class="skeleton" style="height:32px; width:32px; border-radius:50%;"></div></td>
                 <td><div class="skeleton" style="height:20px; width:80%; margin-bottom:4px;"></div><div class="skeleton" style="height:12px; width:50%;"></div></td>
@@ -3841,15 +3883,15 @@ const skeletonRow = \`
             const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); 
             const data = await res.json(); 
             if(data.success && data.users.length) { 
-tbody.innerHTML = data.users.map(u => {
+              tbody.innerHTML = data.users.map(u => {
                     const formatDate = (ts) => ts ? new Date(ts).toLocaleString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
-                    return \`<tr><td><img src="\${u.avatar}" style="width:32px; height:32px; border-radius:50%; object-fit:cover; background:#f0f0f0;" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 32 32\\'><circle cx=\\'16\\' cy=\\'16\\' r=\\'16\\' fill=\\'%23ddd\\'/></svg>'" /></td><td><div style="font-weight:bold; color:var(--primary);">\${u.username}</div><div class="user-row-meta">\${u.nickname}</div></td><td><span class="user-badge">\${u.drawCount}</span></td><td><span class="user-badge" style="color:#F59E0B">\${u.coins}</span><button class="btn secondary" style="padding:2px 6px; font-size:0.7rem; margin-left:4px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td style="font-size:0.75rem; color:#94A3B8;">\${formatDate(u.createdAt)}</td><td style="font-size:0.75rem; color:#94A3B8;">\${formatDate(u.lastLoginDate)}</td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.deleteUser('\${u.username}')">删</button></td></tr>\`;
+                    return \`<tr><td><img src="\${u.avatar}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; background:#334155;" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 36 36\\'><circle cx=\\'18\\' cy=\\'18\\' r=\\'18\\' fill=\\'%23475569\\'/></svg>'" /></td><td><div style="font-weight:600; color:#F59E0B;">\${u.username}</div><div style="font-size:0.75rem; color:#64748B; margin-top:2px;">\${u.nickname}</div></td><td><span class="user-badge" style="background:rgba(99,102,241,0.15); color:#818CF8;">\${u.drawCount}</span></td><td><span style="color:#F59E0B; font-weight:600;">\${u.coins}</span><button class="admin-btn secondary small" style="margin-left:6px; padding:4px 8px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td style="font-size:0.75rem; color:#64748B;">\${formatDate(u.createdAt)}</td><td style="font-size:0.75rem; color:#64748B;">\${formatDate(u.lastLoginDate)}</td><td><button class="admin-btn danger small" style="padding:6px 10px;" onclick="App.deleteUser('\${u.username}')"><i class="fas fa-trash-alt"></i></button></td></tr>\`;
                 }).join('');
-} else { 
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">暂无用户</td></tr>'; 
+          } else { 
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#64748B;"><i class="fas fa-users" style="font-size:2rem; margin-bottom:12px; display:block; opacity:0.5;"></i>暂无用户</td></tr>'; 
             }
         } catch(e) { 
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:red;">加载失败</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#EF4444;"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:12px; display:block;"></i>加载失败</td></tr>';
         }
       },
       async adminEditPoints(userId) { const val = prompt('输入要增加或减少的积分:'); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
@@ -3857,7 +3899,7 @@ tbody.innerHTML = data.users.map(u => {
       async loadAdminUploads() {
         const container = document.getElementById('uploadsContainer');
         const status = document.getElementById('uploadStatusFilter').value;
-        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-light);"><i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:10px; display:block;"></i>加载中...</div>';
+        container.innerHTML = '<div style="text-align:center; padding:60px; color:#64748B;"><i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:16px; display:block;"></i>加载中...</div>';
         try {
           const res = await fetch('/admin/uploads', {
             method: 'POST',
@@ -3865,38 +3907,44 @@ tbody.innerHTML = data.users.map(u => {
           });
           const d = await res.json();
           if(d.success) {
-            document.getElementById('uploadsCountBadge').textContent = d.total || 0;
+            const badge = document.getElementById('uploadsCountBadge');
+            if (d.total > 0) {
+              badge.textContent = d.total;
+              badge.style.display = 'inline-block';
+            } else {
+              badge.style.display = 'none';
+            }
             if(!d.uploads || d.uploads.length === 0) {
-              container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-light);"><i class="fas fa-inbox" style="font-size:2rem; margin-bottom:10px; display:block;"></i>暂无' + (status === 'pending' ? '待审核' : status === 'approved' ? '已通过' : '已拒绝') + '的上传</div>';
+              container.innerHTML = '<div style="text-align:center; padding:60px; color:#64748B;"><i class="fas fa-inbox" style="font-size:2.5rem; margin-bottom:16px; display:block; opacity:0.5;"></i>暂无' + (status === 'pending' ? '待审核' : status === 'approved' ? '已通过' : '已拒绝') + '的上传</div>';
               return;
             }
-            let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:15px; padding:15px;">';
+            let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:16px; padding:16px;">';
             d.uploads.forEach(u => {
               const dateStr = new Date(u.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
               const rarityClass = 'r-' + (u.rarity || 'N').toLowerCase();
               const rarityName = u.rarity || 'N';
               html += \`
-                <div style="border:1px solid #E2E8F0; border-radius:8px; overflow:hidden; background:white;">
-                  <div style="position:relative; aspect-ratio:1; background:#F8FAFC; cursor:pointer;" onclick="App.showImage('\${u.url}')">
+                <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(148,163,184,0.15); border-radius:12px; overflow:hidden; transition:all 0.2s;">
+                  <div style="position:relative; aspect-ratio:1; background:#1E293B; cursor:pointer;" onclick="App.showImage('\${u.url}')">
                     <img src="\${u.url}" style="width:100%; height:100%; object-fit:cover;" loading="lazy">
                     <span class="rarity-tag \${rarityClass} show" style="position:absolute; top:8px; left:8px; font-size:0.75rem; padding:2px 8px;">\${rarityName}</span>
                   </div>
-                  <div style="padding:10px;">
-                    <div style="font-size:0.8rem; font-weight:bold; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${u.username}</div>
-                    <div style="font-size:0.7rem; color:var(--text-light); margin-bottom:8px;">\${dateStr}</div>
+                  <div style="padding:12px;">
+                    <div style="font-size:0.85rem; font-weight:600; color:#E2E8F0; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${u.username}</div>
+                    <div style="font-size:0.7rem; color:#64748B; margin-bottom:10px;">\${dateStr}</div>
                     \${status === 'pending' ? \`
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
-                      <select id="rarity-\${u.id}" style="padding:4px; border:1px solid #E2E8F0; border-radius:4px; font-size:0.75rem;">
+                      <select id="rarity-\${u.id}" style="padding:6px 8px; border:1px solid rgba(148,163,184,0.2); border-radius:6px; font-size:0.75rem; background:rgba(0,0,0,0.3); color:#E2E8F0;">
                         <option value="N">N</option>
                         <option value="R">R</option>
                         <option value="SR">SR</option>
                         <option value="SSR">SSR</option>
                         <option value="UR" selected>UR</option>
                       </select>
-                      <button class="btn" style="padding:4px; font-size:0.75rem;" onclick="App.reviewUpload(\${u.id}, 'approved')">通过</button>
-                      <button class="btn secondary" style="padding:4px; font-size:0.75rem; grid-column:1/-1;" onclick="App.reviewUpload(\${u.id}, 'rejected')">拒绝</button>
+                      <button class="admin-btn primary small" style="padding:6px 10px;" onclick="App.reviewUpload(\${u.id}, 'approved')">通过</button>
+                      <button class="admin-btn secondary small" style="padding:6px 10px; grid-column:1/-1;" onclick="App.reviewUpload(\${u.id}, 'rejected')">拒绝</button>
                     </div>
-                    \` : \`<div style="font-size:0.75rem; color:var(--text-light); text-align:center;">已\${status === 'approved' ? '通过' : '拒绝'}</div>\`}
+                    \` : \`<div style="font-size:0.75rem; color:#64748B; text-align:center; padding:8px 0;">已\${status === 'approved' ? '通过' : '拒绝'}</div>\`}
                   </div>
                 </div>
               \`;
@@ -3904,10 +3952,10 @@ tbody.innerHTML = data.users.map(u => {
             html += '</div>';
             container.innerHTML = html;
           } else {
-            container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:10px; display:block;"></i>加载失败: ' + (d.error || 'Unknown') + '</div>';
+            container.innerHTML = '<div style="text-align:center; padding:60px; color:#EF4444;"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:16px; display:block;"></i>加载失败: ' + (d.error || 'Unknown') + '</div>';
           }
         } catch(e) {
-          container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:10px; display:block;"></i>网络错误</div>';
+          container.innerHTML = '<div style="text-align:center; padding:60px; color:#EF4444;"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:16px; display:block;"></i>网络错误</div>';
         }
       },
       async reviewUpload(uploadId, action) {
@@ -3928,7 +3976,7 @@ tbody.innerHTML = data.users.map(u => {
           this.toast('网络错误', 'warn');
         }
       },
-      renderAdminTable() { document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => \`<tr><td><input class="admin-input" value="\${log.date}" onchange="App.updateLog(\${idx}, 'date', this.value)"></td><td><input class="admin-input" value="\${log.ver}" onchange="App.updateLog(\${idx}, 'ver', this.value)"></td><td><input class="admin-input" value="\${log.content}" onchange="App.updateLog(\${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:4px 6px;" onchange="App.updateLog(\${idx}, 'tag', this.value)"><option value="optimization" \${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" \${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" \${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" \${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" \${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" \${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="btn danger" style="padding:4px 8px; font-size:0.7rem;" onclick="App.delLog(\${idx})">删</button></td></tr>\`).join(''); },
+      renderAdminTable() { document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => \`<tr><td><input class="admin-input" value="\${log.date}" onchange="App.updateLog(\${idx}, 'date', this.value)"></td><td><input class="admin-input" value="\${log.ver}" onchange="App.updateLog(\${idx}, 'ver', this.value)"></td><td><input class="admin-input" value="\${log.content}" onchange="App.updateLog(\${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:6px 8px;" onchange="App.updateLog(\${idx}, 'tag', this.value)"><option value="optimization" \${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" \${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" \${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" \${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" \${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" \${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="admin-btn danger small" style="padding:6px 10px;" onclick="App.delLog(\${idx})"><i class="fas fa-trash-alt"></i></button></td></tr>\`).join(''); },
       updateLog(idx, field, val) { this.logsData[idx][field] = val; }, addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
       async saveAdminLog() { try { const res = await fetch('/admin/save-changelog', { method: 'POST', body: JSON.stringify({password: this.adminPwd, logs: this.logsData}) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadChangelog(); } else { this.toast('保存失败', 'warn'); } } catch(e) { this.toast('保存失败', 'warn'); } },
       openProfile() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('profileModal').classList.add('show'); },
@@ -4482,7 +4530,7 @@ function getProfilePage() {
       box-shadow: 0 20px 60px rgba(0,0,0,0.5);
       transform: scale(0.9); transition: transform 0.25s ease;
     }
-    .modal.show .modal-content { transform: scale(1); }
+  .modal.show .modal-content, .modal.show .admin-modal-content { transform: scale(1); }
     .modal-close {
       position: absolute; top: 16px; right: 16px;
       background: none; border: none; color: var(--text-muted);
