@@ -2050,6 +2050,10 @@ const NEUTRAL_CSS = `
   .admin-scroll::-webkit-scrollbar-track { background: transparent; }
   .admin-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 3px; }
   .admin-scroll::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+  .uploads-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; padding: 16px; }
+  @media (max-width: 480px) {
+    .uploads-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
+  }
   .user-pill { background: white; padding: 6px 14px; border-radius: 8px; border: 1px solid #E2E8F0; font-size: 0.85rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; }
   .title-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: white; font-size: 0.7rem; font-weight: bold; vertical-align: middle; margin-left: 6px; text-shadow: 0 1px 1px rgba(0,0,0,0.2); }
   .user-badge { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; }
@@ -2125,7 +2129,33 @@ const NEUTRAL_CSS = `
     .user-level-badge { font-size: 0.6rem; padding: 1px 4px; }
     .user-chevron { display: none; }
   }
-  @media (max-width: 768px) { .modal-content { max-width: 90%; } .shop-grid { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); } }
+  @media (max-width: 768px) { 
+    .modal-content { max-width: 90%; } 
+    .shop-grid { grid-template-columns: 1fr 1fr; } 
+    .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+    .admin-modal-content { max-width: 95%; max-height: 95vh; }
+    .admin-modal-header { padding: 16px; }
+    .admin-modal-header h3 { font-size: 1rem; }
+    .admin-modal-body { padding: 16px; }
+    .admin-tabs { flex-wrap: wrap; gap: 4px; padding: 4px; }
+    .admin-tab { flex: 1 1 calc(50% - 4px); justify-content: center; padding: 10px 8px; font-size: 0.8rem; }
+    .admin-tab i { display: none; }
+    .admin-section-title { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .admin-scroll { max-height: 300px; }
+    .admin-table { font-size: 0.75rem; }
+    .admin-table th, .admin-table td { padding: 8px 4px; }
+    .admin-table input { padding: 4px 6px; font-size: 0.75rem; }
+    .form-row { flex-direction: column; gap: 16px !important; }
+    #view-ann .form-row { gap: 12px; }
+  }
+  @media (max-width: 480px) {
+    .admin-modal-content { border-radius: 12px; }
+    .admin-tab { font-size: 0.75rem; padding: 8px 6px; }
+    .admin-btn { width: 100%; justify-content: center; }
+    .admin-btn.primary { order: -1; }
+    #view-ann .form-row > div { width: 100%; }
+    .switch { width: 100%; }
+  }
   .upload-drop-zone { border: 2px dashed #C4B5FD; border-radius: 16px; padding: 30px 20px; text-align: center; background: #FAF5FF; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden; }
   .upload-drop-zone:hover, .upload-drop-zone.drag-over { background: #F3E8FF; border-color: #7C3AED; transform: scale(1.01); }
   .upload-icon { font-size: 3rem; color: #A78BFA; margin-bottom: 12px; transition: 0.3s; }
@@ -3918,7 +3948,7 @@ const navNick = document.getElementById('navNickname');
               container.innerHTML = '<div style="text-align:center; padding:60px; color:#64748B;"><i class="fas fa-inbox" style="font-size:2.5rem; margin-bottom:16px; display:block; opacity:0.5;"></i>暂无' + (status === 'pending' ? '待审核' : status === 'approved' ? '已通过' : '已拒绝') + '的上传</div>';
               return;
             }
-            let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:16px; padding:16px;">';
+            let html = '<div class="uploads-grid">';
             d.uploads.forEach(u => {
               const dateStr = new Date(u.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
               const rarityClass = 'r-' + (u.rarity || 'N').toLowerCase();
