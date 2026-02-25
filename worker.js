@@ -1058,12 +1058,27 @@ class GachaService {
       });
     }
 
+    const compressedAsset = await this.fetchAndUpload({
+      url: assetData.imageUrl,
+      rarity: assetData.rarity,
+      name: assetData.sourceName
+    });
+
+    if (!compressedAsset.success) {
+      await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(cost, currentUser.id).run();
+      return jsonResponse({ 
+        success: false, 
+        error: 'api_failed',
+        message: '图片处理失败，积分已退还'
+      });
+    }
+
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW['UR'] || 500;
     const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
     
     const batch = [
       this.env.DB.prepare('UPDATE users SET total_exp = total_exp + ? WHERE id = ?').bind(expGain, currentUser.id),
-      this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, assetData.rarity)
+      this.env.DB.prepare(`INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`).bind(currentUser.id, compressedAsset.rarity)
     ];
 
     if (levelUpInfo.hasLevelUp) {
@@ -1085,13 +1100,13 @@ class GachaService {
     }
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: assetData.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
-    if (assetData.rarity === 'UR') {
-      this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: assetData.imageUrl, rarity: assetData.rarity, timestamp: Date.now(), isLimited: true }));
+    this.ctx.waitUntil(updateGalleryIndex(this.env, { url: compressedAsset.imageUrl, username: currentUser.username, userId: currentUser.id, ts: Date.now() }));
+    if (compressedAsset.rarity === 'UR') {
+      this.ctx.waitUntil(updateLeaderboard(this.env, { username: currentUser.nickname, imageUrl: compressedAsset.imageUrl, rarity: compressedAsset.rarity, timestamp: Date.now(), isLimited: true }));
     }
 
     return jsonResponse({
-      success: true, imageUrl: assetData.imageUrl, rarity: assetData.rarity, expGained: expGain,
+      success: true, imageUrl: compressedAsset.imageUrl, rarity: compressedAsset.rarity, expGained: expGain,
       userCoins: currentUser.coins
     });
   }
