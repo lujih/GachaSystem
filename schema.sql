@@ -119,3 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_gallery_user ON gallery(user_id, created_at DESC)
 
 -- 索引：抽卡时需要快速随机获取已通过的卡片
 CREATE INDEX IF NOT EXISTS idx_uploads_pool ON user_uploads(status, rarity);
+-- 索引：查询用户上传记录
+CREATE INDEX IF NOT EXISTS idx_uploads_user ON user_uploads(user_id, created_at DESC);
+-- 索引：审核时按状态和时间查询
+CREATE INDEX IF NOT EXISTS idx_uploads_status_created ON user_uploads(status, created_at DESC);

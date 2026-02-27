@@ -118,7 +118,7 @@ const TECHNICAL_CONFIG = {
   },
 
   INFRASTRUCTURE: {
-    R2_DOMAIN: 'https://your-r2-domain.r2.cloudflarestorage.com',
+    R2_DOMAIN: 'https://cft1.cszxorx.dpdns.org',
     GITHUB: {
       TOKEN: '',
       OWNER: '',
@@ -207,7 +207,7 @@ export default {
         return await handler();
       } catch (err) {
         console.error('Route Error:', err);
-        return jsonResponse({ error: err.message || 'Internal Server Error' }, 500);
+        return jsonResponse({ error: '服务器内部错误' }, 500);
       }
     };
 
@@ -322,7 +322,7 @@ class UserService {
 
   async verifyPassword(password, storedHash) {
     if (!storedHash || !storedHash.includes(':')) {
-      return password === storedHash;
+      return false;
     }
     
     const [saltBase64, hashBase64] = storedHash.split(':');
@@ -1336,7 +1336,7 @@ class GachaService {
 
     } catch (e) {
       console.error('[Upload Error]:', e);
-      return jsonResponse({ error: '上传失败: ' + e.message }, 500);
+      return jsonResponse({ error: '上传失败，请稍后重试' }, 500);
     }
   }
 
@@ -1430,7 +1430,7 @@ class GachaService {
       
     } catch (e) {
       console.error('[RandomImageAPI] Error:', e);
-      return { success: false, message: '网络错误: ' + e.message };
+      return { success: false, message: '网络错误，请稍后重试' };
     }
   }
 
@@ -1474,7 +1474,7 @@ class GachaService {
       
     } catch (e) {
       console.error('[Get Uploads Error]:', e);
-      return jsonResponse({ error: '获取上传失败: ' + e.message }, 500);
+      return jsonResponse({ error: '获取上传记录失败，请稍后重试' }, 500);
     }
   }
 }
