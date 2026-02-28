@@ -2086,6 +2086,10 @@ const NEUTRAL_CSS = `
   .admin-btn.danger { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
   .admin-btn.danger:hover { background: rgba(239, 68, 68, 0.25); }
   .admin-btn.small { padding: 6px 12px; font-size: 0.75rem; }
+  .quick-add-form { background: rgba(0,0,0,0.2); border-radius: 12px; padding: 16px; border: 1px solid rgba(245, 158, 11, 0.2); }
+  .quick-add-row { display: flex; gap: 10px; align-items: center; }
+  .quick-add-row input::placeholder { color: #64748B; }
+  @media (max-width: 600px) { .quick-add-row { flex-wrap: wrap; } .quick-add-row input { width: 100%; flex: none; } }
   .admin-scroll { max-height: 400px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 12px; background: rgba(0,0,0,0.15); }
   .admin-scroll::-webkit-scrollbar { width: 6px; }
   .admin-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -2665,7 +2669,23 @@ function getHtmlPage() {
           </div>
           <div id="view-log">
             <div class="admin-section-title">
-              <span><i class="fas fa-edit" style="color:#F59E0B;margin-right:8px;"></i>可视化编辑器</span>
+              <span><i class="fas fa-edit" style="color:#F59E0B;margin-right:8px;"></i>快速添加</span>
+            </div>
+            <div class="quick-add-form">
+              <div class="quick-add-row">
+                <input type="text" id="quickLogContent" class="admin-input" placeholder="输入更新内容..." style="flex:1;">
+                <select id="quickLogTag" class="admin-input" style="width:100px;">
+                  <option value="optimization">优化</option>
+                  <option value="feature">功能</option>
+                  <option value="bugfix">修复</option>
+                  <option value="refactor">重构</option>
+                  <option value="todo">待办</option>
+                </select>
+                <button class="admin-btn primary small" onclick="App.quickAddLog()">+ 添加</button>
+              </div>
+            </div>
+            <div class="admin-section-title" style="margin-top:20px;">
+              <span><i class="fas fa-list" style="color:#F59E0B;margin-right:8px;"></i>完整列表</span>
               <button class="admin-btn secondary small" onclick="App.addAdminRow()">+ 新增一行</button>
             </div>
             <div class="admin-scroll">
@@ -4051,7 +4071,24 @@ const navNick = document.getElementById('navNickname');
         }
       },
       renderAdminTable() { document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => \`<tr><td><input class="admin-input" value="\${log.date}" onchange="App.updateLog(\${idx}, 'date', this.value)"></td><td><input class="admin-input" value="\${log.ver}" onchange="App.updateLog(\${idx}, 'ver', this.value)"></td><td><input class="admin-input" value="\${log.content}" onchange="App.updateLog(\${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:6px 8px;" onchange="App.updateLog(\${idx}, 'tag', this.value)"><option value="optimization" \${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" \${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" \${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" \${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" \${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" \${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="admin-btn danger small" style="padding:6px 10px;" onclick="App.delLog(\${idx})"><i class="fas fa-trash-alt"></i></button></td></tr>\`).join(''); },
-      updateLog(idx, field, val) { this.logsData[idx][field] = val; }, addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
+      updateLog(idx, field, val) { this.logsData[idx][field] = val; },
+      quickAddLog() {
+        const content = document.getElementById('quickLogContent').value.trim();
+        const tag = document.getElementById('quickLogTag').value;
+        if (!content) return this.toast('请输入更新内容', 'warn');
+        const today = new Date().toISOString().split('T')[0];
+        const lastVer = this.logsData[0]?.ver || 'v1.0.0';
+        const verMatch = lastVer.match(/v(\d+)\.(\d+)/);
+        let newVer = lastVer;
+        if (verMatch) {
+          newVer = 'v' + verMatch[1] + '.' + (parseInt(verMatch[2]) + 1);
+        }
+        this.logsData.unshift({ date: today, ver: newVer, content, tag });
+        this.renderAdminTable();
+        document.getElementById('quickLogContent').value = '';
+        this.toast('已添加到列表，请保存', 'ok');
+      },
+      addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
       async saveAdminLog() { try { const res = await fetch('/admin/save-changelog', { method: 'POST', body: JSON.stringify({password: this.adminPwd, logs: this.logsData}) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadChangelog(); } else { this.toast('保存失败', 'warn'); } } catch(e) { this.toast('保存失败', 'warn'); } },
       openProfile() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('profileModal').classList.add('show'); },
       closeModals() {
