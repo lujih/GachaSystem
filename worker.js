@@ -1990,13 +1990,16 @@ const NEUTRAL_CSS = `
   }
   .btn {
     background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 700; cursor: pointer; text-decoration: none;
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 0 var(--primary-dark); transition: all 0.1s; font-size: 0.95rem; font-family: var(--font);
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 0 var(--primary-dark); transition: all 0.15s ease; font-size: 0.95rem; font-family: var(--font);
   }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 0 var(--primary-dark); }
   .btn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--primary-dark); }
-  .btn.secondary { background: white; color: var(--text-main); border: 2px solid #E2E8F0; box-shadow: 0 4px 0 #CBD5E1; }
-  .btn.secondary:active { box-shadow: 0 0 0 #CBD5E1; }
+  .btn.secondary { background: white; color: var(--text-main); border: 2px solid #E2E8F0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .btn.secondary:hover { background: #F8FAFC; border-color: var(--primary); color: var(--primary); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(59,130,246,0.15); }
+  .btn.secondary:active { transform: translateY(2px); box-shadow: 0 0 0 #E2E8F0; }
   .btn.danger { background: var(--danger); box-shadow: 0 4px 0 #B91C1C; }
-  .btn.danger:active { box-shadow: 0 0 0 #B91C1C; }
+  .btn.danger:hover { background: #DC2626; }
+  .btn.danger:active { transform: translateY(4px); box-shadow: 0 0 0 #B91C1C; }
   .glass-card { background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.55); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
   .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: none; justify-content: center; align-items: center; z-index: 2000; opacity: 0; transition: 0.2s; }
   .modal.show { display: flex; opacity: 1; }
@@ -2013,8 +2016,9 @@ const NEUTRAL_CSS = `
   .modal-close-btn:hover { color: var(--danger); transform: rotate(90deg); transition: 0.2s; }
   .actions { padding: 16px 10px 10px; display: grid; gap: 12px; grid-template-columns: 1fr 1fr 1fr; }
   #drawBtn { grid-column: 1 / -1; height: 54px; font-size: 1.1rem; box-shadow: 0 6px 0 var(--primary-dark); }
+  #drawBtn:hover { transform: translateY(-2px); box-shadow: 0 8px 0 var(--primary-dark); }
   #drawBtn:active { transform: translateY(6px); box-shadow: 0 0 0 var(--primary-dark); }
-  .actions .btn.secondary { padding: 8px 0; font-size: 1.2rem; }
+  .actions .btn.secondary { padding: 8px 0; font-size: 1.2rem; transition: all 0.2s ease; }
   @media(min-width: 600px) { .actions { grid-template-columns: 2fr 1fr 1fr 1fr; } #drawBtn { grid-column: auto; height: auto; font-size: 0.95rem; } .actions .btn.secondary { font-size: 0.95rem; } }
   .rules-table { width: 100%; font-size: 0.85rem; border-collapse: collapse; margin-top: 10px; }
   .rules-table th { text-align: left; border-bottom: 2px solid #E2E8F0; padding: 6px; color: var(--primary); }
