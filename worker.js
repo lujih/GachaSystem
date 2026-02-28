@@ -112,7 +112,7 @@ const TECHNICAL_CONFIG = {
     CACHE: 60 * 5,
     LEADERBOARD: 86400 * 30,
     USER_INFO: 60,
-    PUBLIC_API: 300,
+    PUBLIC_API: 60,
     STATIC_ASSET: 31536000,
     BUFFER_SLOTS: 10
   },
@@ -4116,7 +4116,7 @@ const navNick = document.getElementById('navNickname');
           }); 
           const d = await res.json();
           if(d.success) { 
-            this.toast('保存成功！', 'ok');
+            this.toast('保存成功！首页将在一分钟内自动更新。', 'ok');
             this.logsData = [...this.logsData];
             this.renderAdminTable();
             this.loadChangelog();
