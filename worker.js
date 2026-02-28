@@ -1513,33 +1513,40 @@ async function handleGetAnnouncement(env) {
   if (!env.RECENT_REQUESTS) return jsonResponse({ enabled: false });
   const data = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
   return jsonResponse(data || { enabled: false }, 200, {
-    'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`,
-    'CDN-Cache-Control': 'public, max-age=600, stale-while-revalidate=86400'
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache'
   });
 }
 
 async function handleAdminSaveAnnouncement(request, env) {
-  const { password, announcement, refreshId } = await request.json();
-  if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
-  
-  const oldData = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
-  
-  // 使用北京时间生成ID
-  let newId = getBeijingTime().getTime();
-
-  if (!refreshId && oldData && oldData.id) {
-    const isTitleSame = oldData.title === announcement.title;
-    const isContentSame = oldData.content === announcement.content;
+  try {
+    const { password, announcement, refreshId } = await request.json();
+    if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
     
-    if (isTitleSame && isContentSame) {
-      newId = oldData.id;
-    }
-  }
+    const oldData = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
+    
+    let newId = getBeijingTime().getTime();
 
-  const dataToSave = { ...announcement, id: newId };
-  await env.RECENT_REQUESTS.put(CONFIG.KEYS.ANNOUNCEMENT, JSON.stringify(dataToSave));
-  
-  return jsonResponse({ success: true, updated: newId !== (oldData && oldData.id) });
+    if (!refreshId && oldData && oldData.id) {
+      const isTitleSame = oldData.title === announcement.title;
+      const isContentSame = oldData.content === announcement.content;
+      
+      if (isTitleSame && isContentSame) {
+        newId = oldData.id;
+      }
+    }
+
+    const dataToSave = { ...announcement, id: newId, updatedAt: getBeijingISOString() };
+    
+    await env.RECENT_REQUESTS.put(CONFIG.KEYS.ANNOUNCEMENT, JSON.stringify(dataToSave), { 
+      expirationTtl: 86400 * 365 
+    });
+    
+    return jsonResponse({ success: true, updated: newId !== (oldData && oldData.id), id: newId });
+  } catch (e) {
+    console.error('Save announcement error:', e);
+    return jsonResponse({ error: '保存失败: ' + e.message }, 500);
+  }
 }
 
 async function handleShowcase(env) {
@@ -2107,6 +2114,11 @@ const NEUTRAL_CSS = `
   .quick-add-row { display: flex; gap: 10px; align-items: center; }
   .quick-add-row input::placeholder { color: #64748B; }
   @media (max-width: 600px) { .quick-add-row { flex-wrap: wrap; } .quick-add-row input { width: 100%; flex: none; } }
+  .quick-publish-form { background: rgba(0,0,0,0.25); border-radius: 12px; padding: 16px; border: 1px solid rgba(16, 185, 129, 0.25); margin-bottom: 16px; }
+  .quick-publish-row { display: flex; gap: 10px; align-items: flex-start; }
+  .quick-publish-row input::placeholder { color: #64748B; }
+  .quick-publish-row textarea::placeholder { color: #64748B; }
+  @media (max-width: 600px) { .quick-publish-row { flex-wrap: wrap; } .quick-publish-row input, .quick-publish-row textarea { width: 100%; flex: none; } }
   .admin-scroll { max-height: 400px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 12px; background: rgba(0,0,0,0.15); }
   .admin-scroll::-webkit-scrollbar { width: 6px; }
   .admin-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -2739,41 +2751,44 @@ function getHtmlPage() {
             </div>
           </div>
           <div id="view-ann" style="display:none;">
-            <div class="form-row">
-              <label class="form-label">公告标题</label>
-              <input type="text" id="adminAnnTitle" class="admin-input" placeholder="例如：新春活动开启！">
+            <div class="admin-section-title">
+              <span><i class="fas fa-bullhorn" style="color:#F59E0B;margin-right:8px;"></i>快速发布</span>
+            </div>
+            <div class="quick-publish-form">
+              <div class="quick-publish-row">
+                <input type="text" id="quickAnnTitle" class="admin-input" placeholder="公告标题..." style="flex:1;">
+                <button class="admin-btn primary small" onclick="App.quickPublishAnnouncement()">立即发布</button>
+              </div>
+              <div class="quick-publish-row" style="margin-top:10px;">
+                <textarea id="quickAnnContent" class="admin-textarea" placeholder="简要公告内容（可选）..." style="flex:1;min-height:60px;resize:none;"></textarea>
+              </div>
             </div>
             
-            <div class="form-row" style="display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap;">
-              <div class="switch-wrapper">
-                <label class="form-label">启用状态</label>
-                <label class="switch">
-                  <input type="checkbox" id="adminAnnEnable">
-                  <span class="slider"></span>
-                </label>
-              </div>
-              
-              <div class="switch-wrapper">
-                <label class="form-label">强制弹窗</label>
-                <label class="switch">
-                  <input type="checkbox" id="adminAnnRefresh">
-                  <span class="slider"></span>
-                </label>
-                <div class="form-hint">开启后，所有用户将再次看到此公告</div>
-              </div>
+            <div class="form-row" style="margin-top:20px;">
+              <label class="form-label">启用状态</label>
+              <label class="switch">
+                <input type="checkbox" id="adminAnnEnable" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <div class="form-row">
+              <label class="form-label">强制弹窗</label>
+              <label class="switch">
+                <input type="checkbox" id="adminAnnRefresh">
+                <span class="slider"></span>
+              </label>
+              <div class="form-hint">开启后，所有用户将再次看到此公告</div>
             </div>
 
             <div class="form-row">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <label class="form-label" style="margin-bottom:0;">公告内容 (Markdown)</label>
-                <a href="https://markdown.com.cn/basic-syntax/" target="_blank" style="font-size:0.75rem; color:#F59E0B; text-decoration:none;">语法参考</a>
-              </div>
+              <label class="form-label">完整内容 (Markdown)</label>
               <textarea id="adminAnnContent" class="admin-textarea" placeholder="## 标题&#10;- 内容列表&#10;- 支持 **加粗**"></textarea>
             </div>
 
             <div style="display:flex; gap:12px;">
               <button class="admin-btn primary" style="flex:2" onclick="App.saveAnnouncement()">
-                <i class="fas fa-save"></i> 保存并发布
+                <i class="fas fa-save"></i> 保存完整公告
               </button>
               <button class="admin-btn secondary" style="flex:1" onclick="App.previewAnnouncement()">
                 <i class="fas fa-eye"></i> 预览
@@ -3427,11 +3442,48 @@ const navNick = document.getElementById('navNickname');
             const data = await res.json();
             document.getElementById('adminAnnTitle').value = data.title || '';
             document.getElementById('adminAnnContent').value = data.content || '';
+            // 快速发布字段
+            document.getElementById('quickAnnTitle').value = data.title || '';
+            document.getElementById('quickAnnContent').value = data.content || '';
             // 修改为 checkbox 赋值
             document.getElementById('adminAnnEnable').checked = data.enabled || false;
-            // 默认“强制弹窗”为关闭，防止误触
+            // 默认"强制弹窗"为关闭，防止误触
             document.getElementById('adminAnnRefresh').checked = false;
         } catch(e) { this.toast('加载失败', 'warn'); }
+      },
+      async quickPublishAnnouncement() {
+        const title = document.getElementById('quickAnnTitle').value.trim();
+        const content = document.getElementById('quickAnnContent').value.trim();
+        
+        if (!title) return this.toast('请输入公告标题', 'warn');
+        
+        try {
+            const res = await fetch('/admin/save-announcement', { 
+                method: 'POST', 
+                body: JSON.stringify({ 
+                    password: this.adminPwd, 
+                    announcement: { 
+                        title: title, 
+                        content: content || title,
+                        enabled: true 
+                    },
+                    refreshId: true
+                }) 
+            });
+            const d = await res.json();
+            if (d.success) {
+                this.toast('发布成功！用户将看到弹窗', 'ok');
+                document.getElementById('quickAnnTitle').value = '';
+                document.getElementById('quickAnnContent').value = '';
+                document.getElementById('adminAnnTitle').value = title;
+                document.getElementById('adminAnnContent').value = content || title;
+                this.loadAdminAnnouncement();
+            } else {
+                this.toast(this.mapError(d.error) || '发布失败', 'warn');
+            }
+        } catch(e) { 
+            this.toast('网络错误', 'warn'); 
+        }
       },
       async saveAnnouncement() {
         const title = document.getElementById('adminAnnTitle').value;
