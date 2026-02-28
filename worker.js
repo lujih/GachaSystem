@@ -184,12 +184,6 @@ export default {
       const userDataStr = await env.KV_CACHE.get(`session:${token}`);
       if (userDataStr) {
         currentUser = JSON.parse(userDataStr);
-        if (currentUser && currentUser.coins === undefined && currentUser.id) {
-          const userData = await env.DB.prepare('SELECT coins FROM users WHERE id = ?').bind(currentUser.id).first();
-          if (userData) {
-            currentUser.coins = userData.coins || 0;
-          }
-        }
       }
     }
     
@@ -1663,29 +1657,37 @@ async function handleAdminVerify(request, env) {
 }
 
 async function handleAdminUsers(request, env) {
-  const { password } = await request.json();
+  const { password, limit = 50, offset = 0 } = await request.json();
   if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
   
   try {
-    const usersResult = await env.DB.prepare(
-      'SELECT username, nickname, draw_count, coins, level, exp, total_exp, last_login_date, login_streak, created_at FROM users ORDER BY created_at DESC'
-    ).all();
+    const userService = new UserService(env, {});
     
-const users = usersResult.results ? usersResult.results.map(user => ({
-      username: user.username,
-      nickname: user.nickname || user.username,
-      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.username}`,
-      drawCount: user.draw_count || 0,
-      coins: user.coins || 0,
-      level: user.level || 1,
-      exp: user.exp || 0,
-      totalExp: user.total_exp || 0,
-      lastLoginDate: user.last_login_date,
-      loginStreak: user.login_streak || 0,
-      createdAt: user.created_at
-    })) : [];
+    const [usersResult, countResult] = await Promise.all([
+      env.DB.prepare(
+        'SELECT username, nickname, draw_count, coins, level, exp, total_exp, last_login_date, login_streak, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?'
+      ).bind(limit, offset).all(),
+      env.DB.prepare('SELECT COUNT(*) as total FROM users').first()
+    ]);
     
-    return jsonResponse({ success: true, users });
+    const users = usersResult.results ? usersResult.results.map(user => {
+      const levelInfo = userService.calculateLevelFromTotalExp(user.total_exp || 0);
+      return {
+        username: user.username,
+        nickname: user.nickname || user.username,
+        avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.username}`,
+        drawCount: user.draw_count || 0,
+        coins: user.coins || 0,
+        level: levelInfo.level,
+        exp: levelInfo.currentExp,
+        totalExp: user.total_exp || 0,
+        lastLoginDate: user.last_login_date,
+        loginStreak: user.login_streak || 0,
+        createdAt: user.created_at
+      };
+    }) : [];
+    
+    return jsonResponse({ success: true, users, total: countResult.total, limit, offset });
   } catch (error) {
     console.error('Error fetching users:', error);
     return jsonResponse({ error: '数据库错误' }, 500);
@@ -1932,6 +1934,15 @@ function safeJsonParse(str) {
   } catch { 
     return null; 
   } 
+}
+
+function requireAdmin(request, env) {
+  return request.json().then(body => {
+    if (!body.password || body.password !== env.admin) {
+      return { authorized: false, error: '认证失败' };
+    }
+    return { authorized: true, password: body.password };
+  });
 }
 
 // 计算图片文件的 Hash 值（用于去重）

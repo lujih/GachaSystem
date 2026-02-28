@@ -1,170 +1,201 @@
-# AGENTS.md - Development Guidelines for Chouka Gacha System
+# AGENTS.md - Agent Coding Guidelines
 
-This file contains guidelines for agentic coding agents working on the Chouka Gacha System, a Cloudflare Workers-based gacha/collection game.
+This document provides guidance for agents working on the Chouka (抽卡) Gacha System codebase.
 
 ## Project Overview
 
-- **Platform**: Cloudflare Workers with D1 (SQLite), KV, and R2 storage
-- **Language**: JavaScript (ES2022)
-- **Database**: SQLite with STRICT mode enabled
-- **Authentication**: Session tokens + optional X-User-ID for read-only access
-- **Configuration**: Layered config system (BUSINESS_CONFIG + TECHNICAL_CONFIG)
+- **Project**: Chouka - Cloudflare Workers-based Gacha (card draw) system
+- **Main File**: `worker.js` (~5000 lines, single-file architecture)
+- **Tech Stack**: Cloudflare Workers, D1 (SQLite), KV Storage, R2 Storage
+- **Language**: Vanilla JavaScript (ES Modules)
 
-## Build & Development Commands
+---
 
-### Local Development
+## Build, Deploy & Development Commands
+
+### Development
 ```bash
-# Start local development server (requires wrangler CLI)
+# Local development (requires wrangler.toml bindings)
 npx wrangler dev --local
 
-# Execute database schema locally
-npx wrangler d1 execute chouka --file=./schema.sql
-
-# Run single test (if test framework is added)
-npx wrangler dev --local --test=<test-name>
+# Local development with remote D1
+npx wrangler dev
 ```
 
 ### Deployment
 ```bash
-# Build and deploy to Cloudflare
+# Deploy to Cloudflare Workers
 npx wrangler deploy
 
-# Preview deployment
-npx wrangler preview --watch
+# Deploy with specific environment
+npx wrangler deploy --env production
 ```
 
-### Database Management
+### Database Operations
 ```bash
-# Execute SQL against remote database
+# Execute SQL schema on local D1
+npx wrangler d1 execute chouka --local --file=./schema.sql
+
+# Execute SQL schema on remote D1
 npx wrangler d1 execute chouka --remote --file=./schema.sql
 
-# Query database
-npx wrangler d1 query chouka --remote "SELECT * FROM users LIMIT 10"
+# View D1 database
+npx wrangler d1 execute chouka --remote --command="SELECT * FROM users"
 ```
+
+### Testing
+- **No formal test framework is configured** - manual testing via `wrangler dev` or deployed environment
+- Test API endpoints using curl or Postman:
+  ```bash
+  # Example: Login
+  curl -X POST -H "Content-Type: application/json" \
+    -d '{"username":"test","password":"test123"}' \
+    https://your-worker/auth/login
+  ```
+
+### Linting
+- **No ESLint/Prettier configured** - code uses vanilla JS with consistent internal style
+- Manual code review recommended
+
+---
 
 ## Code Style Guidelines
 
-### Import & Module Organization
-- Use ES6 module exports (`export default`, `export const`)
-- Group related functions and classes logically
-- No external dependencies - pure Cloudflare Workers APIs
+### General Principles
+- Single `worker.js` file contains entire application
+- Use ES Modules (`export default`, `class`, etc.)
+- Chinese comments used throughout codebase for documentation
 
-### Formatting & Structure
-- Use 2-space indentation
-- Maximum line length: 100 characters
-- Function names: camelCase (`calculateLevelFromTotalExp`)
-- Constants: UPPER_SNAKE_CASE (`CONFIG`, `DEFAULT_IMG`)
-- Classes: PascalCase (`UserService`, `GachaService`)
+### Naming Conventions
+- **Classes**: PascalCase (e.g., `UserService`, `GachaService`)
+- **Functions**: camelCase (e.g., `getBeijingTime`, `jsonResponse`)
+- **Constants/Config**: UPPER_SNAKE_CASE (e.g., `BUSINESS_CONFIG`, `TTL`)
+- **File/Route paths**: kebab-case in URLs
+
+### File Structure (in worker.js)
+```
+1. Configuration Layer (BUSINESS_CONFIG, TECHNICAL_CONFIG)
+2. Utility Functions (timezone helpers, JSON response)
+3. Service Layer (UserService, GachaService)
+4. Route Handlers (handleHome, handleProfile, etc.)
+5. HTML Templates (Html object)
+6. Export Default (fetch handler + routes)
+```
+
+### Imports/Dependencies
+- No external npm dependencies - uses Cloudflare Workers runtime APIs only
+- Uses native `crypto.subtle` for password hashing (PBKDF2 + SHA-256)
+- Uses native `fetch` for external API calls
 
 ### Error Handling
-- Use try-catch blocks for async operations
-- Return JSON responses with consistent structure: `{ success: boolean, error?: string, data?: any }`
-- Log errors with `console.error()` but don't expose internal details to users
-- HTTP status codes: 200 (success), 400 (bad request), 401 (unauthorized), 403 (forbidden), 404 (not found), 409 (conflict), 500 (server error)
+```javascript
+// Route-level error wrapper pattern:
+const handleRoute = async (handler) => {
+  try {
+    return await handler();
+  } catch (err) {
+    console.error('Route Error:', err);
+    return jsonResponse({ error: '服务器内部错误' }, 500);
+  }
+};
+```
 
-### Database Patterns
-- Use parameterized queries to prevent SQL injection
-- Always handle D1 query results properly (check `.results` property)
-- Use batch operations for multiple related updates
-- Foreign key constraints are enabled (PRAGMA foreign_keys = ON)
+### Database Operations (D1)
+- Use `.prepare(sql).bind(...params)` for parameterized queries
+- Use `.first()` for single-row results
+- Use `.all()` for multiple rows
+- Use `.run()` for insert/update/delete
+- Use `.batch([queries])` for transactional operations
 
-### Security Practices
-- Hash passwords with PBKDF2 (100,000 iterations, SHA-256)
-- Use crypto.randomUUID() for session tokens
-- Never expose secrets or sensitive data
-- Validate all user inputs (file types, sizes, numeric ranges)
-- Use environment variables for configuration (admin token, GitHub token, etc.)
+```javascript
+// Examples:
+const user = await env.DB.prepare(
+  'SELECT id, username, coins FROM users WHERE id = ?'
+).bind(userId).first();
 
-### Configuration Management
-- Layered config system: BUSINESS_CONFIG + TECHNICAL_CONFIG
-- Use CONFIG object for all runtime settings
-- Time-to-live (TTL) values defined in TECHNICAL_CONFIG.TTL
-- Keys and constants defined in TECHNICAL_CONFIG.KEYS
+const results = await env.DB.prepare(
+  'SELECT * FROM inventory WHERE user_id = ?'
+).bind(userId).all();
 
-### Time Handling
-- All times stored in UTC ISO strings
-- Use Beijing time (UTC+8) for user-facing operations:
-  - `getBeijingTime()` - returns Date object
-  - `getBeijingDateStr()` - returns YYYY-MM-DD string
-  - `getBeijingISOString()` - returns ISO string in Beijing time
-  - `utcToBeijing()` - converts UTC string to Beijing Date
+await env.DB.batch([
+  env.DB.prepare('UPDATE users SET coins = ? WHERE id = ?').bind(newCoins, userId),
+  env.DB.prepare('INSERT INTO logs (user_id, action) VALUES (?, ?)').bind(userId, 'draw')
+]);
+```
 
-### File Upload & Storage
-- Validate file types: image/jpeg, image/png, image/gif, image/webp
-- Maximum file size: 5MB
-- Upload to GitHub via GitHub API, then serve via CDN
-- Use R2 for image storage with proper caching headers
+### Response Format
+- Use `jsonResponse(data, status, extraHeaders)` helper
+- Standard error response: `{ error: '错误信息' }`
+- Standard success response: `{ success: true, ...data }`
+
+### Authentication
+- Token-based via `X-Session-Token` header
+- Fallback debug header: `X-User-ID` (unsafe, for development only)
+- Admin routes verify against `env.admin` secret
 
 ### Caching Strategy
-- KV_CACHE for session data (7-day TTL)
-- User info cache (60-second TTL)
-- Inventory cache (60-second TTL)
-- Buffer slots for global image caching (10 slots)
+- KV_CACHE for session data and API caching
+- Use `expirationTtl` for TTL-based expiration
+- Cache keys should be descriptive (e.g., `session:token123`, `uinfo:user1`)
 
-### API Design Patterns
-- RESTful routes with consistent naming
-- Use JSON for request/response bodies
-- Include X-Cache-Status header when returning cached data
-- Handle CORS preflight (OPTIONS) requests
+### Configuration
+- `BUSINESS_CONFIG`: Game logic (gacha rates, costs, level system)
+- `TECHNICAL_CONFIG`: System config (cache TTL, R2 domain, GitHub integration)
+- Environment variables set in Cloudflare Dashboard or wrangler.toml
 
-### Testing Guidelines
-- Test user authentication flows
-- Test database operations with proper cleanup
-- Test error handling for invalid inputs
-- Test time-based operations (check-in, cooldowns)
-- Test file upload and storage workflows
+---
 
-## Common Patterns
+## Required Environment Variables
 
-### User Authentication
-```javascript
-const token = request.headers.get('X-Session-Token');
-if (token) {
-  const userDataStr = await env.KV_CACHE.get(`session:${token}`);
-  if (userDataStr) {
-    currentUser = JSON.parse(userDataStr);
-  }
-}
-```
+### In Cloudflare Dashboard (Workers → Settings → Variables & Secrets)
+- `admin` (Secret) - Admin password for management后台
+- `GITHUB_TOKEN` (Secret) - GitHub PAT for image uploads
+- `GITHUB_OWNER` (Var) - GitHub username (optional, defaults to `lujih`)
+- `GITHUB_REPO` (Var) - Image repository name (optional, defaults to `chouka-images`)
+- `R2_DOMAIN` (Var) - Public R2 domain for image access
 
-### Database Query Pattern
-```javascript
-const result = await this.env.DB.prepare(sql).bind(params).first();
-if (result) {
-  return result;
-}
-```
+### Bindings (from wrangler.toml)
+- `KV_CACHE` - KV namespace for caching
+- `RECENT_REQUESTS` - KV namespace for changelog/announcement
+- `DB` - D1 database
+- `R2_BUCKET` - R2 storage bucket
 
-### JSON Response Helper
-```javascript
-function jsonResponse(data, status = 200, headers = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers
-    }
-  });
-}
-```
+---
 
-### Error Response Pattern
-```javascript
-try {
-  // operation
-  return jsonResponse({ success: true, data });
-} catch (err) {
-  console.error('Operation Error:', err);
-  return jsonResponse({ error: err.message || 'Internal Server Error' }, 500);
-}
-```
+## Important Database Tables
 
-## Important Notes
+See `schema.sql` for complete schema. Key tables:
+- `users` - User accounts, coins, level, exp
+- `inventory` - Card inventory by rarity
+- `gallery` - Public image gallery
+- `logs` - User action logs
+- `user_titles` - User titles/badges
+- `user_uploads` - User-submitted images
 
-- Never commit secrets or tokens to version control
-- Always validate user inputs before processing
-- Use Beijing time for user-facing date operations
-- Handle database errors gracefully and provide meaningful error messages
-- Follow the layered configuration pattern for all new settings
-- Test thoroughly in local development before deploying
-- Use proper error codes and messages for API consumers
+---
+
+## Key API Endpoints
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/auth/register` | POST | No | User registration |
+| `/auth/login` | POST | No | User login |
+| `/user/info` | GET | Token | Get user info |
+| `/draw` | GET | Token | Draw from permanent pool |
+| `/draw/limited` | POST | Token | Draw from limited pool |
+| `/user/craft` | POST | Token | Craft cards |
+| `/shop/buy` | POST | Token | Buy cards |
+| `/game/dice` | POST | Token | Dice mini-game |
+| `/admin/*` | POST | Password | Admin operations |
+
+---
+
+## Best Practices
+
+1. Always use parameterized queries (`.bind()`) to prevent SQL injection
+2. Handle KV/D1/R2 errors gracefully with try-catch
+3. Log errors to console for debugging
+4. Use batch operations for multiple database changes
+5. Cache expensive operations (user info, leaderboard)
+6. Validate request body before processing
+7. Return consistent error messages in Chinese
