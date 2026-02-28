@@ -2718,7 +2718,7 @@ function getHtmlPage() {
               <button class="admin-btn secondary small" onclick="App.addAdminRow()">+ 新增一行</button>
             </div>
             <div class="admin-scroll">
-              <table class="admin-table" id="adminTable"><thead><tr><th width="90">日期</th><th width="70">版本</th><th>内容</th><th width="100">标签</th><th width="50"></th></tr></thead><tbody id="adminTbody"></tbody></table>
+              <table class="admin-table" id="adminTable"><thead><tr><th width="100">日期</th><th>内容</th><th width="100">标签</th><th width="50"></th></tr></thead><tbody id="adminTbody"></tbody></table>
             </div>
             <button class="admin-btn primary" style="width:100%; margin-top:16px;" onclick="App.saveAdminLog()">保存更改</button>
           </div>
@@ -3517,20 +3517,19 @@ const navNick = document.getElementById('navNickname');
           const res = await fetch('/changelog', { headers: { 'X-Admin-Mode': 'true' } });
           this.logsData = await res.json(); 
           const list = document.getElementById('logList');
+          const tagLabels = {
+            'optimization': { text: '优化', color: '#3B82F6', icon: 'fas fa-bolt' },
+            'feature': { text: '功能', color: '#10B981', icon: 'fas fa-star' },
+            'bugfix': { text: '修复', color: '#EF4444', icon: 'fas fa-bug' },
+            'todo': { text: '待办', color: '#8B5CF6', icon: 'fas fa-thumbtack' },
+            'documentation': { text: '文档', color: '#94A3B8', icon: 'fas fa-book' },
+            'refactor': { text: '重构', color: '#F59E0B', icon: 'fas fa-code-branch' }
+          };
           if(this.logsData && this.logsData.length) {
             list.innerHTML = this.logsData.map(log => {
-              const isTodo = log.ver.includes('To-Do');
               const tag = log.tag || 'optimization';
-              const tagLabels = {
-                'optimization': { text: '优化', color: '#3B82F6', icon: 'fas fa-bolt' },
-                'feature': { text: '功能', color: '#10B981', icon: 'fas fa-star' },
-                'bugfix': { text: '修复', color: '#EF4444', icon: 'fas fa-bug' },
-                'todo': { text: '待办', color: '#8B5CF6', icon: 'fas fa-thumbtack' },
-                'documentation': { text: '文档', color: '#94A3B8', icon: 'fas fa-book' },
-                'refactor': { text: '重构', color: '#F59E0B', icon: 'fas fa-code-branch' }
-              };
               const tagInfo = tagLabels[tag] || tagLabels.optimization;
-              return \`<div class="log-item"><div class="log-meta"><span class="log-ver \${isTodo?'todo':''} ">\${isTodo?'<i class="fas fa-thumbtack"></i> ':''}\${log.ver}</span> <span>\${log.date}</span> <span class="log-tag" style="background:\${tagInfo.color}"><i class="\${tagInfo.icon}"></i> \${tagInfo.text}</span></div><div class="log-content">\${log.content}</div></div>\`;
+              return \`<div class="log-item"><div class="log-meta"><span>\${log.date}</span> <span class="log-tag" style="background:\${tagInfo.color}"><i class="\${tagInfo.icon}"></i> \${tagInfo.text}</span></div><div class="log-content">\${log.content}</div></div>\`;
             }).join('');
             if (this.logsData.length > 3) document.getElementById('logToggle').style.display = 'block';
           }
@@ -4141,7 +4140,7 @@ const navNick = document.getElementById('navNickname');
           this.toast('网络错误', 'warn');
         }
       },
-      renderAdminTable() { document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => \`<tr><td><input class="admin-input" value="\${log.date}" onchange="App.updateLog(\${idx}, 'date', this.value)"></td><td><input class="admin-input" value="\${log.ver}" onchange="App.updateLog(\${idx}, 'ver', this.value)"></td><td><input class="admin-input" value="\${log.content}" onchange="App.updateLog(\${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:6px 8px;" onchange="App.updateLog(\${idx}, 'tag', this.value)"><option value="optimization" \${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" \${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" \${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" \${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" \${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" \${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="admin-btn danger small" style="padding:6px 10px;" onclick="App.delLog(\${idx})"><i class="fas fa-trash-alt"></i></button></td></tr>\`).join(''); },
+      renderAdminTable() { document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => \`<tr><td><input class="admin-input" value="\${log.date}" onchange="App.updateLog(\${idx}, 'date', this.value)"></td><td><input class="admin-input" value="\${log.content}" onchange="App.updateLog(\${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:6px 8px;" onchange="App.updateLog(\${idx}, 'tag', this.value)"><option value="optimization" \${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" \${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" \${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" \${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" \${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" \${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="admin-btn danger small" style="padding:6px 10px;" onclick="App.delLog(\${idx})"><i class="fas fa-trash-alt"></i></button></td></tr>\`).join(''); },
       updateLog(idx, field, val) { this.logsData[idx][field] = val; },
       quickAddLog() {
         const content = document.getElementById('quickLogContent').value.trim();
@@ -4149,24 +4148,12 @@ const navNick = document.getElementById('navNickname');
         if (!content) return this.toast('请输入更新内容', 'warn');
         const today = new Date().toISOString().split('T')[0];
         
-        // 自动递增版本号 - 基于当前列表中第一条
-        let newVer = 'v1.1';
-        const lastVer = this.logsData && this.logsData.length > 0 ? this.logsData[0].ver : 'v1.0';
-        
-        // 提取版本号中的数字部分
-        const verParts = lastVer.match(/v?(\d+)\.?(\d*)/);
-        if (verParts) {
-          const major = parseInt(verParts[1]) || 1;
-          const minor = parseInt(verParts[2]) || 0;
-          newVer = 'v' + major + '.' + (minor + 1);
-        }
-        
-        this.logsData.unshift({ date: today, ver: newVer, content, tag });
+        this.logsData.unshift({ date: today, content, tag });
         this.renderAdminTable();
         document.getElementById('quickLogContent').value = '';
-        this.toast('已添加到列表 (' + newVer + ')，请保存', 'ok');
+        this.toast('已添加到列表，请保存', 'ok');
       },
-      addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
+      addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
       async saveAdminLog() { 
         try { 
           const res = await fetch('/admin/save-changelog', { 
