@@ -4096,16 +4096,27 @@ const navNick = document.getElementById('navNickname');
         const tag = document.getElementById('quickLogTag').value;
         if (!content) return this.toast('请输入更新内容', 'warn');
         const today = new Date().toISOString().split('T')[0];
-        const lastVer = this.logsData[0]?.ver || 'v1.0.0';
-        const verMatch = lastVer.match(/v(\d+)\.(\d+)/);
-        let newVer = lastVer;
-        if (verMatch) {
-          newVer = 'v' + verMatch[1] + '.' + (parseInt(verMatch[2]) + 1);
+        
+        // 自动递增版本号
+        let newVer = 'v1.1';
+        if (this.logsData && this.logsData.length > 0) {
+          const lastVer = this.logsData[0]?.ver || 'v1.0';
+          const verMatch = lastVer.match(/v(\d+)\.(\d+)/);
+          if (verMatch) {
+            newVer = 'v' + verMatch[1] + '.' + (parseInt(verMatch[2]) + 1);
+          } else {
+            // 如果格式不标准，尝试简单提取数字
+            const numMatch = lastVer.match(/(\d+)/);
+            if (numMatch) {
+              newVer = 'v1.' + (parseInt(numMatch[1]) + 1);
+            }
+          }
         }
+        
         this.logsData.unshift({ date: today, ver: newVer, content, tag });
         this.renderAdminTable();
         document.getElementById('quickLogContent').value = '';
-        this.toast('已添加到列表，请保存', 'ok');
+        this.toast('已添加到列表 (v' + newVer + ')，请保存', 'ok');
       },
       addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
       async saveAdminLog() { 
