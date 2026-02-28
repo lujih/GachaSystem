@@ -4616,6 +4616,83 @@ function getProfilePage() {
     .modal-close:hover { color: var(--danger); }
     .modal-title { font-family: var(--font-display); font-size: 1.2rem; margin: 0 0 20px 0; }
     
+    /* About Panel - Inline */
+    .about-panel {
+      background: linear-gradient(145deg, rgba(26, 26, 46, 0.8), rgba(22, 33, 62, 0.9));
+      border-radius: var(--radius);
+      border: 1px solid rgba(124, 58, 237, 0.2);
+      margin-top: 24px;
+      overflow: hidden;
+    }
+    .about-header {
+      background: linear-gradient(90deg, rgba(124, 58, 237, 0.2), rgba(6, 182, 212, 0.1));
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      color: var(--primary-light);
+      border-bottom: 1px solid rgba(124, 58, 237, 0.15);
+    }
+    .about-header i { font-size: 1rem; }
+    .about-content { padding: 16px; }
+    .about-title {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .about-version {
+      font-family: var(--font-body);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    .about-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .about-tech {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .tech-tag {
+      background: rgba(124, 58, 237, 0.15);
+      color: var(--primary-light);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .about-features {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .feature-item {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .feature-item i { color: var(--success); font-size: 0.75rem; }
+    .about-footer {
+      padding: 12px 16px;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      opacity: 0.6;
+      text-align: center;
+      border-top: 1px solid rgba(124, 58, 237, 0.1);
+    }
+    
     /* Title List */
     .title-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
     .title-item {
@@ -4739,37 +4816,31 @@ function getProfilePage() {
       <div class="total-inv">召唤总数: <strong id="profileTotalCards">0</strong></div>
     </div>
 
-    <!-- 新增：关于按钮 -->
-    <div style="text-align: center; margin-top: 32px; margin-bottom: 10px;">
-      <button class="btn btn-secondary" style="font-size: 0.85rem; padding: 10px 20px; border-radius: 20px; color: var(--text-muted); background: transparent; border-color: rgba(255,255,255,0.1);" onclick="App.openAboutModal()">
-        <i class="fas fa-info-circle"></i> 关于系统
-      </button>
-    </div>
-
-  </div>
-
-  <!-- 新增：关于弹窗 -->
-  <div id="aboutModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle">
-    <div class="modal-content" style="text-align: center;">
-      <button class="modal-close" onclick="App.closeAboutModal()" aria-label="关闭"><i class="fas fa-times"></i></button>
-      <i class="fas fa-cube" style="font-size: 3rem; color: var(--primary); margin-bottom: 16px; text-shadow: 0 0 20px rgba(124, 58, 237, 0.5);"></i>
-      <h3 class="modal-title" id="aboutModalTitle" style="margin-bottom: 4px; letter-spacing: 1px;">Gacha System</h3>
-      <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 24px;">Version 1.0.0</div>
-      
-      <div style="text-align: left; font-size: 0.9rem; color: var(--text-main); line-height: 1.6; background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 24px;">
-        <p style="margin-top: 0; color: var(--primary-light); font-weight: 600;">基于 Serverless 构建的抽卡收集系统</p>
-        <ul style="padding-left: 20px; margin-bottom: 0; color: var(--text-muted);">
-          <li style="margin-bottom: 6px;">Cloudflare Workers + D1 + R2</li>
-          <li style="margin-bottom: 6px;">物理 Hash 去重图库</li>
-          <li style="margin-bottom: 6px;">全局级卡池缓冲队列</li>
-          <li>多级称号与成就系统</li>
-        </ul>
+    <!-- 关于面板 - 内联展示 -->
+    <div class="about-panel">
+      <div class="about-header">
+        <i class="fas fa-cube"></i>
+        <span>关于系统</span>
       </div>
-      
-      <div style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">
-        &copy; 2024 Gacha System. All rights reserved.
+      <div class="about-content">
+        <div class="about-title">Gacha System <span class="about-version">v1.0.0</span></div>
+        <div class="about-desc">基于 Serverless 构建的抽卡收集系统</div>
+        <div class="about-tech">
+          <span class="tech-tag"><i class="fas fa-cloud"></i> Cloudflare</span>
+          <span class="tech-tag"><i class="fas fa-database"></i> D1</span>
+          <span class="tech-tag"><i class="fas fa-hdd"></i> R2</span>
+        </div>
+        <div class="about-features">
+          <div class="feature-item"><i class="fas fa-check-circle"></i> 物理Hash去重图库</div>
+          <div class="feature-item"><i class="fas fa-check-circle"></i> 全局级卡池缓冲队列</div>
+          <div class="feature-item"><i class="fas fa-check-circle"></i> 多级称号与成就系统</div>
+        </div>
+      </div>
+      <div class="about-footer">
+        &copy; 2024 Gacha System
       </div>
     </div>
+
   </div>
 
   <!-- 称号管理弹窗 -->
@@ -4934,15 +5005,6 @@ function getProfilePage() {
 
       closeRewardModal() {
         document.getElementById('rewardModal').classList.remove('show');
-      },
-      // 新增：打开关于弹窗
-      openAboutModal() {
-        document.getElementById('aboutModal').classList.add('show');
-      },
-
-      // 新增：关闭关于弹窗
-      closeAboutModal() {
-        document.getElementById('aboutModal').classList.remove('show');
       },
 
       async claimReward(level) {
