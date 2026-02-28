@@ -2095,7 +2095,7 @@ const NEUTRAL_CSS = `
   @media (max-width: 480px) {
     .switch-wrapper { width: 100%; }
   }
-  .admin-btn { padding: 10px 20px; border-radius: 10px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; display: inline-flex; align-items: center; gap: 8px; }
+  .admin-btn { padding: 10px 20px; border-radius: 10px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
   .admin-btn.primary { background: linear-gradient(135deg, #F59E0B, #D97706); color: #0F172A; }
   .admin-btn.primary:hover { background: linear-gradient(135deg, #FBBF24, #F59E0B); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
   .admin-btn.secondary { background: rgba(148, 163, 184, 0.15); color: #E2E8F0; }
