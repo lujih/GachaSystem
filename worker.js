@@ -226,7 +226,7 @@ export default {
       'POST /shop/buy': () => handleRoute(() => gachaService.shopBuy(currentUser, request)),
       'POST /game/dice': () => handleRoute(() => gachaService.playDice(currentUser, request)),
       'GET /showcase': () => handleRoute(() => handleShowcase(env)),
-      'GET /changelog': () => handleRoute(() => handleChangelog(env)),
+      'GET /changelog': () => handleRoute(() => handleChangelog(env, request)),
       'GET /announcement': () => handleRoute(() => handleGetAnnouncement(env)),
       'GET /library': () => handleRoute(() => handleLibrary(request, env, url)),
       'GET /api/library/items': () => handleRoute(() => handleLibraryApi(request, env)),
@@ -1493,13 +1493,20 @@ async function handleProfile() {
   });
 }
 
-async function handleChangelog(env) {
+async function handleChangelog(env, request) {
   if (!env.RECENT_REQUESTS) return jsonResponse(DEFAULT_CHANGELOG);
   let logs = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.CHANGELOG));
-  return jsonResponse(logs || DEFAULT_CHANGELOG, 200, {
+  
+  const isAdminRequest = request?.headers?.get('X-Admin-Mode') === 'true';
+  const cacheHeaders = isAdminRequest ? {
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache'
+  } : {
     'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`,
     'CDN-Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
-  });
+  };
+  
+  return jsonResponse(logs || DEFAULT_CHANGELOG, 200, cacheHeaders);
 }
 
 async function handleGetAnnouncement(env) {
@@ -1695,10 +1702,20 @@ async function handleAdminUsers(request, env) {
 }
 
 async function handleAdminSaveLog(request, env) {
-  const { password, logs } = await request.json();
-  if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
-  await env.RECENT_REQUESTS.put(CONFIG.KEYS.CHANGELOG, JSON.stringify(logs));
-  return jsonResponse({ success: true });
+  try {
+    const { password, logs } = await request.json();
+    if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
+    if (!logs || !Array.isArray(logs)) return jsonResponse({ error: '无效的日志数据' }, 400);
+    
+    await env.RECENT_REQUESTS.put(CONFIG.KEYS.CHANGELOG, JSON.stringify(logs), { 
+      expirationTtl: 86400 * 365 // 保存1年
+    });
+    
+    return jsonResponse({ success: true });
+  } catch (e) {
+    console.error('Save changelog error:', e);
+    return jsonResponse({ error: '保存失败: ' + e.message }, 500);
+  }
 }
 
 async function handleAdminUpdatePoints(request, env) {
@@ -3445,7 +3462,9 @@ const navNick = document.getElementById('navNickname');
       },
       async loadChangelog() {
         try {
-          const res = await fetch('/changelog'); this.logsData = await res.json(); const list = document.getElementById('logList');
+          const res = await fetch('/changelog', { headers: { 'X-Admin-Mode': 'true' } });
+          this.logsData = await res.json(); 
+          const list = document.getElementById('logList');
           if(this.logsData && this.logsData.length) {
             list.innerHTML = this.logsData.map(log => {
               const isTodo = log.ver.includes('To-Do');
@@ -4089,7 +4108,25 @@ const navNick = document.getElementById('navNickname');
         this.toast('已添加到列表，请保存', 'ok');
       },
       addAdminRow() { this.logsData.unshift({date: new Date().toISOString().split('T')[0], ver:'v.X', content:'...', tag:'optimization'}); this.renderAdminTable(); }, delLog(idx) { this.logsData.splice(idx, 1); this.renderAdminTable(); },
-      async saveAdminLog() { try { const res = await fetch('/admin/save-changelog', { method: 'POST', body: JSON.stringify({password: this.adminPwd, logs: this.logsData}) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadChangelog(); } else { this.toast('保存失败', 'warn'); } } catch(e) { this.toast('保存失败', 'warn'); } },
+      async saveAdminLog() { 
+        try { 
+          const res = await fetch('/admin/save-changelog', { 
+            method: 'POST', 
+            body: JSON.stringify({password: this.adminPwd, logs: this.logsData})
+          }); 
+          const d = await res.json();
+          if(d.success) { 
+            this.toast('保存成功！', 'ok');
+            this.logsData = [...this.logsData];
+            this.renderAdminTable();
+            this.loadChangelog();
+          } else { 
+            this.toast(d.error || '保存失败', 'warn'); 
+          } 
+        } catch(e) { 
+          this.toast('网络错误', 'warn'); 
+        } 
+      },
       openProfile() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('profileModal').classList.add('show'); },
       closeModals() {
         document.querySelectorAll('.modal').forEach(m => {
