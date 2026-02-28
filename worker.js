@@ -315,7 +315,13 @@ class UserService {
   }
 
   async verifyPassword(password, storedHash) {
-    if (!storedHash || !storedHash.includes(':')) {
+    if (!storedHash) return false;
+    
+    // 兼容旧版明文密码
+    if (!storedHash.includes(':')) {
+      if (password === storedHash) {
+        return 'migrated';
+      }
       return false;
     }
     
@@ -565,6 +571,12 @@ class UserService {
     const isPasswordValid = await this.verifyPassword(password, user.password);
     if (!isPasswordValid) {
       return jsonResponse({ error: '凭证无效' }, 403);
+    }
+
+    // 兼容旧版明文密码，登录时自动升级为哈希
+    if (isPasswordValid === 'migrated') {
+      const newHash = await this.hashPassword(password);
+      await this.env.DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(newHash, user.id).run();
     }
 
     const totalExp = user.total_exp || 0;
