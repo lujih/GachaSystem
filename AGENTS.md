@@ -72,20 +72,37 @@ npx wrangler d1 execute chouka --remote --command="SELECT * FROM users"
 - **Constants/Config**: UPPER_SNAKE_CASE (e.g., `BUSINESS_CONFIG`, `TTL`)
 - **File/Route paths**: kebab-case in URLs
 
-### File Structure (in worker.js)
+## File Structure
+
+### Current (Single File)
+- Single `worker.js` file contains entire application (~5000 lines)
+
+### Modular Structure (Future)
 ```
-1. Configuration Layer (BUSINESS_CONFIG, TECHNICAL_CONFIG)
-2. Utility Functions (timezone helpers, JSON response)
-3. Service Layer (UserService, GachaService)
-4. Route Handlers (handleHome, handleProfile, etc.)
-5. HTML Templates (Html object)
-6. Export Default (fetch handler + routes)
+src/
+├── config/          # Configuration modules
+├── utils/           # Utility functions
+├── services/       # Business logic services
+├── handlers/        # Route handlers (future)
+├── templates/       # HTML templates (future)
+└── worker.js        # Entry point (future)
 ```
+
+See `docs/MODULARIZATION_STATUS.md` for migration details.
 
 ### Imports/Dependencies
 - No external npm dependencies - uses Cloudflare Workers runtime APIs only
 - Uses native `crypto.subtle` for password hashing (PBKDF2 + SHA-256)
 - Uses native `fetch` for external API calls
+- Supports ES Modules for modular architecture (see `src/` directory)
+
+### Modular Architecture
+The project includes a modular structure under `src/` directory:
+- `src/config/` - Business and technical configuration
+- `src/utils/` - Utility functions (time, response helpers)
+- `src/services/` - Service classes
+
+Cloudflare Workers automatically bundles all imported modules using esbuild.
 
 ### Error Handling
 ```javascript
@@ -187,6 +204,13 @@ See `schema.sql` for complete schema. Key tables:
 | `/shop/buy` | POST | Token | Buy cards |
 | `/game/dice` | POST | Token | Dice mini-game |
 | `/admin/*` | POST | Password | Admin operations |
+
+---
+
+## Documentation
+
+See `docs/` folder for development plans:
+- `docs/AD_OPERATIONS_PLAN.md` - 广告与运营功能开发计划
 
 ---
 
