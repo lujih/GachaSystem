@@ -8,6 +8,7 @@
 // 模块导入
 import { BUSINESS_CONFIG, TECHNICAL_CONFIG, CONFIG, DEFAULT_CHANGELOG } from './src/config/index.js';
 import { jsonResponse, safeJsonParse, requireAdmin } from './src/utils/response.js';
+import { getBeijingTime, getBeijingDateStr, getBeijingISOString, utcToBeijing } from './src/utils/time.js';
 import { UserService } from './src/services/user-service.js';
 import { GachaService } from './src/services/gacha-service.js';
 
@@ -119,34 +120,6 @@ export default {
     return new Response('Not Found', { status: 404 });
   }
 };
-
-/**
- * =========================================
- * 北京时间工具函数
- * =========================================
- */
-
-// 获取北京时间
-function getBeijingTime(date = new Date()) {
-  return new Date(date.getTime() + 8 * 60 * 60 * 1000);
-}
-
-// 获取北京日期字符串 (YYYY-MM-DD)
-function getBeijingDateStr(date = new Date()) {
-  return getBeijingTime(date).toISOString().split('T')[0];
-}
-
-// 获取北京时间的ISO字符串
-function getBeijingISOString(date = new Date()) {
-  return getBeijingTime(date).toISOString();
-}
-
-// 将UTC时间转换为北京时间
-function utcToBeijing(utcDateStr) {
-  if (!utcDateStr) return null;
-  const date = new Date(utcDateStr);
-  return new Date(date.getTime() + 8 * 60 * 60 * 1000);
-}
 
 // =========================================
 // 路由处理器
@@ -2863,6 +2836,10 @@ const navNick = document.getElementById('navNickname');
 </html>
   `;
 }
+
+// =========================================
+// 图库页模板
+// =========================================
 
 function getLibraryHtml(items, pager) {
   const LIBRARY_CSS = `
