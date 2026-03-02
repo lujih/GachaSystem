@@ -1,18 +1,17 @@
 /**
  * =========================================
- * 1. 分层配置区域 (LAYERED CONFIG)
+ * Chouka 抽卡系统 - 主入口
+ * 模块化架构
  * =========================================
  */
 
-// 模块化导入
+// 模块导入
 import { BUSINESS_CONFIG, TECHNICAL_CONFIG, CONFIG, DEFAULT_CHANGELOG } from './src/config/index.js';
 import { jsonResponse, safeJsonParse, requireAdmin } from './src/utils/response.js';
 import { UserService } from './src/services/user-service.js';
 import { GachaService } from './src/services/gacha-service.js';
 
-/**
- * 工具函数区域
- */
+// 工具函数
 function normalizePath(pathname) {
   if (!pathname || pathname === '/') return '/';
   return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
@@ -20,10 +19,12 @@ function normalizePath(pathname) {
 
 export default {
   async fetch(request, env, ctx) {
+    // 解析请求
     const url = new URL(request.url);
     const method = request.method.toUpperCase();
     const pathname = normalizePath(url.pathname);
 
+    // CORS 预检
     if (method === 'OPTIONS') {
       return new Response(null, {
         headers: { 
@@ -34,24 +35,29 @@ export default {
       });
     }
 
-    const token = request.headers.get('X-Session-Token');
+    // 获取当前用户
     let currentUser = null;
+    const token = request.headers.get('X-Session-Token');
     if (token) {
       const userDataStr = await env.KV_CACHE.get(`session:${token}`);
-      if (userDataStr) {
-        currentUser = JSON.parse(userDataStr);
+      if (userDataStr) currentUser = JSON.parse(userDataStr);
+    }
+    // 调试模式
+    if (!currentUser) {
+      const debugUserId = request.headers.get('X-User-ID');
+      if (debugUserId) {
+        const user = await env.DB.prepare(
+          'SELECT id, username, nickname, coins, level, exp, total_exp FROM users WHERE username = ?'
+        ).bind(debugUserId).first();
+        if (user) currentUser = user;
       }
     }
-    
-    if (!currentUser && request.headers.get('X-User-ID')) {
-      const uidName = request.headers.get('X-User-ID');
-      const user = await env.DB.prepare('SELECT id, username, nickname, coins, level, exp, total_exp FROM users WHERE username = ?').bind(uidName).first();
-      if(user) currentUser = user;
-    }
 
+    // 初始化服务
     const userService = new UserService(env, ctx);
     const gachaService = new GachaService(env, ctx, userService);
 
+    // 路由错误处理
     const handleRoute = async (handler) => {
       try {
         return await handler();
@@ -61,6 +67,7 @@ export default {
       }
     };
 
+    // 路由表
     const routes = {
       'GET /': () => handleRoute(() => handleHome()),
       'GET /user/profile': () => handleRoute(() => handleProfile()),
@@ -141,12 +148,9 @@ function utcToBeijing(utcDateStr) {
   return new Date(date.getTime() + 8 * 60 * 60 * 1000);
 }
 
-/**
- * =========================================
- * 服务层已模块化 - 请使用 src/services/ 中的模块
- * =========================================
- */
-
+// =========================================
+// 路由处理器
+// =========================================
 
 async function handleHome() {
   return new Response(getHtmlPage(), { 
@@ -618,7 +622,9 @@ async function updateGalleryIndex(env, newItem) {
   }
 }
 
-// 工具函数已模块化 - 使用 src/utils/ 中的版本
+// =========================================
+// HTML 组件
+// =========================================
 
 const Html = {
   cardStat(rarity, count) {
@@ -970,6 +976,10 @@ const NEUTRAL_CSS = `
   .total-cards { text-align: center; margin-top: 10px; font-size: 0.8rem; color: #94A3B8; }
 </style>
 `;
+
+// =========================================
+// 首页模板
+// =========================================
 
 function getHtmlPage() {
   return `
@@ -3123,6 +3133,10 @@ function getLibraryHtml(items, pager) {
 </html>
   `;
 }
+
+// =========================================
+// 个人资料页模板
+// =========================================
 
 function getProfilePage() {
   return `
