@@ -41,6 +41,7 @@ async function updateLeaderboard(env, newItem) {
 // 更新图库索引
 async function updateGalleryIndex(env, newItem) {
   try {
+    const ts = typeof newItem.ts === 'string' ? Date.parse(newItem.ts) : newItem.ts;
     await env.DB.prepare(`
       INSERT INTO gallery (url, user_id, username, created_at) 
       VALUES (?, ?, ?, ?)
@@ -48,7 +49,7 @@ async function updateGalleryIndex(env, newItem) {
         user_id = excluded.user_id,
         username = excluded.username,
         created_at = excluded.created_at
-    `).bind(newItem.url, newItem.userId, newItem.username, newItem.ts).run();
+    `).bind(newItem.url, newItem.userId, newItem.username, ts).run();
   } catch (e) {
     console.error('Failed to update gallery D1:', e);
   }
