@@ -221,6 +221,11 @@ export class GachaService {
     else if (rand < 45) rarity = 'R';
     else rarity = 'N';
 
+    if (!CONFIG || !CONFIG.SOURCES) {
+      console.error('[Draw] CONFIG or SOURCES is undefined');
+      return jsonResponse({ error: '配置加载失败' }, 500);
+    }
+
     const sourceList = CONFIG.SOURCES.filter(s => s.rarity === rarity);
     if (sourceList.length === 0) {
       return jsonResponse({ error: '配置错误' }, 500);
