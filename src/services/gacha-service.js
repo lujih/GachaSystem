@@ -152,8 +152,28 @@ export class GachaService {
 
   async fetchAndUpload(source) {
     try {
-      const initRes = await fetch(source.url, { method: 'HEAD', redirect: 'follow' });
-      const finalUrl = initRes.url;
+      console.log('[fetchAndUpload] Fetching from:', source.url);
+      let finalUrl = source.url;
+      
+      const initRes = await fetch(source.url, { method: 'GET', redirect: 'follow' });
+      const contentType = initRes.headers.get('content-type') || '';
+      console.log('[fetchAndUpload] Content-Type:', contentType);
+      
+      // 如果返回的是JSON，尝试解析获取图片URL
+      if (contentType.includes('application/json') || contentType.includes('text/html')) {
+        try {
+          const data = await initRes.json();
+          console.log('[fetchAndUpload] JSON response:', JSON.stringify(data).slice(0, 200));
+          // 尝试从JSON中提取图片URL
+          finalUrl = data.url || data.img || data.image || data.data?.[0]?.url || data.data?.[0]?.img || source.url;
+        } catch (e) {
+          finalUrl = initRes.url;
+        }
+      } else {
+        finalUrl = initRes.url;
+      }
+      
+      console.log('[fetchAndUpload] Using image URL:', finalUrl);
 
       const compressedUrl = `https://wsrv.nl/?url=${encodeURIComponent(finalUrl)}&output=webp&q=75&w=1200&il`;
 
