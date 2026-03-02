@@ -1780,18 +1780,23 @@ const navNick = document.getElementById('navNickname');
       },
       updateProfileStats() {
         const inv = this.inventory;
-        document.getElementById('invCountN').innerText = inv.N || 0;
-        document.getElementById('invCountR').innerText = inv.R || 0;
-        document.getElementById('invCountSR').innerText = inv.SR || 0;
-        document.getElementById('invCountSSR').innerText = inv.SSR || 0;
-        document.getElementById('invCountUR').innerText = inv.UR || 0;
+        const setText = (id, val) => {
+          const el = document.getElementById(id);
+          if (el) el.innerText = val;
+        };
+        setText('invCountN', inv.N || 0);
+        setText('invCountR', inv.R || 0);
+        setText('invCountSR', inv.SR || 0);
+        setText('invCountSSR', inv.SSR || 0);
+        setText('invCountUR', inv.UR || 0);
         
         const totalCards = (inv.N || 0) + (inv.R || 0) + (inv.SR || 0) + (inv.SSR || 0) + (inv.UR || 0);
-        document.getElementById('totalCards').innerText = totalCards;
+        setText('totalCards', totalCards);
         
-        const drawCount = parseInt(document.getElementById('profileCount').innerText) || 0;
+        const profileCountEl = document.getElementById('profileCount');
+        const drawCount = profileCountEl ? (parseInt(profileCountEl.innerText) || 0) : 0;
         const level = Math.floor(drawCount / 50) + 1;
-        document.getElementById('profileLevel').innerText = level;
+        setText('profileLevel', level);
       },
       showMoreStats() {
         const inv = this.inventory;
