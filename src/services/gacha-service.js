@@ -267,6 +267,29 @@ export class GachaService {
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
+    // 更新排行榜和图库（仅常驻池UR卡）
+    if (asset.success) {
+      // 所有卡加入图库
+      const galleryItem = {
+        url: asset.imageUrl,
+        userId: currentUser.id,
+        username: currentUser.username,
+        ts: getBeijingISOString()
+      };
+      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
+
+      // 只有UR加入排行榜
+      if (rarity === 'UR') {
+        const leaderboardItem = {
+          username: currentUser.username,
+          rarity: rarity,
+          imageUrl: asset.imageUrl,
+          ts: Date.now()
+        };
+        this.ctx.waitUntil(updateLeaderboard(this.env, leaderboardItem));
+      }
+    }
+
     return jsonResponse({
       success: true,
       card: asset,
@@ -323,15 +346,8 @@ export class GachaService {
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
-    // 更新排行榜和图库
+    // 更新图库
     if (asset.success) {
-      const leaderboardItem = {
-        username: currentUser.username,
-        rarity: asset.rarity,
-        ts: Date.now()
-      };
-      this.ctx.waitUntil(updateLeaderboard(this.env, leaderboardItem));
-      
       const galleryItem = {
         url: asset.imageUrl,
         userId: currentUser.id,
@@ -410,6 +426,17 @@ export class GachaService {
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
+    // 更新图库（合成不加入排行榜）
+    if (asset.success) {
+      const galleryItem = {
+        url: asset.imageUrl,
+        userId: currentUser.id,
+        username: currentUser.username,
+        ts: getBeijingISOString()
+      };
+      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
+    }
+
     return jsonResponse({
       success: true,
       card: asset,
@@ -453,6 +480,17 @@ export class GachaService {
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+
+    // 更新图库（商城购买不加入排行榜）
+    if (asset.success) {
+      const galleryItem = {
+        url: asset.imageUrl,
+        userId: currentUser.id,
+        username: currentUser.username,
+        ts: getBeijingISOString()
+      };
+      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
+    }
 
     return jsonResponse({
       success: true,
@@ -515,15 +553,8 @@ export class GachaService {
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
-    // 更新排行榜和图库
+    // 更新图库（骰子游戏不加入排行榜）
     if (asset.success) {
-      const leaderboardItem = {
-        username: currentUser.username,
-        rarity: asset.rarity,
-        ts: Date.now()
-      };
-      this.ctx.waitUntil(updateLeaderboard(this.env, leaderboardItem));
-      
       const galleryItem = {
         url: asset.imageUrl,
         userId: currentUser.id,
