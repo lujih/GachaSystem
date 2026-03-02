@@ -2242,11 +2242,12 @@ const navNick = document.getElementById('navNickname');
                this.loading = false;
               
               const icon = this.currentPool === 'ltd' ? 'fa-star' : 'fa-bolt';
-              if (btn) btn.innerHTML = \`<i class="fas \${icon}"></i> 再召唤\`;
+              if (btn) btn.innerHTML = `<i class="fas ${icon}"></i> 再召唤`;
 
-              if (data.rarity && tag) { 
-                  tag.innerText = data.rarity; 
-                  tag.className = 'rarity-tag r-' + data.rarity.toLowerCase(); 
+              const rarity = data.card?.rarity || data.rarity;
+              if (rarity && tag) { 
+                  tag.innerText = rarity; 
+                  tag.className = 'rarity-tag r-' + rarity.toLowerCase(); 
                   tag.classList.add('show'); 
               }
              
