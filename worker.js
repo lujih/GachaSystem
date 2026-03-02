@@ -2228,7 +2228,7 @@ const navNick = document.getElementById('navNickname');
         } catch(e) { this.loading = false; document.getElementById('loadingSpinner').classList.remove('show'); this.switchPool(this.currentPool); this.toast(e.message, 'warn'); this.fetchUserInfo(); }
       },
       handleDrawResult(data, img, tag, btn, isSpecial = false) {
-           img.src = data.imageUrl;
+           img.src = data.card ? data.card.imageUrl : data.imageUrl;
            
            const onImageLoad = () => {
                if (!img || !document.body.contains(img)) return;
