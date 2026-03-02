@@ -6,6 +6,7 @@
 
 // 启用模块化配置
 import { BUSINESS_CONFIG, TECHNICAL_CONFIG, CONFIG, DEFAULT_CHANGELOG } from './src/config/index.js';
+// GachaService 暂时保留在 worker.js 中
 
 /**
  * 业务配置层 - 游戏逻辑相关配置
@@ -1340,6 +1341,9 @@ class GachaService {
     }
   }
 }
+
+// GachaService 类已移至 src/services/gacha-service.js
+// class GachaService { ... }
 
 async function handleHome() {
   return new Response(getHtmlPage(), { 
