@@ -558,15 +558,6 @@ export class GachaService {
         'INSERT INTO user_uploads (user_id, username, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?)'
       ).bind(currentUser.id, currentUser.username, result.url, rarity, 'pending', getBeijingISOString()).run();
 
-      // 更新图库（上传即加入公共图库）
-      const galleryItem = {
-        url: result.url,
-        userId: currentUser.id,
-        username: currentUser.username,
-        ts: getBeijingISOString()
-      };
-      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
-
       return jsonResponse({ success: true, url: result.url, message: '上传成功，等待审核' });
     } catch (e) {
       console.error('Upload error:', e);
