@@ -397,7 +397,9 @@ export class GachaService {
       id,
       name: config.name,
       description: config.description,
-      cost: CONFIG.LIMITED.COST
+      cost: CONFIG.LIMITED.COST,
+      available: config.sources && config.sources.length > 0,
+      count: config.sources ? config.sources.length : 0
     }));
 
     return jsonResponse({ success: true, pools, defaultPool: CONFIG.LIMITED.DEFAULT_POOL });
