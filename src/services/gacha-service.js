@@ -321,7 +321,8 @@ export class GachaService {
       return jsonResponse({ error: '卡池配置错误' }, 500);
     }
 
-    const asset = await this.consumeGlobalBuffer('UR', sources);
+    // 限定池实时请求，不使用预抽卡缓存
+    const asset = await this.fetchAndUploadRandom(sources);
 
     await this.env.DB.prepare(
       'UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ?'
