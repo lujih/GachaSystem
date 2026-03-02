@@ -252,7 +252,7 @@ export class GachaService {
     }
 
     const existing = await this.env.DB.prepare(
-      'SELECT id FROM inventory WHERE user_id = ? AND rarity = ?'
+      'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
     ).bind(currentUser.id, rarity).first();
 
     if (existing) {
@@ -308,7 +308,7 @@ export class GachaService {
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
 
     const existing = await this.env.DB.prepare(
-      'SELECT id FROM inventory WHERE user_id = ? AND rarity = ?'
+      'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
     ).bind(currentUser.id, 'UR').first();
 
     if (existing) {
@@ -392,7 +392,7 @@ export class GachaService {
     const asset = await this.consumeGlobalBuffer(targetRarity, targetSources);
 
     const existing = await this.env.DB.prepare(
-      'SELECT id FROM inventory WHERE user_id = ? AND rarity = ?'
+      'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
     ).bind(currentUser.id, targetRarity).first();
 
     if (existing) {
@@ -435,7 +435,7 @@ export class GachaService {
     const asset = await this.consumeGlobalBuffer(rarity, sources);
 
     const existing = await this.env.DB.prepare(
-      'SELECT id FROM inventory WHERE user_id = ? AND rarity = ?'
+      'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
     ).bind(currentUser.id, rarity).first();
 
     if (existing) {
