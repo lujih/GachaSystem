@@ -304,7 +304,9 @@ export class GachaService {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
 
     const { poolId } = await request.json();
+    console.log('[drawLimited] Received poolId:', poolId);
     const pool = poolId && CONFIG.LIMITED.POOLS[poolId] ? poolId : CONFIG.LIMITED.DEFAULT_POOL;
+    console.log('[drawLimited] Using pool:', pool, 'sources:', CONFIG.LIMITED.POOLS[pool]?.sources?.length);
     const poolConfig = CONFIG.LIMITED.POOLS[pool];
 
     if (!poolConfig) return jsonResponse({ error: '卡池不存在' }, 400);

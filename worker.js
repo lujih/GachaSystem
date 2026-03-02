@@ -1634,6 +1634,7 @@ switchPool(pool) {
       
       // [优化] 选择池（不重新加载列表，只更新样式）
       selectPool(poolId) {
+        console.log('[selectPool] Called with poolId:', poolId);
         if (this.currentLimitedPool === poolId) {
           // 如果点击的是已选中的池，直接关闭下拉
           document.getElementById('poolDropdown').style.display = 'none';
@@ -1644,6 +1645,7 @@ switchPool(pool) {
         
         // [修复] 更新当前选中的池
         this.currentLimitedPool = poolId;
+        console.log('[selectPool] Set currentLimitedPool to:', this.currentLimitedPool);
         
         // [修复] 同时更新缓存中的选择，防止loadLimitedPools重置
         if (this._poolsCache) {
