@@ -7,6 +7,7 @@ import { CONFIG, TECHNICAL_CONFIG } from '../config/index.js';
 import { jsonResponse } from '../utils/response.js';
 import { getBeijingISOString } from '../utils/time.js';
 
+// 辅助函数
 function arrayBufferToBase64(buffer) {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -21,6 +22,36 @@ async function calculateHash(buffer) {
   const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+// 更新排行榜
+async function updateLeaderboard(env, newItem) {
+  if (!env.RECENT_REQUESTS) return;
+  const key = CONFIG.KEYS.LEADERBOARD;
+  let list = [];
+  try {
+    const cached = await env.RECENT_REQUESTS.get(key);
+    if (cached) list = JSON.parse(cached);
+  } catch (e) {}
+  list.unshift(newItem);
+  if (list.length > 50) list = list.slice(0, 50);
+  await env.RECENT_REQUESTS.put(key, JSON.stringify(list), { expirationTtl: CONFIG.TTL.LEADERBOARD });
+}
+
+// 更新图库索引
+async function updateGalleryIndex(env, newItem) {
+  try {
+    await env.DB.prepare(`
+      INSERT INTO gallery (url, user_id, username, created_at) 
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(url) DO UPDATE SET 
+        user_id = excluded.user_id,
+        username = excluded.username,
+        created_at = excluded.created_at
+    `).bind(newItem.url, newItem.userId, newItem.username, newItem.ts).run();
+  } catch (e) {
+    console.error('Failed to update gallery D1:', e);
+  }
 }
 
 async function uploadToGithub(env, path, content, extension, message) {
@@ -460,7 +491,25 @@ export class GachaService {
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
-    return jsonResponse({ 
+    // 更新排行榜和图库
+    if (asset.success) {
+      const leaderboardItem = {
+        username: currentUser.username,
+        rarity: asset.rarity,
+        ts: Date.now()
+      };
+      this.ctx.waitUntil(updateLeaderboard(this.env, leaderboardItem));
+      
+      const galleryItem = {
+        url: asset.imageUrl,
+        userId: currentUser.id,
+        username: currentUser.username,
+        ts: getBeijingISOString()
+      };
+      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
+    }
+
+    return jsonResponse({
       success: true, 
       roll, 
       isWin: true, 
@@ -508,6 +557,15 @@ export class GachaService {
       await this.env.DB.prepare(
         'INSERT INTO user_uploads (user_id, username, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?)'
       ).bind(currentUser.id, currentUser.username, result.url, rarity, 'pending', getBeijingISOString()).run();
+
+      // 更新图库（上传即加入公共图库）
+      const galleryItem = {
+        url: result.url,
+        userId: currentUser.id,
+        username: currentUser.username,
+        ts: getBeijingISOString()
+      };
+      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
 
       return jsonResponse({ success: true, url: result.url, message: '上传成功，等待审核' });
     } catch (e) {

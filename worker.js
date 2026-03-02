@@ -570,31 +570,6 @@ async function handleAdminReviewUpload(request, env) {
   }
 }
 
-async function updateLeaderboard(env, newItem) {
-  if (!env.RECENT_REQUESTS) return;
-  const key = CONFIG.KEYS.LEADERBOARD;
-  let list = await safeJsonParse(await env.RECENT_REQUESTS.get(key)) || [];
-  list.unshift(newItem);
-  if (list.length > 50) list = list.slice(0, 50);
-  await env.RECENT_REQUESTS.put(key, JSON.stringify(list), { expirationTtl: CONFIG.TTL.LEADERBOARD });
-}
-
-async function updateGalleryIndex(env, newItem) {
-  try {
-    // 使用 ON CONFLICT 实现：如果是新图就插入；如果是重复图，就更新为最新抽到的玩家，并刷新时间使其置顶
-    await env.DB.prepare(`
-      INSERT INTO gallery (url, user_id, username, created_at) 
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(url) DO UPDATE SET 
-        user_id = excluded.user_id,
-        username = excluded.username,
-        created_at = excluded.created_at
-    `).bind(newItem.url, newItem.userId, newItem.username, newItem.ts).run();
-  } catch (e) {
-    console.error('Failed to update gallery D1:', e);
-  }
-}
-
 // =========================================
 // HTML 组件
 // =========================================
