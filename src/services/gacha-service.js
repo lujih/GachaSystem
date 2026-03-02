@@ -550,4 +550,70 @@ export class GachaService {
 
     return upload;
   }
+
+  // 随机图片API调用
+  async fetchRandomImageAPI(apiUrl) {
+    try {
+      if (!apiUrl) {
+        return { success: false, message: 'API URL not provided' };
+      }
+      
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json,image/webp,image/apng,image/*,*/*;q=0.8'
+      };
+
+      try {
+        const headRes = await fetch(apiUrl, { 
+            method: 'HEAD', 
+            headers, 
+            redirect: 'follow' 
+        });
+        
+        if (headRes.ok) {
+          const contentType = headRes.headers.get('content-type') || '';
+          if (!contentType.includes('application/json')) {
+            return {
+              success: true,
+              imageUrl: headRes.url,
+              rarity: 'UR', 
+              sourceName: 'API Redirect (HEAD)'
+            };
+          }
+        }
+      } catch (headError) {
+        console.warn('[RandomImageAPI] HEAD failed, falling back to GET', headError);
+      }
+
+      const response = await fetch(apiUrl, { method: 'GET', headers, redirect: 'follow' });
+
+      if (!response.ok) {
+        return { success: false, message: `API returned ${response.status}` };
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      const finalUrl = response.url;
+
+      if (contentType.includes('application/json')) {
+        try {
+          const data = await response.json();
+          const imageUrl = data.url || data.img || data.image || data.text || data.data?.url || (Array.isArray(data) ? data[0].url : null);
+          if (imageUrl) {
+            return { success: true, imageUrl: imageUrl, rarity: 'UR', sourceName: 'API JSON' };
+          }
+        } catch(e) {}
+      }
+      
+      return {
+        success: true,
+        imageUrl: finalUrl,
+        rarity: 'UR',
+        sourceName: 'API Redirect'
+      };
+      
+    } catch (e) {
+      console.error('[RandomImageAPI] Error:', e);
+      return { success: false, message: '网络错误，请稍后重试' };
+    }
+  }
 }

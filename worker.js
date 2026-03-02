@@ -4,13 +4,12 @@
  * =========================================
  */
 
-// 启用模块化配置
+// 模块化配置导入（配置已从 src/config/ 加载）
 import { BUSINESS_CONFIG, TECHNICAL_CONFIG, CONFIG, DEFAULT_CHANGELOG } from './src/config/index.js';
-// GachaService 暂时保留在 worker.js 中
 
 /**
  * 业务配置层 - 游戏逻辑相关配置
- * 注意：配置已移至 src/config/ 模块
+ * 注意：配置已移至 src/config/ 模块，此处保留副本用于兼容
  */
 
 // normalizePath 函数（在 export default 之前）
