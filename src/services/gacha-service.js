@@ -317,6 +317,24 @@ export class GachaService {
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
+    // 更新排行榜和图库
+    if (asset.success) {
+      const leaderboardItem = {
+        username: currentUser.username,
+        rarity: asset.rarity,
+        ts: Date.now()
+      };
+      this.ctx.waitUntil(updateLeaderboard(this.env, leaderboardItem));
+      
+      const galleryItem = {
+        url: asset.imageUrl,
+        userId: currentUser.id,
+        username: currentUser.username,
+        ts: getBeijingISOString()
+      };
+      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
+    }
+
     return jsonResponse({
       success: true,
       card: asset,
