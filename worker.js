@@ -518,25 +518,28 @@ async function handleAdminReviewUpload(request, env) {
       const fileBuffer = await r2Object.arrayBuffer();
       const extension = upload.r2_key.split('.').pop() || 'jpg';
       
+      // 生成GitHub路径
+      const githubPath = `uploads/${upload.id}_${reviewedAt}.${extension}`;
+      
       // 上传到GitHub
-      const githubUrl = await uploadToGithub(
+      const githubResult = await uploadToGithub(
         env,
-        upload.github_path,
+        githubPath,
         fileBuffer,
         extension,
         `Approved upload from user ${upload.username} (ID: ${upload.id})`
       );
 
-      if (!githubUrl || (typeof githubUrl === 'object' && githubUrl.error)) {
-        const errMsg = githubUrl?.error || '上传到 GitHub 失败';
+      if (!githubResult || githubResult.error) {
+        const errMsg = githubResult?.error || '上传到 GitHub 失败';
         console.error('[Review] GitHub upload failed:', errMsg);
         return jsonResponse({ error: `审核通过但GitHub上传失败: ${errMsg}` }, 500);
       }
 
       // 更新数据库：设置状态、稀有度、审核时间，并更新URL为GitHub CDN URL
       await env.DB.prepare(
-        'UPDATE user_uploads SET status = ?, rarity = ?, reviewed_at = ?, url = ? WHERE id = ?'
-      ).bind('approved', validRarity, reviewedAt, githubUrl, uploadId).run();
+        'UPDATE user_uploads SET status = ?, rarity = ?, reviewed_at = ?, github_path = ?, url = ? WHERE id = ?'
+      ).bind('approved', validRarity, reviewedAt, githubPath, githubResult.url, uploadId).run();
       
       // 可选：从R2删除临时文件以节省空间
       try {
@@ -550,7 +553,7 @@ async function handleAdminReviewUpload(request, env) {
         success: true, 
         message: '上传已审核通过并发布到GitHub',
         rarity: validRarity,
-        githubUrl: githubUrl
+        githubUrl: githubResult.url
       });
     } else {
       // 拒绝上传：只更新状态，不删除R2文件（可保留一段时间供复查）

@@ -620,25 +620,29 @@ export class GachaService {
 
       const arrayBuffer = await file.arrayBuffer();
       console.log('[Upload] File size:', arrayBuffer.byteLength);
+      
+      // 生成R2存储键
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 8);
       const ext = file.name.split('.').pop() || 'jpg';
-      const filename = `${currentUser.id}_${timestamp}_${random}.${ext}`;
-      const path = `uploads/${filename}`;
+      const r2Key = `uploads/${currentUser.id}_${timestamp}_${random}.${ext}`;
+      const r2Url = `${CONFIG.R2_DOMAIN}/${r2Key}`;
 
-      console.log('[Upload] Starting GitHub upload...');
-      const result = await uploadToGithub(this.env, path, arrayBuffer, ext, `Upload by ${currentUser.username}`);
+      // 先上传到R2临时存储
+      console.log('[Upload] Uploading to R2:', r2Key);
+      await this.env.R2_BUCKET.put(r2Key, arrayBuffer, {
+        httpMetadata: {
+          contentType: file.type,
+          cacheControl: 'public, max-age=3600'
+        }
+      });
 
-      if (result.error) {
-        console.error('[Upload] GitHub upload failed:', result.error);
-        return jsonResponse({ error: result.error }, 500);
-      }
-
+      // 保存到数据库
       await this.env.DB.prepare(
-        'INSERT INTO user_uploads (user_id, username, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-      ).bind(currentUser.id, currentUser.username, result.url, rarity, 'pending', Date.now()).run();
+        'INSERT INTO user_uploads (user_id, username, r2_key, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(currentUser.id, currentUser.username, r2Key, r2Url, rarity, 'pending', Date.now()).run();
 
-      return jsonResponse({ success: true, url: result.url, message: '上传成功，等待审核' });
+      return jsonResponse({ success: true, url: r2Url, message: '上传成功，等待审核' });
     } catch (e) {
       console.error('Upload error:', e);
       return jsonResponse({ error: '上传失败: ' + e.message }, 500);

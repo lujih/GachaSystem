@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS user_uploads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     username TEXT NOT NULL,
-    r2_key TEXT,            -- R2 中的临时文件名（可选，现在直接存GitHub）
+    r2_key TEXT NOT NULL,    -- R2 中的临时文件名
     github_path TEXT,        -- GitHub 存储路径（审核通过后设置）
     url TEXT NOT NULL,       -- 公网访问地址（审核前为R2 URL，审核后为GitHub CDN URL）
     rarity TEXT DEFAULT 'N', -- 审核时确定稀有度
