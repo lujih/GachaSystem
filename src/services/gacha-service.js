@@ -255,7 +255,8 @@ export class GachaService {
   async draw(currentUser) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
 
-    const cost = 0;
+    // 常驻池抽卡消耗积分
+    const cost = CONFIG.GAME.DRAW_COST || 0;
     if (currentUser.coins < cost) {
       return jsonResponse({ error: '积分不足' }, 400);
     }
@@ -267,6 +268,9 @@ export class GachaService {
     else if (rand < 15) rarity = 'SR';
     else if (rand < 45) rarity = 'R';
     else rarity = 'N';
+
+    // 根据稀有度获得积分奖励
+    const coinsReward = CONFIG.GAME.POINTS[rarity] || 0;
 
     if (!CONFIG || !CONFIG.SOURCES) {
       console.error('[Draw] CONFIG or SOURCES is undefined');
@@ -280,12 +284,14 @@ export class GachaService {
 
     const asset = await this.consumeGlobalBuffer(rarity, sourceList);
 
+    // 扣除抽卡费用并奖励积分
+    const netCoinsChange = coinsReward - cost;
     await this.env.DB.prepare(
-      'UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ?'
-    ).bind(cost, currentUser.id).run();
+      'UPDATE users SET coins = coins + ?, draw_count = draw_count + 1 WHERE id = ?'
+    ).bind(netCoinsChange, currentUser.id).run();
 
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || 0;
-    currentUser.coins -= cost;
+    currentUser.coins = (currentUser.coins || 0) + netCoinsChange;
     currentUser.draw_count = (currentUser.draw_count || 0) + 1;
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
 

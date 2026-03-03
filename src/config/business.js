@@ -54,6 +54,7 @@ export const BUSINESS_CONFIG = {
   // 游戏数值配置
   GAME: {
     POINTS: { 'N': 5, 'R': 10, 'SR': 30, 'SSR': 100, 'UR': 500 },
+    DRAW_COST: 0,  // 常驻池免费
     CRAFT_COST: 5,
     SHOP: { 'R': 100, 'SR': 500, 'SSR': 2000, 'UR': 8000 },
     DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2 }
