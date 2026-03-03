@@ -518,8 +518,8 @@ async function handleAdminReviewUpload(request, env) {
       const fileBuffer = await r2Object.arrayBuffer();
       const extension = upload.r2_key.split('.').pop() || 'jpg';
       
-      // 生成GitHub路径
-      const githubPath = `uploads/${upload.id}_${reviewedAt}.${extension}`;
+      // 生成GitHub路径（存到images文件夹）
+      const githubPath = `images/${upload.id}_${reviewedAt}.${extension}`;
       
       // 上传到GitHub
       const githubResult = await uploadToGithub(
