@@ -704,8 +704,8 @@ const NEUTRAL_CSS = `
     .switch-wrapper { width: 100%; }
   }
   .admin-btn { padding: 10px 20px; border-radius: 10px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-  .admin-btn.primary { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; }
-  .admin-btn.primary:hover { background: linear-gradient(135deg, var(--primary-light), var(--primary)); box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); }
+  .admin-btn.primary { background: var(--primary); color: white; }
+  .admin-btn.primary:hover { background: var(--primary-dark); box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); transform: translateY(-1px); }
   .admin-btn.secondary { background: #F1F5F9; color: #64748B; }
   .admin-btn.secondary:hover { background: #E2E8F0; color: #1E293B; }
   .admin-btn.danger { background: #FEE2E2; color: #EF4444; }
