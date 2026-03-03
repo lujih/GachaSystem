@@ -87,7 +87,8 @@ async function uploadToGithub(env, path, content, extension, message) {
       headers: {
         'Authorization': `token ${githubToken}`,
         'Content-Type': 'application/json',
-        'Accept': 'application/vnd.github.v3+json'
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Chouka-Gacha-System'
       },
       body: JSON.stringify(requestBody)
     });
