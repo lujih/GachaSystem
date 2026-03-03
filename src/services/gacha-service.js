@@ -377,15 +377,8 @@ export class GachaService {
       'UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ?'
     ).bind(cost, currentUser.id).run();
 
-    const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW['UR'];
     currentUser.coins -= cost;
     currentUser.draw_count = (currentUser.draw_count || 0) + 1;
-    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
-
-    // 更新数据库
-    await this.env.DB.prepare(
-      'UPDATE users SET total_exp = total_exp + ? WHERE id = ?'
-    ).bind(expGain, currentUser.id).run();
 
     const existing = await this.env.DB.prepare(
       'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
@@ -418,7 +411,6 @@ export class GachaService {
       success: true,
       card: asset,
       pool: poolConfig.name,
-      expGained: expGain,
       userCoins: currentUser.coins
     });
   }
