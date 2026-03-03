@@ -547,12 +547,14 @@ export class GachaService {
   async playDice(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
 
-    const { bet, choice } = await request.json();
+    const body = await request.json();
+    const bet = parseInt(body.bet || body.betAmount);
+    const choice = body.choice || body.prediction;
     const minBet = CONFIG.GAME.DICE.MIN_BET;
     const maxBet = CONFIG.GAME.DICE.MAX_BET;
     const payout = CONFIG.GAME.DICE.PAYOUT;
 
-    if (!bet || bet < minBet || bet > maxBet) {
+    if (!bet || isNaN(bet) || bet < minBet || bet > maxBet) {
       return jsonResponse({ error: `下注金额需在 ${minBet} - ${maxBet} 之间` }, 400);
     }
 
