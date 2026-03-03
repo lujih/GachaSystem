@@ -662,69 +662,69 @@ const NEUTRAL_CSS = `
   .r-n { background: var(--r-n); } .r-r { background: var(--r-r); } .r-sr { background: var(--r-sr); } .r-ssr { background: linear-gradient(135deg, var(--r-ssr), #D97706); }
   .r-ur { background: linear-gradient(45deg, var(--r-ur), #EC4899, #8B5CF6); background-size: 200% 200%; animation: rainbow 3s ease infinite; border-color: #FFF; }
   @keyframes rainbow { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-  .admin-modal-content { background: linear-gradient(145deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98)); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 0; border-radius: 16px; width: 90%; max-width: 720px; max-height: 90vh; overflow: hidden; position: relative; border: 1px solid rgba(148, 163, 184, 0.15); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05); transform: scale(0.95); transition: transform 0.2s ease; }
+  .admin-modal-content { background: white; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 0; border-radius: 16px; width: 90%; max-width: 720px; max-height: 90vh; overflow: hidden; position: relative; border: 1px solid #E2E8F0; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15); transform: scale(0.95); transition: transform 0.2s ease; }
   .admin-modal.show .admin-modal-content { transform: scale(1); }
-  .admin-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid rgba(148, 163, 184, 0.15); background: rgba(0,0,0,0.2); }
-  .admin-modal-header h3 { margin: 0; font-size: 1.25rem; font-weight: 600; color: #F8FAFC; display: flex; align-items: center; gap: 10px; }
-  .admin-modal-header h3 i { color: #F59E0B; }
-  .admin-modal-close { background: rgba(148, 163, 184, 0.1); border: none; width: 36px; height: 36px; border-radius: 10px; color: #94A3B8; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-  .admin-modal-close:hover { background: rgba(239, 68, 68, 0.2); color: #EF4444; transform: rotate(90deg); }
+  .admin-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid #E2E8F0; background: #F8FAFC; }
+  .admin-modal-header h3 { margin: 0; font-size: 1.25rem; font-weight: 600; color: #1E293B; display: flex; align-items: center; gap: 10px; }
+  .admin-modal-header h3 i { color: var(--primary); }
+  .admin-modal-close { background: #F1F5F9; border: none; width: 36px; height: 36px; border-radius: 10px; color: #64748B; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .admin-modal-close:hover { background: #EF4444; color: white; transform: rotate(90deg); }
   .admin-modal-body { padding: 20px 24px; max-height: calc(90vh - 140px); overflow-y: auto; }
-  .admin-tabs { display: flex; gap: 4px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 12px; margin-bottom: 20px; }
-  .admin-tab { padding: 10px 16px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; cursor: pointer; color: #94A3B8; transition: all 0.2s; border: none; background: transparent; display: flex; align-items: center; gap: 8px; }
-  .admin-tab:hover { color: #E2E8F0; background: rgba(255,255,255,0.05); }
-  .admin-tab.active { background: linear-gradient(135deg, #F59E0B, #D97706); color: #0F172A; font-weight: 600; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3); }
-  .admin-tab-badge { background: rgba(239, 68, 68, 0.9); color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; }
-  .admin-input { width: 100%; padding: 10px 14px; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; font-size: 0.9rem; background: rgba(0,0,0,0.3); color: #F8FAFC; transition: all 0.2s; }
-  .admin-input:focus { outline: none; border-color: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
-  .admin-input::placeholder { color: #64748B; }
-  .admin-textarea { width: 100%; padding: 12px 14px; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; font-size: 0.9rem; background: rgba(0,0,0,0.3); color: #F8FAFC; min-height: 120px; resize: vertical; font-family: inherit; transition: all 0.2s; }
-  .admin-textarea:focus { outline: none; border-color: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
-  .admin-textarea::placeholder { color: #64748B; }
+  .admin-tabs { display: flex; gap: 4px; background: #F1F5F9; padding: 4px; border-radius: 12px; margin-bottom: 20px; }
+  .admin-tab { padding: 10px 16px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; cursor: pointer; color: #64748B; transition: all 0.2s; border: none; background: transparent; display: flex; align-items: center; gap: 8px; }
+  .admin-tab:hover { color: #1E293B; background: white; }
+  .admin-tab.active { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; font-weight: 600; box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3); }
+  .admin-tab-badge { background: #EF4444; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; }
+  .admin-input { width: 100%; padding: 10px 14px; border: 1px solid #E2E8F0; border-radius: 10px; font-size: 0.9rem; background: white; color: #1E293B; transition: all 0.2s; }
+  .admin-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
+  .admin-input::placeholder { color: #94A3B8; }
+  .admin-textarea { width: 100%; padding: 12px 14px; border: 1px solid #E2E8F0; border-radius: 10px; font-size: 0.9rem; background: white; color: #1E293B; min-height: 120px; resize: vertical; font-family: inherit; transition: all 0.2s; }
+  .admin-textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
+  .admin-textarea::placeholder { color: #94A3B8; }
   .admin-table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 12px 0; font-size: 0.85rem; }
-  .admin-table th { color: #94A3B8; font-weight: 600; padding: 12px; text-align: left; border-bottom: 1px solid rgba(148, 163, 184, 0.15); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
-  .admin-table td { padding: 12px; border-bottom: 1px solid rgba(148, 163, 184, 0.08); color: #E2E8F0; }
-  .admin-table tr:hover td { background: rgba(255,255,255,0.02); }
-  .admin-table input { background: rgba(0,0,0,0.3); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 6px 10px; color: #F8FAFC; font-size: 0.85rem; }
-  .admin-table input:focus { outline: none; border-color: #F59E0B; }
-  .admin-section-title { font-size: 0.9rem; font-weight: 600; color: #E2E8F0; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
-  .admin-card { background: rgba(0,0,0,0.2); border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
-  .admin-card:hover { border-color: rgba(245, 158, 11, 0.3); }
-  .form-label { display: block; font-size: 0.85rem; font-weight: 500; color: #94A3B8; margin-bottom: 8px; }
+  .admin-table th { color: #64748B; font-weight: 600; padding: 12px; text-align: left; border-bottom: 1px solid #E2E8F0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .admin-table td { padding: 12px; border-bottom: 1px solid #F1F5F9; color: #1E293B; }
+  .admin-table tr:hover td { background: #F8FAFC; }
+  .admin-table input { background: white; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px; color: #1E293B; font-size: 0.85rem; }
+  .admin-table input:focus { outline: none; border-color: var(--primary); }
+  .admin-section-title { font-size: 0.9rem; font-weight: 600; color: #1E293B; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+  .admin-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .admin-card:hover { border-color: var(--primary); }
+  .form-label { display: block; font-size: 0.85rem; font-weight: 500; color: #64748B; margin-bottom: 8px; }
   .form-row { margin-bottom: 16px; }
   .switch { position: relative; display: inline-block; width: 48px; height: 26px; }
   .switch input { opacity: 0; width: 0; height: 0; }
-  .switch .slider { position: absolute; cursor: pointer; inset: 0; background: rgba(148, 163, 184, 0.2); border-radius: 26px; transition: 0.3s; }
-  .switch .slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: #94A3B8; border-radius: 50%; transition: 0.3s; }
-  .switch input:checked + .slider { background: #F59E0B; }
-  .switch input:checked + .slider:before { transform: translateX(22px); background: #0F172A; }
-  .form-hint { font-size: 0.75rem; color: #64748B; margin-top: 6px; }
+  .switch .slider { position: absolute; cursor: pointer; inset: 0; background: #CBD5E1; border-radius: 26px; transition: 0.3s; }
+  .switch .slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
+  .switch input:checked + .slider { background: var(--primary); }
+  .switch input:checked + .slider:before { transform: translateX(22px); }
+  .form-hint { font-size: 0.75rem; color: #94A3B8; margin-top: 6px; }
   .switch-wrapper { display: flex; flex-direction: column; gap: 8px; }
   @media (max-width: 480px) {
     .switch-wrapper { width: 100%; }
   }
   .admin-btn { padding: 10px 20px; border-radius: 10px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-  .admin-btn.primary { background: linear-gradient(135deg, #F59E0B, #D97706); color: #0F172A; }
-  .admin-btn.primary:hover { background: linear-gradient(135deg, #FBBF24, #F59E0B); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
-  .admin-btn.secondary { background: rgba(148, 163, 184, 0.15); color: #E2E8F0; }
-  .admin-btn.secondary:hover { background: rgba(148, 163, 184, 0.25); }
-  .admin-btn.danger { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
-  .admin-btn.danger:hover { background: rgba(239, 68, 68, 0.25); }
+  .admin-btn.primary { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; }
+  .admin-btn.primary:hover { background: linear-gradient(135deg, var(--primary-light), var(--primary)); box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); }
+  .admin-btn.secondary { background: #F1F5F9; color: #64748B; }
+  .admin-btn.secondary:hover { background: #E2E8F0; color: #1E293B; }
+  .admin-btn.danger { background: #FEE2E2; color: #EF4444; }
+  .admin-btn.danger:hover { background: #EF4444; color: white; }
   .admin-btn.small { padding: 6px 12px; font-size: 0.75rem; }
-  .quick-add-form { background: rgba(0,0,0,0.2); border-radius: 12px; padding: 16px; border: 1px solid rgba(245, 158, 11, 0.2); }
+  .quick-add-form { background: #F8FAFC; border-radius: 12px; padding: 16px; border: 1px solid var(--primary-light); }
   .quick-add-row { display: flex; gap: 10px; align-items: center; }
-  .quick-add-row input::placeholder { color: #64748B; }
+  .quick-add-row input::placeholder { color: #94A3B8; }
   @media (max-width: 600px) { .quick-add-row { flex-wrap: wrap; } .quick-add-row input { width: 100%; flex: none; } }
-  .quick-publish-form { background: rgba(0,0,0,0.25); border-radius: 12px; padding: 16px; border: 1px solid rgba(16, 185, 129, 0.25); margin-bottom: 16px; }
+  .quick-publish-form { background: #F0FDF4; border-radius: 12px; padding: 16px; border: 1px solid #86EFAC; margin-bottom: 16px; }
   .quick-publish-row { display: flex; gap: 10px; align-items: flex-start; }
-  .quick-publish-row input::placeholder { color: #64748B; }
-  .quick-publish-row textarea::placeholder { color: #64748B; }
+  .quick-publish-row input::placeholder { color: #94A3B8; }
+  .quick-publish-row textarea::placeholder { color: #94A3B8; }
   @media (max-width: 600px) { .quick-publish-row { flex-wrap: wrap; } .quick-publish-row input, .quick-publish-row textarea { width: 100%; flex: none; } }
-  .admin-scroll { max-height: 400px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 12px; background: rgba(0,0,0,0.15); }
+  .admin-scroll { max-height: 400px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 12px; background: white; }
   .admin-scroll::-webkit-scrollbar { width: 6px; }
   .admin-scroll::-webkit-scrollbar-track { background: transparent; }
-  .admin-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 3px; }
-  .admin-scroll::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+  .admin-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+  .admin-scroll::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
   .uploads-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; padding: 16px; }
   @media (max-width: 480px) {
     .uploads-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
@@ -1329,7 +1329,7 @@ function getHtmlPage() {
           </div>
           <div id="view-users" style="display:none;">
             <div class="admin-section-title">
-              <span><i class="fas fa-user-friends" style="color:#F59E0B;margin-right:8px;"></i>注册用户列表</span>
+              <span><i class="fas fa-user-friends" style="color:var(--primary);margin-right:8px;"></i>注册用户列表</span>
               <button class="admin-btn secondary small" onclick="App.loadAdminUsers()"><i class="fas fa-sync"></i>刷新</button>
             </div>
             <div class="admin-scroll">
@@ -1338,7 +1338,7 @@ function getHtmlPage() {
           </div>
           <div id="view-uploads" style="display:none;">
             <div class="admin-section-title">
-              <span><i class="fas fa-cloud-upload-alt" style="color:#F59E0B;margin-right:8px;"></i>待审核上传</span>
+              <span><i class="fas fa-cloud-upload-alt" style="color:var(--primary);margin-right:8px;"></i>待审核上传</span>
               <div style="display:flex; gap:8px; align-items:center;">
                 <select id="uploadStatusFilter" onchange="App.loadAdminUploads()" class="admin-input" style="width:auto; padding:6px 12px;">
                   <option value="pending">待审核</option>
@@ -1357,7 +1357,7 @@ function getHtmlPage() {
           </div>
           <div id="view-ann" style="display:none;">
             <div class="admin-section-title">
-              <span><i class="fas fa-bullhorn" style="color:#F59E0B;margin-right:8px;"></i>系统公告</span>
+              <span><i class="fas fa-bullhorn" style="color:var(--primary);margin-right:8px;"></i>系统公告</span>
             </div>
             
             <div class="quick-publish-form">
@@ -2639,17 +2639,17 @@ const navNick = document.getElementById('navNickname');
               const rarityClass = 'r-' + (u.rarity || 'N').toLowerCase();
               const rarityName = u.rarity || 'N';
               html += \`
-                <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(148,163,184,0.15); border-radius:12px; overflow:hidden; transition:all 0.2s;">
-                  <div style="position:relative; aspect-ratio:1; background:#1E293B; cursor:pointer;" onclick="App.showImage('\${u.url}')">
+                <div style="background:white; border:1px solid #E2E8F0; border-radius:12px; overflow:hidden; transition:all 0.2s;">
+                  <div style="position:relative; aspect-ratio:1; background:#F1F5F9; cursor:pointer;" onclick="App.showImage('\${u.url}')">
                     <img src="\${u.url}" style="width:100%; height:100%; object-fit:cover;" loading="lazy">
                     <span class="rarity-tag \${rarityClass} show" style="position:absolute; top:8px; left:8px; font-size:0.75rem; padding:2px 8px;">\${rarityName}</span>
                   </div>
                   <div style="padding:12px;">
-                    <div style="font-size:0.85rem; font-weight:600; color:#E2E8F0; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${u.username}</div>
+                    <div style="font-size:0.85rem; font-weight:600; color:#1E293B; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${u.username}</div>
                     <div style="font-size:0.7rem; color:#64748B; margin-bottom:10px;">\${dateStr}</div>
                     \${status === 'pending' ? \`
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
-                      <select id="rarity-\${u.id}" style="padding:6px 8px; border:1px solid rgba(148,163,184,0.2); border-radius:6px; font-size:0.75rem; background:rgba(0,0,0,0.3); color:#E2E8F0;">
+                      <select id="rarity-\${u.id}" style="padding:6px 8px; border:1px solid #E2E8F0; border-radius:6px; font-size:0.75rem; background:white; color:#1E293B;">
                         <option value="N">N</option>
                         <option value="R">R</option>
                         <option value="SR">SR</option>
