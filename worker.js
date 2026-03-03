@@ -2552,7 +2552,7 @@ const navNick = document.getElementById('navNickname');
         msg.innerText = '骰子转动中...';
         
         try {
-          const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-User-ID': this.username } });
+          const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-User-ID': this.username, 'Content-Type': 'application/json' } });
           const data = await res.json();
           setTimeout(() => {
              this.loading = false; 
