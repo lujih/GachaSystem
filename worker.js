@@ -1595,7 +1595,7 @@ switchPool(pool) {
         const html = pools.map(p => {
           const isActive = p.id === currentPool;
           const isAvailable = p.available;
-          const statusText = p.available ? (p.count ? p.count + '张' : '可用') : '暂无图片';
+          const statusText = p.available ? (typeof p.count === 'number' ? p.count + '张' : p.count) : '暂无图片';
           
           return \`
             <div class="pool-item \${isActive ? 'active' : ''} \${isAvailable ? '' : 'unavailable'}" 

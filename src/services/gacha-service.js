@@ -421,14 +421,32 @@ export class GachaService {
   async getLimitedPools(currentUser) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
 
-    const pools = Object.entries(CONFIG.LIMITED.POOLS).map(([id, config]) => ({
-      id,
-      name: config.name,
-      description: config.description,
-      cost: CONFIG.LIMITED.COST,
-      available: config.sources && config.sources.length > 0,
-      count: config.sources ? config.sources.length : 0
-    }));
+    const pools = [];
+    
+    for (const [id, config] of Object.entries(CONFIG.LIMITED.POOLS)) {
+      let count = '可用';
+      let available = config.sources && config.sources.length > 0;
+      
+      // 对于 github_repo，获取 API 返回的图片总数
+      if (id === 'github_repo' && config.sources && config.sources[0]) {
+        try {
+          const res = await fetch(config.sources[0].url, { method: 'GET' });
+          const data = await res.json();
+          count = data.total || '可用';
+        } catch (e) {
+          console.error('[getLimitedPools] Failed to fetch github_repo count:', e);
+        }
+      }
+      
+      pools.push({
+        id,
+        name: config.name,
+        description: config.description,
+        cost: CONFIG.LIMITED.COST,
+        available,
+        count
+      });
+    }
 
     return jsonResponse({ success: true, pools, defaultPool: CONFIG.LIMITED.DEFAULT_POOL });
   }
