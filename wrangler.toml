@@ -1,6 +1,6 @@
 name = "chouka"
 main = "worker.js"
-compatibility_date = "2026-02-24"
+compatibility_date = "2026-03-3"
 keep_vars = true
 
 [[kv_namespaces]]

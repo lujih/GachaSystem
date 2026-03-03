@@ -632,7 +632,7 @@ export class GachaService {
 
       await this.env.DB.prepare(
         'INSERT INTO user_uploads (user_id, username, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-      ).bind(currentUser.id, currentUser.username, result.url, rarity, 'pending', getBeijingISOString()).run();
+      ).bind(currentUser.id, currentUser.username, result.url, rarity, 'pending', Date.now()).run();
 
       return jsonResponse({ success: true, url: result.url, message: '上传成功，等待审核' });
     } catch (e) {

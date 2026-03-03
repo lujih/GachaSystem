@@ -122,7 +122,7 @@ export class UserService {
         0,
         0,
         null,
-        getBeijingISOString()
+        Date.now()
       ).run();
       
       return jsonResponse({ success: true });
