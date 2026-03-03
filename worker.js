@@ -10,7 +10,7 @@ import { BUSINESS_CONFIG, TECHNICAL_CONFIG, CONFIG, DEFAULT_CHANGELOG } from './
 import { jsonResponse, safeJsonParse, requireAdmin } from './src/utils/response.js';
 import { getBeijingTime, getBeijingDateStr, getBeijingISOString, utcToBeijing } from './src/utils/time.js';
 import { UserService } from './src/services/user-service.js';
-import { GachaService } from './src/services/gacha-service.js';
+import { GachaService, uploadToGithub } from './src/services/gacha-service.js';
 
 // 工具函数
 function normalizePath(pathname) {

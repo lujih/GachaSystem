@@ -8,6 +8,7 @@ import { jsonResponse } from '../utils/response.js';
 import { getBeijingISOString } from '../utils/time.js';
 
 // 辅助函数
+export { arrayBufferToBase64, calculateHash, uploadToGithub, updateLeaderboard, updateGalleryIndex };
 function arrayBufferToBase64(buffer) {
   let binary = '';
   const bytes = new Uint8Array(buffer);
