@@ -582,38 +582,16 @@ export class GachaService {
         'UPDATE users SET coins = coins - ? WHERE id = ?'
       ).bind(bet, currentUser.id).run();
 
-      currentUser.coins = (currentUser.coins || 0) - bet;
-    }
-
-    const expGain = isWin ? CONFIG.LEVEL.EXP_GAIN.DICE_WIN : Math.floor(CONFIG.LEVEL.EXP_GAIN.DICE_WIN / 2);
-    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
-
-    const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
-    if (levelUpInfo.hasLevelUp) {
-      await this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?')
-        .bind(levelUpInfo.newLevel, levelUpInfo.newExp, currentUser.id).run();
-      currentUser.level = levelUpInfo.newLevel;
-      currentUser.exp = levelUpInfo.newExp;
+    currentUser.coins = (currentUser.coins || 0) - bet;
     }
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
-    // 更新图库（骰子游戏不加入排行榜）
-    if (asset.success) {
-      const galleryItem = {
-        url: asset.imageUrl,
-        userId: currentUser.id,
-        username: currentUser.username,
-        ts: getBeijingISOString()
-      };
-      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
-    }
-
     return jsonResponse({
       success: true, 
       roll, 
-      isWin: true, 
-      winAmount: isWin ? bet * payout : 0, 
+      isWin: isWin, 
+      winAmount: isWin ? bet * payout : 0,
       expGained: expGain, 
       userCoins: currentUser.coins,
       levelUp: levelUpInfo.hasLevelUp ? { newLevel: levelUpInfo.newLevel, reward: levelUpInfo.coinsReward } : null
