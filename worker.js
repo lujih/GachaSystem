@@ -2085,7 +2085,6 @@ const navNick = document.getElementById('navNickname');
           this.toast('网络错误', 'warn'); 
         }
       },
-      },
       async loadChangelog() {
         try {
           const res = await fetch('/changelog', { headers: { 'X-Admin-Mode': 'true' } });
