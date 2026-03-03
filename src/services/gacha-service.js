@@ -626,8 +626,10 @@ export class GachaService {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 8);
       const ext = file.name.split('.').pop() || 'jpg';
+      console.log('[Upload] User ID:', currentUser.id, 'Username:', currentUser.username);
       const r2Key = `uploads/${currentUser.id}_${timestamp}_${random}.${ext}`;
       const r2Url = `${CONFIG.R2_DOMAIN}/${r2Key}`;
+      console.log('[Upload] R2 Key:', r2Key);
 
       // 先上传到R2临时存储
       console.log('[Upload] Uploading to R2:', r2Key);
