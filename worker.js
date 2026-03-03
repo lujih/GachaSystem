@@ -2031,8 +2031,8 @@ const navNick = document.getElementById('navNickname');
         try {
             const res = await fetch('/announcement');
             const data = await res.json();
-            document.getElementById('annTitleInput').value = data.title || '';
-            document.getElementById('annContentInput').value = data.content || '';
+            document.getElementById('annTitleInput').value = data?.title ?? '';
+            document.getElementById('annContentInput').value = data?.content ?? '';
         } catch(e) { this.toast('加载失败', 'warn'); }
       },
       async publishAnnouncement() {
