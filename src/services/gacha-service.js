@@ -481,16 +481,7 @@ export class GachaService {
     }
 
     const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT;
-    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
 
-    // 更新数据库
-    await this.env.DB.prepare(
-      'UPDATE users SET total_exp = total_exp + ? WHERE id = ?'
-    ).bind(expGain, currentUser.id).run();
-
-    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
-
-    // 更新图库（合成不加入排行榜）
     if (asset.success) {
       const galleryItem = {
         url: asset.imageUrl,
@@ -503,8 +494,7 @@ export class GachaService {
 
     return jsonResponse({
       success: true,
-      card: asset,
-      expGained: expGain
+      card: asset
     });
   }
 
@@ -539,14 +529,7 @@ export class GachaService {
       ).bind(currentUser.id, rarity).run();
     }
 
-    const expGain = CONFIG.LEVEL.EXP_GAIN.SHOP_BUY;
     currentUser.coins -= price;
-    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
-
-    // 更新数据库
-    await this.env.DB.prepare(
-      'UPDATE users SET total_exp = total_exp + ? WHERE id = ?'
-    ).bind(expGain, currentUser.id).run();
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
@@ -564,8 +547,7 @@ export class GachaService {
     return jsonResponse({
       success: true,
       card: asset,
-      userCoins: currentUser.coins,
-      expGained: expGain
+      userCoins: currentUser.coins
     });
   }
 
