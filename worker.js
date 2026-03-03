@@ -3452,7 +3452,7 @@ function getProfilePage() {
       </div>
 
       <div class="stats-row">
-        <div class="stat-box" onclick="App.openRewardModal()" style="cursor:pointer;">
+        <div class="stat-box">
           <div class="stat-icon coins"><i class="fas fa-coins"></i></div>
           <div class="stat-value coins" id="profileCoins">-</div>
           <div class="stat-label">当前积分</div>
