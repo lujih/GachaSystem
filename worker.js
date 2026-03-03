@@ -3318,12 +3318,12 @@ function getProfilePage() {
     .about-version {
       font-family: var(--font-body);
       font-size: 0.75rem;
-      color: var(--text-muted);
+      color: var(--text-light);
       font-weight: 400;
     }
     .about-desc {
       font-size: 0.85rem;
-      color: var(--text-muted);
+      color: var(--text-light);
       margin-bottom: 12px;
     }
     .about-tech {
@@ -3333,8 +3333,8 @@ function getProfilePage() {
       flex-wrap: wrap;
     }
     .tech-tag {
-      background: rgba(124, 58, 237, 0.15);
-      color: var(--primary-light);
+      background: rgba(124, 58, 237, 0.1);
+      color: var(--primary);
       padding: 4px 10px;
       border-radius: 20px;
       font-size: 0.75rem;
@@ -3494,21 +3494,23 @@ function getProfilePage() {
         <span>关于系统</span>
       </div>
       <div class="about-content">
-        <div class="about-title">Gacha System <span class="about-version">v1.0.0</span></div>
-        <div class="about-desc">基于 Serverless 构建的抽卡收集系统</div>
+        <div class="about-title">Chouka 抽卡系统 <span class="about-version">v1.0</span></div>
+        <div class="about-desc">基于 Cloudflare Workers 的轻量级二次元抽卡系统</div>
         <div class="about-tech">
-          <span class="tech-tag"><i class="fas fa-cloud"></i> Cloudflare</span>
+          <span class="tech-tag"><i class="fas fa-cloud"></i> Workers</span>
           <span class="tech-tag"><i class="fas fa-database"></i> D1</span>
           <span class="tech-tag"><i class="fas fa-hdd"></i> R2</span>
+          <span class="tech-tag"><i class="fab fa-github"></i> GitHub</span>
         </div>
         <div class="about-features">
-          <div class="feature-item"><i class="fas fa-check-circle"></i> 物理Hash去重图库</div>
-          <div class="feature-item"><i class="fas fa-check-circle"></i> 全局级卡池缓冲队列</div>
-          <div class="feature-item"><i class="fas fa-check-circle"></i> 多级称号与成就系统</div>
+          <div class="feature-item"><i class="fas fa-check-circle"></i> 常驻池与限定池抽卡</div>
+          <div class="feature-item"><i class="fas fa-check-circle"></i> 卡片合成系统</div>
+          <div class="feature-item"><i class="fas fa-check-circle"></i> 玩家共建图片库</div>
+          <div class="feature-item"><i class="fas fa-check-circle"></i> 等级称号与奖励</div>
         </div>
       </div>
       <div class="about-footer">
-        &copy; 2024 Gacha System
+        &copy; 2026 Chouka
       </div>
     </div>
 
