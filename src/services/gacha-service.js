@@ -287,6 +287,11 @@ export class GachaService {
     currentUser.draw_count = (currentUser.draw_count || 0) + 1;
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
 
+    // 更新数据库
+    await this.env.DB.prepare(
+      'UPDATE users SET total_exp = total_exp + ? WHERE id = ?'
+    ).bind(expGain, currentUser.id).run();
+
     const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
     if (levelUpInfo.hasLevelUp) {
       await this.env.DB.prepare('UPDATE users SET level = ?, exp = ?, total_exp = total_exp + ? WHERE id = ?')
@@ -376,6 +381,11 @@ export class GachaService {
     currentUser.coins -= cost;
     currentUser.draw_count = (currentUser.draw_count || 0) + 1;
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+
+    // 更新数据库
+    await this.env.DB.prepare(
+      'UPDATE users SET total_exp = total_exp + ? WHERE id = ?'
+    ).bind(expGain, currentUser.id).run();
 
     const existing = await this.env.DB.prepare(
       'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
@@ -473,6 +483,11 @@ export class GachaService {
     const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT;
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
 
+    // 更新数据库
+    await this.env.DB.prepare(
+      'UPDATE users SET total_exp = total_exp + ? WHERE id = ?'
+    ).bind(expGain, currentUser.id).run();
+
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
     // 更新图库（合成不加入排行榜）
@@ -527,6 +542,11 @@ export class GachaService {
     const expGain = CONFIG.LEVEL.EXP_GAIN.SHOP_BUY;
     currentUser.coins -= price;
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+
+    // 更新数据库
+    await this.env.DB.prepare(
+      'UPDATE users SET total_exp = total_exp + ? WHERE id = ?'
+    ).bind(expGain, currentUser.id).run();
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
 
