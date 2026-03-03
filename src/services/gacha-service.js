@@ -582,7 +582,7 @@ export class GachaService {
         'UPDATE users SET coins = coins - ? WHERE id = ?'
       ).bind(bet, currentUser.id).run();
 
-    currentUser.coins = (currentUser.coins || 0) - bet;
+      currentUser.coins = (currentUser.coins || 0) - bet;
     }
 
     this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
@@ -591,10 +591,8 @@ export class GachaService {
       success: true, 
       roll, 
       isWin: isWin, 
-      winAmount: isWin ? bet * payout : 0,
-      expGained: expGain, 
-      userCoins: currentUser.coins,
-      levelUp: levelUpInfo.hasLevelUp ? { newLevel: levelUpInfo.newLevel, reward: levelUpInfo.coinsReward } : null
+      winAmount: isWin ? bet * payout : 0, 
+      userCoins: currentUser.coins
     });
   }
 
