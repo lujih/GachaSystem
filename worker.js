@@ -1369,23 +1369,6 @@ function getHtmlPage() {
               </div>
             </div>
             
-            <div class="form-row" style="margin-top:16px;">
-              <label class="switch">
-                <input type="checkbox" id="annEnabled" checked>
-                <span class="slider"></span>
-              </label>
-              <span class="form-label" style="margin-left:8px;">启用公告</span>
-            </div>
-            
-            <div class="form-row">
-              <label class="switch">
-                <input type="checkbox" id="annForcePopup">
-                <span class="slider"></span>
-              </label>
-              <span class="form-label" style="margin-left:8px;">强制弹窗</span>
-              <span class="form-hint" style="margin-left:8px;">开启后，所有用户将再次看到此公告</span>
-            </div>
-            
             <div style="display:flex; gap:12px; margin-top:16px;">
               <button class="admin-btn primary" style="flex:2" onclick="App.publishAnnouncement()">
                 <i class="fas fa-paper-plane"></i> 发布公告
@@ -2050,15 +2033,11 @@ const navNick = document.getElementById('navNickname');
             const data = await res.json();
             document.getElementById('annTitleInput').value = data.title || '';
             document.getElementById('annContentInput').value = data.content || '';
-            document.getElementById('annEnabled').checked = data.enabled !== false;
-            document.getElementById('annForcePopup').checked = false;
         } catch(e) { this.toast('加载失败', 'warn'); }
       },
       async publishAnnouncement() {
         const title = document.getElementById('annTitleInput').value.trim();
         const content = document.getElementById('annContentInput').value.trim();
-        const enabled = document.getElementById('annEnabled').checked;
-        const forcePopup = document.getElementById('annForcePopup').checked;
         
         if (!title) return this.toast('请输入公告标题', 'warn');
         if (!content) return this.toast('请输入公告内容', 'warn');
@@ -2069,14 +2048,12 @@ const navNick = document.getElementById('navNickname');
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
               password: this.adminPwd, 
-              announcement: { title, content, enabled },
-              refreshId: forcePopup
+              announcement: { title, content, enabled: true }
             }) 
           });
           const d = await res.json();
           if (d.success) {
-            this.toast('公告发布成功！' + (forcePopup ? '（已推送弹窗）' : ''), 'ok');
-            document.getElementById('annForcePopup').checked = false;
+            this.toast('公告发布成功！', 'ok');
             this.loadAdminAnnouncement();
           } else {
             this.toast(this.mapError(d.error) || '发布失败', 'warn');
