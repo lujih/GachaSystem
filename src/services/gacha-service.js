@@ -618,15 +618,18 @@ export class GachaService {
       }
 
       const arrayBuffer = await file.arrayBuffer();
+      console.log('[Upload] File size:', arrayBuffer.byteLength);
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 8);
       const ext = file.name.split('.').pop() || 'jpg';
       const filename = `${currentUser.id}_${timestamp}_${random}.${ext}`;
       const path = `uploads/${filename}`;
 
+      console.log('[Upload] Starting GitHub upload...');
       const result = await uploadToGithub(this.env, path, arrayBuffer, ext, `Upload by ${currentUser.username}`);
 
       if (result.error) {
+        console.error('[Upload] GitHub upload failed:', result.error);
         return jsonResponse({ error: result.error }, 500);
       }
 
@@ -637,7 +640,7 @@ export class GachaService {
       return jsonResponse({ success: true, url: result.url, message: '上传成功，等待审核' });
     } catch (e) {
       console.error('Upload error:', e);
-      return jsonResponse({ error: '上传失败' }, 500);
+      return jsonResponse({ error: '上传失败: ' + e.message }, 500);
     }
   }
 
