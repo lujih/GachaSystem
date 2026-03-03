@@ -1357,43 +1357,38 @@ function getHtmlPage() {
           </div>
           <div id="view-ann" style="display:none;">
             <div class="admin-section-title">
-              <span><i class="fas fa-bullhorn" style="color:#F59E0B;margin-right:8px;"></i>快速发布</span>
+              <span><i class="fas fa-bullhorn" style="color:#F59E0B;margin-right:8px;"></i>系统公告</span>
             </div>
+            
             <div class="quick-publish-form">
               <div class="quick-publish-row">
-                <input type="text" id="quickAnnTitle" class="admin-input" placeholder="公告标题..." style="flex:1;">
-                <button class="admin-btn primary small" onclick="App.quickPublishAnnouncement()">立即发布</button>
+                <input type="text" id="annTitleInput" class="admin-input" placeholder="公告标题..." style="flex:1;">
               </div>
               <div class="quick-publish-row" style="margin-top:10px;">
-                <textarea id="quickAnnContent" class="admin-textarea" placeholder="简要公告内容（可选）..." style="flex:1;min-height:60px;resize:none;"></textarea>
+                <textarea id="annContentInput" class="admin-textarea" placeholder="公告内容（支持Markdown）..." style="flex:1;min-height:100px;resize:vertical;"></textarea>
               </div>
             </div>
             
-            <div class="form-row" style="margin-top:20px;">
-              <label class="form-label">启用状态</label>
+            <div class="form-row" style="margin-top:16px;">
               <label class="switch">
-                <input type="checkbox" id="adminAnnEnable" checked>
+                <input type="checkbox" id="annEnabled" checked>
                 <span class="slider"></span>
               </label>
+              <span class="form-label" style="margin-left:8px;">启用公告</span>
             </div>
             
             <div class="form-row">
-              <label class="form-label">强制弹窗</label>
               <label class="switch">
-                <input type="checkbox" id="adminAnnRefresh">
+                <input type="checkbox" id="annForcePopup">
                 <span class="slider"></span>
               </label>
-              <div class="form-hint">开启后，所有用户将再次看到此公告</div>
+              <span class="form-label" style="margin-left:8px;">强制弹窗</span>
+              <span class="form-hint" style="margin-left:8px;">开启后，所有用户将再次看到此公告</span>
             </div>
-
-            <div class="form-row">
-              <label class="form-label">完整内容 (Markdown)</label>
-              <textarea id="adminAnnContent" class="admin-textarea" placeholder="## 标题&#10;- 内容列表&#10;- 支持 **加粗**"></textarea>
-            </div>
-
-            <div style="display:flex; gap:12px;">
-              <button class="admin-btn primary" style="flex:2" onclick="App.saveAnnouncement()">
-                <i class="fas fa-save"></i> 保存完整公告
+            
+            <div style="display:flex; gap:12px; margin-top:16px;">
+              <button class="admin-btn primary" style="flex:2" onclick="App.publishAnnouncement()">
+                <i class="fas fa-paper-plane"></i> 发布公告
               </button>
               <button class="admin-btn secondary" style="flex:1" onclick="App.previewAnnouncement()">
                 <i class="fas fa-eye"></i> 预览
@@ -2044,85 +2039,52 @@ const navNick = document.getElementById('navNickname');
         document.getElementById('announcementModal').classList.remove('show');
       },
       previewAnnouncement() {
-        const content = document.getElementById('adminAnnContent').value;
-        const title = document.getElementById('adminAnnTitle').value;
-        this.showAnnouncementModal({ title: title + " (预览)", content: content });
+        const content = document.getElementById('annContentInput').value;
+        const title = document.getElementById('annTitleInput').value;
+        if (!title && !content) return this.toast('请先输入内容', 'warn');
+        this.showAnnouncementModal({ title: title || '公告', content: content || '无内容', isPreview: true });
       },
       async loadAdminAnnouncement() {
         try {
             const res = await fetch('/announcement');
             const data = await res.json();
-            document.getElementById('adminAnnTitle').value = data.title || '';
-            document.getElementById('adminAnnContent').value = data.content || '';
-            // 快速发布字段
-            document.getElementById('quickAnnTitle').value = data.title || '';
-            document.getElementById('quickAnnContent').value = data.content || '';
-            // 修改为 checkbox 赋值
-            document.getElementById('adminAnnEnable').checked = data.enabled || false;
-            // 默认"强制弹窗"为关闭，防止误触
-            document.getElementById('adminAnnRefresh').checked = false;
+            document.getElementById('annTitleInput').value = data.title || '';
+            document.getElementById('annContentInput').value = data.content || '';
+            document.getElementById('annEnabled').checked = data.enabled !== false;
+            document.getElementById('annForcePopup').checked = false;
         } catch(e) { this.toast('加载失败', 'warn'); }
       },
-      async quickPublishAnnouncement() {
-        const title = document.getElementById('quickAnnTitle').value.trim();
-        const content = document.getElementById('quickAnnContent').value.trim();
+      async publishAnnouncement() {
+        const title = document.getElementById('annTitleInput').value.trim();
+        const content = document.getElementById('annContentInput').value.trim();
+        const enabled = document.getElementById('annEnabled').checked;
+        const forcePopup = document.getElementById('annForcePopup').checked;
         
         if (!title) return this.toast('请输入公告标题', 'warn');
+        if (!content) return this.toast('请输入公告内容', 'warn');
         
         try {
-            const res = await fetch('/admin/save-announcement', { 
-                method: 'POST', 
-                body: JSON.stringify({ 
-                    password: this.adminPwd, 
-                    announcement: { 
-                        title: title, 
-                        content: content || title,
-                        enabled: true 
-                    },
-                    refreshId: true
-                }) 
-            });
-            const d = await res.json();
-            if (d.success) {
-                this.toast('发布成功！用户将看到弹窗', 'ok');
-                document.getElementById('quickAnnTitle').value = '';
-                document.getElementById('quickAnnContent').value = '';
-                document.getElementById('adminAnnTitle').value = title;
-                document.getElementById('adminAnnContent').value = content || title;
-                this.loadAdminAnnouncement();
-            } else {
-                this.toast(this.mapError(d.error) || '发布失败', 'warn');
-            }
+          const res = await fetch('/admin/save-announcement', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              password: this.adminPwd, 
+              announcement: { title, content, enabled },
+              refreshId: forcePopup
+            }) 
+          });
+          const d = await res.json();
+          if (d.success) {
+            this.toast('公告发布成功！' + (forcePopup ? '（已推送弹窗）' : ''), 'ok');
+            document.getElementById('annForcePopup').checked = false;
+            this.loadAdminAnnouncement();
+          } else {
+            this.toast(this.mapError(d.error) || '发布失败', 'warn');
+          }
         } catch(e) { 
-            this.toast('网络错误', 'warn'); 
+          this.toast('网络错误', 'warn'); 
         }
       },
-      async saveAnnouncement() {
-        const title = document.getElementById('adminAnnTitle').value;
-        const content = document.getElementById('adminAnnContent').value;
-        // 获取 checkbox 状态
-        const enabled = document.getElementById('adminAnnEnable').checked;
-        const refreshId = document.getElementById('adminAnnRefresh').checked; // 获取是否刷新ID
-        
-        if(!title || !content) return this.toast('请填写标题和内容', 'warn');
-        
-        try {
-            const res = await fetch('/admin/save-announcement', { 
-                method: 'POST', 
-                body: JSON.stringify({ 
-                    password: this.adminPwd, 
-                    announcement: { title, content, enabled },
-                    refreshId: refreshId // 传给后端
-                }) 
-            });
-            const d = await res.json();
-            if(d.success) {
-                this.toast('保存成功！' + (refreshId ? ' (已推送弹窗)' : ''), 'ok'); 
-                // 保存成功后自动关闭强制推送开关，防止下次误触
-                document.getElementById('adminAnnRefresh').checked = false;
-            }
-            else this.toast(this.mapError(d.error) || '保存失败', 'warn'); 
-        } catch(e) { this.toast('网络错误', 'warn'); }
       },
       async loadChangelog() {
         try {
