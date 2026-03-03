@@ -155,8 +155,20 @@ export class GachaService {
       console.log('[fetchAndUpload] Fetching from:', source.url);
       let finalUrl = source.url;
       
-      const initRes = await fetch(source.url, { method: 'GET', redirect: 'follow' });
+      // 对URL进行编码处理（中文URL需要编码）
+      let requestUrl = source.url;
+      try {
+        new URL(source.url);
+      } catch (e) {
+        // 如果URL解析失败，尝试编码
+        requestUrl = encodeURI(source.url);
+        console.log('[fetchAndUpload] URL encoded:', requestUrl);
+      }
+      
+      const initRes = await fetch(requestUrl, { method: 'GET', redirect: 'follow' });
+      const finalRequestUrl = initRes.url;
       const contentType = initRes.headers.get('content-type') || '';
+      console.log('[fetchAndUpload] Final URL after redirect:', finalRequestUrl);
       console.log('[fetchAndUpload] Content-Type:', contentType);
       
       // 如果返回的是JSON，尝试解析获取图片URL
