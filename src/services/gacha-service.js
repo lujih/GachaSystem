@@ -163,14 +163,26 @@ export class GachaService {
       if (contentType.includes('application/json') || contentType.includes('text/html')) {
         try {
           const data = await initRes.json();
-          console.log('[fetchAndUpload] JSON response:', JSON.stringify(data).slice(0, 200));
-          // 尝试从JSON中提取图片URL
-          finalUrl = data.url || data.img || data.image || data.data?.[0]?.url || data.data?.[0]?.img || source.url;
+          console.log('[fetchAndUpload] JSON response:', JSON.stringify(data).slice(0, 300));
+          
+          // 尝试从JSON中提取图片URL - 支持多种常见字段名
+          finalUrl = data.url || data.img || data.image || data.data || 
+                     data.text || data.msg || data.result ||
+                     (data.data && (data.data.url || data.data.img || data.data[0])) ||
+                     (Array.isArray(data.data) && data.data[0]?.url) || source.url;
+                     
+          console.log('[fetchAndUpload] Extracted URL:', finalUrl);
         } catch (e) {
+          console.log('[fetchAndUpload] JSON parse error:', e);
           finalUrl = initRes.url;
         }
       } else {
         finalUrl = initRes.url;
+      }
+      
+      if (!finalUrl || finalUrl === 'null' || finalUrl === 'undefined') {
+        console.error('[fetchAndUpload] Failed to extract image URL');
+        return { success: false, rarity: 'N', imageUrl: null };
       }
       
       console.log('[fetchAndUpload] Using image URL:', finalUrl);
