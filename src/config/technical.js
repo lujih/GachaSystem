@@ -7,7 +7,8 @@ export const TECHNICAL_CONFIG = {
     ANNOUNCEMENT: 'system:announcement',
     LEADERBOARD: 'system:leaderboard',
     SITE_START_TIME: 'system:site_start_time',
-    BUFFER_PREFIX: 'sys:buffer:'
+    BUFFER_PREFIX: 'sys:buffer:',
+    DRAW_BLACKLIST: 'sys:draw:blacklist:'
   },
 
   TTL: {
@@ -18,7 +19,8 @@ export const TECHNICAL_CONFIG = {
     USER_INFO: 60,
     PUBLIC_API: 60,
     STATIC_ASSET: 31536000,
-    BUFFER_SLOTS: 10
+    BUFFER_SLOTS: 10,
+    BLACKLIST_TTL: 300 // 5分钟黑名单
   },
 
   INFRASTRUCTURE: {

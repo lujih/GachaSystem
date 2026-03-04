@@ -133,18 +133,64 @@ export class GachaService {
   }
 
   async consumeGlobalBuffer(rarity, sourceList) {
-    const slotIndex = Math.floor(Math.random() * CONFIG.TTL.BUFFER_SLOTS);
-    const key = `${CONFIG.KEYS.BUFFER_PREFIX}${rarity}:${slotIndex}`;
-    const cachedAsset = await this.env.KV_CACHE.get(key, { type: 'json' });
+    const now = Date.now();
+    const blacklistTtl = CONFIG.TTL.BLACKLIST_TTL * 1000;
+    const slotCount = CONFIG.TTL.BUFFER_SLOTS;
+    const bufferPrefix = CONFIG.KEYS.BUFFER_PREFIX;
+    const blacklistPrefix = CONFIG.KEYS.DRAW_BLACKLIST;
 
-    if (cachedAsset && cachedAsset.success) {
-      this.ctx.waitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, slotIndex));
-      return cachedAsset;
+    const slots = [];
+    for (let i = 0; i < slotCount; i++) {
+      const key = `${bufferPrefix}${rarity}:${i}`;
+      const cached = await this.env.KV_CACHE.get(key, { type: 'json' });
+      if (cached && cached.success) {
+        slots.push({ index: i, asset: cached, lastUsed: cached.lastUsed || 0 });
+      }
     }
 
-    const freshAsset = await this.fetchAndUploadRandom(sourceList);
-    this.ctx.waitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, slotIndex));
-    return freshAsset;
+    const filteredSlots = [];
+    for (const slot of slots) {
+      if (slot.asset.imageUrl) {
+        const urlHash = await this.hashString(slot.asset.imageUrl);
+        const blacklistKey = `${blacklistPrefix}${rarity}:${urlHash}`;
+        const isBlacklisted = await this.env.KV_CACHE.get(blacklistKey);
+        if (!isBlacklisted) {
+          filteredSlots.push(slot);
+        }
+      }
+    }
+
+    let selectedSlot;
+    if (filteredSlots.length > 0) {
+      filteredSlots.sort((a, b) => a.lastUsed - b.lastUsed);
+      const oldestSlots = filteredSlots.slice(0, Math.min(3, filteredSlots.length));
+      selectedSlot = oldestSlots[Math.floor(Math.random() * oldestSlots.length)];
+    }
+
+    if (!selectedSlot || !selectedSlot.asset.success) {
+      selectedSlot = { asset: await this.fetchAndUploadRandom(sourceList), index: -1 };
+    }
+
+    if (selectedSlot.asset.imageUrl && selectedSlot.index >= 0) {
+      const urlHash = await this.hashString(selectedSlot.asset.imageUrl);
+      const blacklistKey = `${blacklistPrefix}${rarity}:${urlHash}`;
+      await this.env.KV_CACHE.put(blacklistKey, now.toString(), { expirationTtl: CONFIG.TTL.BLACKLIST_TTL });
+
+      selectedSlot.asset.lastUsed = now;
+      const bufferKey = `${bufferPrefix}${rarity}:${selectedSlot.index}`;
+      await this.env.KV_CACHE.put(bufferKey, JSON.stringify(selectedSlot.asset), { expirationTtl: CONFIG.TTL.BUFFER });
+    }
+
+    this.ctx.waitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, selectedSlot.index));
+    return selectedSlot.asset;
+  }
+
+  async hashString(str) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(str);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).slice(0, 8);
   }
 
   async fetchAndUploadRandom(sourceList) {
