@@ -866,7 +866,7 @@ const NEUTRAL_CSS = `
   .input-group input { width: 100%; padding: 12px; border: 2px solid #E2E8F0; border-radius: 10px; font-family: var(--font); font-size: 1rem; text-align: center; color: var(--text-main); margin-bottom: 20px; outline: none; background: #F8FAFC; }
   .input-group input:focus { border-color: var(--primary); background: white; }
 .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; border: 1px solid rgba(255,255,255,0.1); }
-  .site-runtime { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); color: var(--text-light); font-size: 0.75rem; z-index: 100; }
+  .site-runtime { position: fixed !important; bottom: 12px !important; left: 50% !important; transform: translateX(-50%) !important; color: var(--text-light) !important; font-size: 0.75rem !important; z-index: 9999 !important; pointer-events: none; top: auto !important; }
   @keyframes slideDown { from { transform: translate(-50%, -50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
   .log-container { padding: 20px; text-align: left; }
   .log-header { font-size: 1rem; font-weight: 800; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: var(--primary); }
