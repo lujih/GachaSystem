@@ -3137,19 +3137,19 @@ function getProfilePage() {
       box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
       border: 2px solid white;
     }
-    .nickname-row { position: relative; display: flex; justify-content: center; align-items: center; margin: 0 0 4px 0; }
-    .nickname { font-family: var(--font-display); font-size: 1.4rem; letter-spacing: 0.5px; color: var(--text); }
+    .nickname-row { position: relative; display: flex; justify-content: center; align-items: center; margin: 0 0 2px 0; }
+    .nickname { font-family: var(--font-display); font-size: 1.4rem; letter-spacing: 0.5px; color: var(--text); line-height: 1.2; }
     .edit-nickname-btn {
-      position: relative; margin-left: 8px;
-      width: 32px; height: 32px; border-radius: 50%; border: none;
+      position: relative; margin-left: 6px;
+      width: 24px; height: 24px; border-radius: 50%; border: none;
       background: rgba(124, 58, 237, 0.1); color: var(--primary);
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      font-size: 0.9rem; transition: all 0.2s ease;
+      font-size: 0.75rem; transition: all 0.2s ease;
     }
     .edit-nickname-btn:hover {
       background: var(--primary); color: white; transform: scale(1.1);
     }
-    .username { color: var(--text-light); font-size: 0.9rem; margin-bottom: 8px; }
+    .username { color: var(--text-light); font-size: 0.9rem; margin-bottom: 6px; }
     
     /* Title Badge */
     .title-display { margin-top: 8px; }
