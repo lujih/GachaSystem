@@ -70,7 +70,7 @@ export default {
 
     // 路由表
     const routes = {
-      'GET /': () => handleRoute(() => handleHome()),
+      'GET /': () => handleRoute(() => handleHome(env)),
       'GET /user/profile': () => handleRoute(() => handleProfile()),
       'POST /auth/register': () => handleRoute(() => userService.register(request)),
       'POST /auth/login': () => handleRoute(() => userService.login(request)),
@@ -125,8 +125,13 @@ export default {
 // 路由处理器
 // =========================================
 
-async function handleHome() {
-  return new Response(getHtmlPage(), { 
+async function handleHome(env) {
+  let siteStartTime = await env.KV_CACHE.get(CONFIG.KEYS.SITE_START_TIME);
+  if (!siteStartTime) {
+    siteStartTime = Date.now().toString();
+    await env.KV_CACHE.put(CONFIG.KEYS.SITE_START_TIME, siteStartTime);
+  }
+  return new Response(getHtmlPage(siteStartTime), {
     headers: { 
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=60',
@@ -860,7 +865,8 @@ const NEUTRAL_CSS = `
 .grid-item img { width: 100%; height: auto; display: block; background: #F1F5F9; }
   .input-group input { width: 100%; padding: 12px; border: 2px solid #E2E8F0; border-radius: 10px; font-family: var(--font); font-size: 1rem; text-align: center; color: var(--text-main); margin-bottom: 20px; outline: none; background: #F8FAFC; }
   .input-group input:focus { border-color: var(--primary); background: white; }
-  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; border: 1px solid rgba(255,255,255,0.1); }
+.toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; border: 1px solid rgba(255,255,255,0.1); }
+  .site-runtime { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); color: var(--text-light); font-size: 0.75rem; z-index: 100; }
   @keyframes slideDown { from { transform: translate(-50%, -50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
   .log-container { padding: 20px; text-align: left; }
   .log-header { font-size: 1rem; font-weight: 800; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: var(--primary); }
@@ -932,7 +938,7 @@ const NEUTRAL_CSS = `
 // 首页模板
 // =========================================
 
-function getHtmlPage() {
+function getHtmlPage(siteStartTime) {
   return `
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -2754,8 +2760,24 @@ const navNick = document.getElementById('navNickname');
     window.onload = () => {
         document.getElementById('ltdCostDisplay').innerText = '${CONFIG.LIMITED.COST} pts';
         App.init();
+        if (document.getElementById('siteRuntime')) {
+            const startTime = parseInt('${siteStartTime}');
+            const updateRuntime = () => {
+                const diff = Date.now() - startTime;
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                let text = '';
+                if (days > 0) text = \`已运行 \${days} 天 \${hours} 小时 \${mins} 分\`;
+                else text = \`已运行 \${hours} 小时 \${mins} 分\`;
+                document.getElementById('siteRuntime').textContent = text;
+            };
+            updateRuntime();
+            setInterval(updateRuntime, 60000);
+        }
     };
   </script>
+  <div id="siteRuntime" class="site-runtime"></div>
 </body>
 </html>
   `;

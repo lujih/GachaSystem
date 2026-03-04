@@ -6,6 +6,7 @@ export const TECHNICAL_CONFIG = {
     CHANGELOG: 'system:changelog',
     ANNOUNCEMENT: 'system:announcement',
     LEADERBOARD: 'system:leaderboard',
+    SITE_START_TIME: 'system:site_start_time',
     BUFFER_PREFIX: 'sys:buffer:'
   },
 
