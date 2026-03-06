@@ -558,7 +558,8 @@ export class GachaService {
 
     return jsonResponse({
       success: true,
-      card: asset
+      card: asset,
+      craftResult: { consumed: sourceRarity, gained: targetRarity }
     });
   }
 

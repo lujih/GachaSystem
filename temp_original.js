@@ -334,16 +334,11 @@ async function handleAdminUsers(request, env) {
   try {
     const userService = new UserService(env, {});
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().replace('T', ' ').split('.')[0];
-    
-    const [usersResult, countResult, todayCountResult] = await Promise.all([
+    const [usersResult, countResult] = await Promise.all([
       env.DB.prepare(
         'SELECT username, nickname, draw_count, coins, level, exp, total_exp, last_login_date, login_streak, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?'
       ).bind(limit, offset).all(),
-      env.DB.prepare('SELECT COUNT(*) as total FROM users').first(),
-      env.DB.prepare('SELECT COUNT(*) as total FROM users WHERE created_at >= ?').bind(todayStr).first()
+      env.DB.prepare('SELECT COUNT(*) as total FROM users').first()
     ]);
     
     const users = usersResult.results ? usersResult.results.map(user => {
@@ -363,7 +358,7 @@ async function handleAdminUsers(request, env) {
       };
     }) : [];
     
-    return jsonResponse({ success: true, users, total: countResult.total, todayCount: todayCountResult.total, limit, offset });
+    return jsonResponse({ success: true, users, total: countResult.total, limit, offset });
   } catch (error) {
     console.error('Error fetching users:', error);
     return jsonResponse({ error: '数据库错误' }, 500);
@@ -693,65 +688,8 @@ const NEUTRAL_CSS = `
   .admin-textarea::placeholder { color: #94A3B8; }
   .admin-table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 12px 0; font-size: 0.85rem; }
   .admin-table th { color: #64748B; font-weight: 600; padding: 12px; text-align: left; border-bottom: 1px solid #E2E8F0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
-  .admin-table td { padding: 12px; border-bottom: 1px solid #F1F5F9; color: #1E293B; vertical-align: middle; }
-  .admin-table tr:hover td { background: linear-gradient(90deg, rgba(124, 58, 237, 0.03) 0%, rgba(124, 58, 237, 0.08) 100%); }
-  .admin-table tbody tr { transition: all 0.2s ease; }
-  .admin-table tbody tr:hover { transform: translateX(2px); }
-  
-  .user-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-  .user-stat-card { background: linear-gradient(135deg, #fff 0%, #F8FAFC 100%); border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px; text-align: center; position: relative; overflow: hidden; }
-  .user-stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
-  .user-stat-card.total::before { background: linear-gradient(90deg, #6366F1, #8B5CF6); }
-  .user-stat-card.today::before { background: linear-gradient(90deg, #10B981, #34D399); }
-  .user-stat-card.active::before { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
-  .user-stat-card .stat-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px; font-size: 0.9rem; }
-  .user-stat-card.total .stat-icon { background: rgba(99, 102, 241, 0.1); color: #6366F1; }
-  .user-stat-card.today .stat-icon { background: rgba(16, 185, 129, 0.1); color: #10B981; }
-  .user-stat-card.active .stat-icon { background: rgba(245, 158, 11, 0.1); color: #F59E0B; }
-  .user-stat-card .stat-value { font-size: 1.5rem; font-weight: 700; color: #1E293B; line-height: 1.2; }
-  .user-stat-card .stat-label { font-size: 0.7rem; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
-  
-  .user-search-box { position: relative; margin-bottom: 16px; }
-  .user-search-box input { width: 100%; padding: 12px 16px 12px 40px; border: 2px solid #E2E8F0; border-radius: 10px; font-size: 0.9rem; transition: all 0.2s; background: #F8FAFC; }
-  .user-search-box input:focus { outline: none; border-color: #8B5CF6; background: white; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1); }
-  .user-search-box i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94A3B8; }
-  
-  .user-level-badge { display: inline-flex; align-items: center; gap: 4px; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; }
-  .user-level-badge i { font-size: 0.65rem; }
-  
-  .user-row-actions { display: flex; gap: 6px; }
-  .user-row-actions button { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; border: none; cursor: pointer; }
-  .user-row-actions .edit-btn { background: #EEF2FF; color: #6366F1; }
-  .user-row-actions .edit-btn:hover { background: #6366F1; color: white; transform: scale(1.1); }
-  .user-row-actions .delete-btn { background: #FEE2E2; color: #EF4444; }
-  .user-row-actions .delete-btn:hover { background: #EF4444; color: white; transform: scale(1.1); }
-  
-  .user-coins-cell { display: flex; align-items: center; gap: 8px; }
-  .user-coins-cell .coins-value { font-weight: 700; color: #F59E0B; font-size: 0.95rem; }
-  .user-coins-cell .coins-edit-btn { width: 28px; height: 28px; border-radius: 6px; border: none; background: #FEF3C7; color: #D97706; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-  .user-coins-cell .coins-edit-btn:hover { background: #F59E0B; color: white; transform: scale(1.1); }
-  
-  .admin-table-scroll { max-height: 400px; overflow-y: auto; border-radius: 12px; border: 1px solid #E2E8F0; }
-  .admin-table-scroll::-webkit-scrollbar { width: 6px; }
-  .admin-table-scroll::-webkit-scrollbar-track { background: #F1F5F9; border-radius: 3px; }
-  .admin-table-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
-  .admin-table-scroll::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
-  
-  .empty-state-card { text-align: center; padding: 48px 24px; background: #F8FAFC; border-radius: 12px; border: 2px dashed #E2E8F0; }
-  .empty-state-card i { font-size: 2.5rem; color: #CBD5E1; margin-bottom: 12px; display: block; }
-  .empty-state-card p { color: #64748B; font-size: 0.9rem; margin: 0; }
-  
-  .user-pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid #E2E8F0; }
-  .user-pagination-info { font-size: 0.8rem; color: #64748B; }
-  .user-pagination-btns { display: flex; gap: 8px; }
-  .user-pagination-btns button { padding: 8px 14px; border-radius: 8px; border: 1px solid #E2E8F0; background: white; color: #64748B; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
-  .user-pagination-btns button:hover:not(:disabled) { border-color: #8B5CF6; color: #8B5CF6; }
-  .user-pagination-btns button:disabled { opacity: 0.5; cursor: not-allowed; }
-  
-  @media (max-width: 600px) {
-    .user-stats-grid { grid-template-columns: 1fr; }
-    .admin-table-scroll { max-height: 300px; }
-  }
+  .admin-table td { padding: 12px; border-bottom: 1px solid #F1F5F9; color: #1E293B; }
+  .admin-table tr:hover td { background: #F8FAFC; }
   .admin-table input { background: white; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px; color: #1E293B; font-size: 0.85rem; }
   .admin-table input:focus { outline: none; border-color: var(--primary); }
   .admin-section-title { font-size: 0.9rem; font-weight: 600; color: #1E293B; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
@@ -928,68 +866,7 @@ const NEUTRAL_CSS = `
   .input-group input { width: 100%; padding: 12px; border: 2px solid #E2E8F0; border-radius: 10px; font-family: var(--font); font-size: 1rem; text-align: center; color: var(--text-main); margin-bottom: 20px; outline: none; background: #F8FAFC; }
   .input-group input:focus { border-color: var(--primary); background: white; }
 .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); color: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; z-index: 3000; animation: slideDown 0.3s; border: 1px solid rgba(255,255,255,0.1); }
-  .site-runtime { 
-    position: fixed !important; 
-    bottom: 16px !important; 
-    left: 50% !important; 
-    transform: translateX(-50%) !important; 
-    z-index: 9999 !important; 
-    pointer-events: none; 
-    top: auto !important; 
-  }
-  .site-runtime-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
-    padding: 10px 18px;
-    border-radius: 50px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.03);
-    border: 1px solid rgba(124, 58, 237, 0.1);
-  }
-  .site-runtime-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #8B5CF6 0%, #6366F1 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 0.75rem;
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-  @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
-    50% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); }
-  }
-  .site-runtime-info {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.3;
-  }
-  .site-runtime-label {
-    font-size: 0.65rem;
-    color: #94A3B8;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 500;
-  }
-  .site-runtime-time {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #1E293B;
-  }
-  .site-runtime-time .highlight {
-    color: #8B5CF6;
-  }
-  @media (max-width: 480px) {
-    .site-runtime-card { padding: 8px 14px; gap: 10px; }
-    .site-runtime-icon { width: 24px; height: 24px; font-size: 0.65rem; }
-    .site-runtime-label { font-size: 0.6rem; }
-    .site-runtime-time { font-size: 0.75rem; }
-  }
+  .site-runtime { position: fixed !important; bottom: 12px !important; left: 50% !important; transform: translateX(-50%) !important; color: var(--text-light) !important; font-size: 0.75rem !important; z-index: 9999 !important; pointer-events: none; top: auto !important; }
   @keyframes slideDown { from { transform: translate(-50%, -50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
   .log-container { padding: 20px; text-align: left; }
   .log-header { font-size: 1rem; font-weight: 800; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: var(--primary); }
@@ -1457,51 +1334,12 @@ function getHtmlPage(siteStartTime) {
             <button class="admin-btn primary" style="width:100%; margin-top:16px;" onclick="App.saveAdminLog()">保存更改</button>
           </div>
           <div id="view-users" style="display:none;">
-            <div class="user-stats-grid">
-              <div class="user-stat-card total">
-                <div class="stat-icon"><i class="fas fa-users"></i></div>
-                <div class="stat-value" id="statTotalUsers">-</div>
-                <div class="stat-label">总用户数</div>
-              </div>
-              <div class="user-stat-card today">
-                <div class="stat-icon"><i class="fas fa-user-plus"></i></div>
-                <div class="stat-value" id="statTodayUsers">-</div>
-                <div class="stat-label">今日新增</div>
-              </div>
-              <div class="user-stat-card active">
-                <div class="stat-icon"><i class="fas fa-clock"></i></div>
-                <div class="stat-value" id="statActiveUsers">-</div>
-                <div class="stat-label">今日活跃</div>
-              </div>
-            </div>
-            <div class="user-search-box">
-              <i class="fas fa-search"></i>
-              <input type="text" id="userSearchInput" placeholder="搜索用户名或昵称..." oninput="App.filterUsers(this.value)">
+            <div class="admin-section-title">
+              <span><i class="fas fa-user-friends" style="color:var(--primary);margin-right:8px;"></i>注册用户列表</span>
+              <button class="admin-btn secondary small" onclick="App.loadAdminUsers()"><i class="fas fa-sync"></i>刷新</button>
             </div>
             <div class="admin-scroll">
-              <table class="admin-table">
-                <thead>
-                  <tr>
-                    <th width="60">用户</th>
-                    <th>等级</th>
-                    <th>召唤数</th>
-                    <th>积分</th>
-                    <th>注册时间</th>
-                    <th>最后登录</th>
-                    <th width="90">操作</th>
-                  </tr>
-                </thead>
-                <tbody id="userTbody">
-                  <tr><td colspan="7" style="text-align:center; padding:40px; color:#64748B;"><i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>加载中...</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="user-pagination">
-              <div class="user-pagination-info" id="paginationInfo">共 - 条记录</div>
-              <div class="user-pagination-btns">
-                <button id="prevPageBtn" onclick="App.changePage(-1)" disabled><i class="fas fa-chevron-left"></i> 上一页</button>
-                <button id="nextPageBtn" onclick="App.changePage(1)" disabled>下一页 <i class="fas fa-chevron-right"></i></button>
-              </div>
+              <table class="admin-table"><thead><tr><th width="50">头像</th><th>账号/昵称</th><th>召唤数</th><th>积分</th><th>注册时间</th><th>最后登录</th><th>操作</th></tr></thead><tbody id="userTbody"><tr><td colspan="7" style="text-align:center; padding:40px; color:#64748B;"><i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>加载中...</td></tr></tbody></table>
             </div>
           </div>
           <div id="view-uploads" style="display:none;">
@@ -2745,126 +2583,36 @@ const navNick = document.getElementById('navNickname');
         } catch(e) { this.toast('网络错误', 'warn'); }
       },
       switchAdminTab(tab) { this.currentAdminTab = tab; document.querySelectorAll('.admin-tab').forEach(el => el.classList.remove('active')); document.getElementById('tab-' + tab).classList.add('active'); document.getElementById('view-log').style.display = tab === 'log' ? 'block' : 'none'; document.getElementById('view-users').style.display = tab === 'users' ? 'block' : 'none'; document.getElementById('view-uploads').style.display = tab === 'uploads' ? 'block' : 'none'; document.getElementById('view-ann').style.display = tab === 'ann' ? 'block' : 'none'; if(tab === 'users') this.loadAdminUsers(); if(tab === 'uploads') this.loadAdminUploads(); if(tab === 'ann') this.loadAdminAnnouncement();},
-      _userPageOffset: 0,
-      _userPageLimit: 20,
-      _allUsersCache: [],
       async loadAdminUsers() {
-        const tbody = document.getElementById('userTbody');
+        const tbody = document.getElementById('userTbody'); 
         
+        // [优化] 表格骨架屏：生成5行，每行显示灰色条状
         const skeletonRow = \`
             <tr>
-                <td><div class="skeleton" style="height:36px; width:36px; border-radius:50%;"></div></td>
-                <td><div class="skeleton" style="height:16px; width:60px;"></div></td>
-                <td><div class="skeleton" style="height:16px; width:40px;"></div></td>
-                <td><div class="skeleton" style="height:16px; width:60px;"></div></td>
-                <td><div class="skeleton" style="height:14px; width:100px;"></div></td>
-                <td><div class="skeleton" style="height:14px; width:100px;"></div></td>
-                <td><div class="skeleton" style="height:24px; width:60px;"></div></td>
+                <td><div class="skeleton" style="height:32px; width:32px; border-radius:50%;"></div></td>
+                <td><div class="skeleton" style="height:20px; width:80%; margin-bottom:4px;"></div><div class="skeleton" style="height:12px; width:50%;"></div></td>
+                <td><div class="skeleton" style="height:20px; width:40%;"></div></td>
+                <td><div class="skeleton" style="height:20px; width:60%;"></div></td>
+                <td><div class="skeleton" style="height:16px; width:80%;"></div></td>
+                <td><div class="skeleton" style="height:16px; width:80%;"></div></td>
+                <td><div class="skeleton" style="height:24px; width:40px;"></div></td>
             </tr>
         \`;
         tbody.innerHTML = Array(5).fill(skeletonRow).join('');
 
         try { 
-            const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, limit: 1000, offset: 0 }) }); 
+            const res = await fetch('/admin/users', { method: 'POST', body: JSON.stringify({ password: this.adminPwd }) }); 
             const data = await res.json(); 
-            if(data.success) {
-              this._allUsersCache = data.users || [];
-              this._userPageOffset = 0;
-              this._userPageLimit = 20;
-              
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              const todayStr = today.toISOString().split('T')[0];
-              const activeUsers = this._allUsersCache.filter(u => u.lastLoginDate && u.lastLoginDate.split('T')[0] === todayStr).length;
-              
-              document.getElementById('statTotalUsers').innerText = data.total || 0;
-              document.getElementById('statTodayUsers').innerText = data.todayCount || 0;
-              document.getElementById('statActiveUsers').innerText = activeUsers;
-              
-              this._renderUserTable();
-              this._updatePagination(data.total);
-            } else { 
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-state-card"><i class="fas fa-exclamation-circle"></i><p>加载失败: ' + (data.error || '未知错误') + '</p></td></tr>'; 
+            if(data.success && data.users.length) { 
+              tbody.innerHTML = data.users.map(u => {
+                    const formatDate = (ts) => ts ? new Date(ts).toLocaleString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
+                    return \`<tr><td><img src="\${u.avatar}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; background:#334155;" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 36 36\\'><circle cx=\\'18\\' cy=\\'18\\' r=\\'18\\' fill=\\'%23475569\\'/></svg>'" /></td><td><div style="font-weight:600; color:#F59E0B;">\${u.username}</div><div style="font-size:0.75rem; color:#64748B; margin-top:2px;">\${u.nickname}</div></td><td><span class="user-badge" style="background:rgba(99,102,241,0.15); color:#818CF8;">\${u.drawCount}</span></td><td><span style="color:#F59E0B; font-weight:600;">\${u.coins}</span><button class="admin-btn secondary small" style="margin-left:6px; padding:4px 8px;" onclick="App.adminEditPoints('\${u.username}')">改</button></td><td style="font-size:0.75rem; color:#64748B;">\${formatDate(u.createdAt)}</td><td style="font-size:0.75rem; color:#64748B;">\${formatDate(u.lastLoginDate)}</td><td><button class="admin-btn danger small" style="padding:6px 10px;" onclick="App.deleteUser('\${u.username}')"><i class="fas fa-trash-alt"></i></button></td></tr>\`;
+                }).join('');
+          } else { 
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#64748B;"><i class="fas fa-users" style="font-size:2rem; margin-bottom:12px; display:block; opacity:0.5;"></i>暂无用户</td></tr>'; 
             }
         } catch(e) { 
-            tbody.innerHTML = '<tr><td colspan="7" class="empty-state-card"><i class="fas fa-exclamation-circle"></i><p>网络错误</p></td></tr>';
-        }
-      },
-      _renderUserTable() {
-        const tbody = document.getElementById('userTbody');
-        const searchVal = (document.getElementById('userSearchInput')?.value || '').toLowerCase();
-        
-        let filteredUsers = this._allUsersCache;
-        if (searchVal) {
-          filteredUsers = this._allUsersCache.filter(u => 
-            (u.username && u.username.toLowerCase().includes(searchVal)) || 
-            (u.nickname && u.nickname.toLowerCase().includes(searchVal))
-          );
-        }
-        
-        const pagedUsers = filteredUsers.slice(this._userPageOffset, this._userPageOffset + this._userPageLimit);
-        
-        if (!pagedUsers.length) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty-state-card"><i class="fas fa-users"></i><p>' + (searchVal ? '没有匹配的用户' : '暂无用户') + '</p></td></tr>';
-          return;
-        }
-        
-        tbody.innerHTML = pagedUsers.map(u => {
-            const formatDate = (ts) => ts ? new Date(ts).toLocaleString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
-            const defaultAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23475569'/%3E%3C/svg%3E";
-            return \`<tr>
-                <td><img src="\${u.avatar}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid #E2E8F0;" onerror="this.src='\${defaultAvatar}'" /></td>
-                <td><div style="font-weight:600; color:#1E293B;">\${u.username}</div><div style="font-size:0.7rem; color:#64748B;">\${u.nickname}</div></td>
-                <td><span class="user-level-badge"><i class="fas fa-star"></i> Lv.\${u.level || 1}</span></td>
-                <td><span class="user-badge" style="background:rgba(99,102,241,0.15); color:#6366F1;">\${u.drawCount || 0}</span></td>
-                <td><div class="user-coins-cell"><span class="coins-value">\${u.coins || 0}</span><button class="coins-edit-btn" onclick="App.adminEditPoints('\${u.username}')" title="修改积分"><i class="fas fa-pen"></i></button></div></td>
-                <td style="font-size:0.75rem; color:#64748B;">\${formatDate(u.createdAt)}</td>
-                <td style="font-size:0.75rem; color:#64748B;">\${formatDate(u.lastLoginDate)}</td>
-                <td><div class="user-row-actions"><button class="delete-btn" onclick="App.deleteUser('\${u.username}')" title="删除用户"><i class="fas fa-trash"></i></button></div></td>
-            </tr>\`;
-        }).join('');
-      },
-      _updatePagination(total) {
-        const infoEl = document.getElementById('paginationInfo');
-        const prevBtn = document.getElementById('prevPageBtn');
-        const nextBtn = document.getElementById('nextPageBtn');
-        
-        const searchVal = (document.getElementById('userSearchInput')?.value || '').toLowerCase();
-        let filteredTotal = total;
-        if (searchVal) {
-          filteredTotal = this._allUsersCache.filter(u => 
-            (u.username && u.username.toLowerCase().includes(searchVal)) || 
-            (u.nickname && u.nickname.toLowerCase().includes(searchVal))
-          ).length;
-        }
-        
-        const start = this._userPageOffset + 1;
-        const end = Math.min(this._userPageOffset + this._userPageLimit, filteredTotal);
-        infoEl.innerText = \`共 \${filteredTotal} 条记录，显示 \${start}-\${end}\`;
-        
-        prevBtn.disabled = this._userPageOffset <= 0;
-        nextBtn.disabled = this._userPageOffset + this._userPageLimit >= filteredTotal;
-      },
-      filterUsers(value) {
-        this._userPageOffset = 0;
-        this._renderUserTable();
-        this._updatePagination(this._allUsersCache.length);
-      },
-      changePage(delta) {
-        const searchVal = (document.getElementById('userSearchInput')?.value || '').toLowerCase();
-        let filteredTotal = this._allUsersCache.length;
-        if (searchVal) {
-          filteredTotal = this._allUsersCache.filter(u => 
-            (u.username && u.username.toLowerCase().includes(searchVal)) || 
-            (u.nickname && u.nickname.toLowerCase().includes(searchVal))
-          ).length;
-        }
-        
-        const newOffset = this._userPageOffset + (delta * this._userPageLimit);
-        if (newOffset >= 0 && newOffset < filteredTotal) {
-          this._userPageOffset = newOffset;
-          this._renderUserTable();
-          this._updatePagination(filteredTotal);
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:#EF4444;"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:12px; display:block;"></i>加载失败</td></tr>';
         }
       },
       async adminEditPoints(userId) { const val = prompt('输入要增加或减少的积分:'); if(!val) return; const amount = parseInt(val); if(isNaN(amount)) return; try { const res = await fetch('/admin/update-points', { method: 'POST', body: JSON.stringify({ password: this.adminPwd, targetId: userId, amount: amount }) }); const d = await res.json(); if(d.success) { this.toast('保存成功！', 'ok'); this.loadAdminUsers(); } else { this.toast(d.error, 'warn'); } } catch(e) { this.toast('网络错误', 'warn'); } },
@@ -3019,26 +2767,11 @@ const navNick = document.getElementById('navNickname');
                 const days = Math.floor(diff / (1000 * 60 * 60 * 24));
                 const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                 const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                let timeHtml = '';
-                if (days > 0) {
-                    timeHtml = \`<span class="highlight">\${days}</span>天 <span class="highlight">\${hours}</span>时 <span class="highlight">\${mins}</span>分\`;
-                } else {
-                    timeHtml = \`<span class="highlight">\${hours}</span>时 <span class="highlight">\${mins}</span>分\`;
-                }
-                document.getElementById('siteRuntime').innerHTML = \`
-                    <div class="site-runtime-card">
-                        <div class="site-runtime-icon"><i class="fas fa-heartbeat"></i></div>
-                        <div class="site-runtime-info">
-                            <div class="site-runtime-label">运行时长</div>
-                            <div class="site-runtime-time">\${timeHtml}</div>
-                        </div>
-                    </div>
-                \`;
+                let text = '';
+                if (days > 0) text = \`已运行 \${days} 天 \${hours} 小时 \${mins} 分\`;
+                else text = \`已运行 \${hours} 小时 \${mins} 分\`;
+                document.getElementById('siteRuntime').textContent = text;
             };
-            updateRuntime();
-            setInterval(updateRuntime, 60000);
-        }
-    };
             updateRuntime();
             setInterval(updateRuntime, 60000);
         }
