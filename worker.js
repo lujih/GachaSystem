@@ -2353,7 +2353,7 @@ const navNick = document.getElementById('navNickname');
                this.loading = false;
               
               const icon = this.currentPool === 'ltd' ? 'fa-star' : 'fa-bolt';
-              if (btn) btn.innerHTML = `<i class="fas ${icon}"></i> 再召唤`;
+              if (btn) btn.innerHTML = \`<i class="fas \${icon}"></i> 再召唤\`;
 
               const rarity = data.card?.rarity || data.rarity;
               if (rarity && tag) { 
