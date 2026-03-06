@@ -3039,10 +3039,6 @@ const navNick = document.getElementById('navNickname');
             setInterval(updateRuntime, 60000);
         }
     };
-            updateRuntime();
-            setInterval(updateRuntime, 60000);
-        }
-    };
   </script>
   <div id="siteRuntime" class="site-runtime"></div>
 </body>
