@@ -53,17 +53,17 @@ export const BUSINESS_CONFIG = {
   
   // 游戏数值配置
   GAME: {
-    POINTS: { 'N': 5, 'R': 10, 'SR': 30, 'SSR': 100, 'UR': 500 },
-    DRAW_COST: 0,  // 常驻池免费
+    POINTS: { 'N': 5, 'R': 15, 'SR': 50, 'SSR': 200, 'UR': 1000 },
+    DRAW_COST: 0,
     CRAFT_COST: 5,
-    SHOP: { 'R': 100, 'SR': 500, 'SSR': 2000, 'UR': 8000 },
+    SHOP: { 'R': 150, 'SR': 600, 'SSR': 2500, 'UR': 10000 },
     DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2 }
   },
   
   // 等级系统配置
   LEVEL: {
     EXP_GAIN: {
-      DRAW: { 'N': 5, 'R': 10, 'SR': 30, 'SSR': 100, 'UR': 500 },
+      DRAW: { 'N': 10, 'R': 20, 'SR': 50, 'SSR': 150, 'UR': 600 },
       CRAFT: 50,
       SHOP_BUY: 20,
       DICE_WIN: 30,
@@ -73,8 +73,8 @@ export const BUSINESS_CONFIG = {
     EXP_MULTIPLIER: 1.5,
     MAX_LEVEL: 100,
     CHECK_IN: {
-      BASE_COINS: 100,
-      STREAK_BONUS: [0, 20, 50, 100, 150, 200, 300]
+      BASE_COINS: 150,
+      STREAK_BONUS: [0, 30, 80, 150, 250, 350, 500]
     },
     REWARDS: {
       COINS_PER_LEVEL: 50,

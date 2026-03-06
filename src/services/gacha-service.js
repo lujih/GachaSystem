@@ -309,10 +309,10 @@ export class GachaService {
 
     const rand = Math.random() * 100;
     let rarity;
-    if (rand < 0.5) rarity = 'UR';
-    else if (rand < 3) rarity = 'SSR';
-    else if (rand < 15) rarity = 'SR';
-    else if (rand < 45) rarity = 'R';
+    if (rand < 1) rarity = 'UR';
+    else if (rand < 5) rarity = 'SSR';
+    else if (rand < 20) rarity = 'SR';
+    else if (rand < 55) rarity = 'R';
     else rarity = 'N';
 
     // 根据稀有度获得积分奖励
@@ -566,7 +566,7 @@ export class GachaService {
   async shopBuy(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
 
-    const { rarity } = await request.json();
+    const { targetRarity: rarity } = await request.json();
     const price = CONFIG.GAME.SHOP[rarity];
 
     if (!price) return jsonResponse({ error: '商品不存在' }, 400);

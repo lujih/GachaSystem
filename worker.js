@@ -2857,7 +2857,7 @@ function getLibraryHtml(items, pager) {
         ${items.map((item, index) => `
           <div class="item" data-index="${index}" onclick="VirtualScroll.show('${item.url}')" style="opacity:1">
             <div class="img-wrapper">
-               <img src="${item.url}" loading="lazy" decoding="async" onload="this.classList.add('loaded')" onerror="this.src='https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif'; this.onerror=null;" alt="Image by ${item.username}">
+               <img src="${item.url}" loading="lazy" decoding="async" onload="this.classList.add('loaded'); this.parentElement.classList.add('loaded')" onerror="this.src='https://img-blog.csdnimg.cn/img_convert/083d1f361962735e55265cb38868d583.gif'; this.onerror=null;" alt="Image by ${item.username}">
             </div>
             <div class="item-user">
               <div class="user-tag"><i class="fas fa-user-circle"></i> ${item.username}</div>
