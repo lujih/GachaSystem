@@ -937,6 +937,21 @@ const NEUTRAL_CSS = `
     pointer-events: none; 
     top: auto !important; 
   }
+  @media (max-width: 768px) {
+    .site-runtime {
+      position: relative !important;
+      bottom: auto !important;
+      left: auto !important;
+      transform: none !important;
+      z-index: auto !important;
+      pointer-events: auto !important;
+      margin-top: 20px;
+      width: 100%;
+    }
+    .site-runtime .site-runtime-card {
+      justify-content: center;
+    }
+  }
   .site-runtime-card {
     display: flex;
     align-items: center;
@@ -1272,6 +1287,7 @@ function getHtmlPage(siteStartTime) {
         </div>
       </div>
     </div>
+    <div id="siteRuntime" class="site-runtime"></div>
   </div>
 
   <div id="authModal" class="modal">
@@ -3040,7 +3056,6 @@ const navNick = document.getElementById('navNickname');
         }
     };
   </script>
-  <div id="siteRuntime" class="site-runtime"></div>
 </body>
 </html>
   `;
