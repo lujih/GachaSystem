@@ -1886,6 +1886,9 @@ switchPool(pool) {
           } catch(e) { console.error('Inv load failed', e); }
       },
       updateUI(user) {
+        // 保存用户信息供奖励弹窗使用
+        window.__userInfo = user;
+        
         // --- 1. 更新顶部导航栏 (Header) ---
         // 必须做非空检查，防止报错中断代码执行
 const navNick = document.getElementById('navNickname');
@@ -3952,25 +3955,29 @@ function getProfilePage() {
         const modal = document.getElementById('rewardModal');
         const list = document.getElementById('rewardList');
         const currentLevel = parseInt(document.getElementById('profileLevelBadge').textContent.replace('Lv.','')) || 1;
+        const claimedRewards = window.__userInfo?.claimedRewards || [];
         
         let html = '';
         for (const [lvl, reward] of Object.entries(MILESTONES)) {
           const level = parseInt(lvl);
           const isReached = currentLevel >= level;
-          let desc = \`金币 \${reward.coins}\`;
-          if (reward.title) desc += \` + 称号 [\${reward.title}]\`;
+          const isClaimed = claimedRewards.includes(level);
+          let desc = `金币 ${reward.coins}`;
+          if (reward.title) desc += ` + 称号 [${reward.title}]`;
           
-          html += \`
-            <div class="reward-item \${isReached ? 'reached' : ''}">
+          html += `
+            <div class="reward-item ${isReached ? 'reached' : ''}">
               <div>
-                <div class="reward-level">Lv.\${level}</div>
-                <div class="reward-desc">\${desc}</div>
+                <div class="reward-level">Lv.${level}</div>
+                <div class="reward-desc">${desc}</div>
               </div>
-              \${isReached 
-                ? \`<button class="reward-btn claim" onclick="App.claimReward(\${level})">领取</button>\` 
-                : '<span class="reward-btn disabled">未达标</span>'
+              ${isClaimed 
+                ? '<span class="reward-btn disabled" style="background:#9CA3AF;">已领取</span>'
+                : isReached 
+                  ? `<button class="reward-btn claim" onclick="App.claimReward(${level})">领取</button>` 
+                  : '<span class="reward-btn disabled">未达标</span>'
               }
-            </div>\`;
+            </div>`;
         }
         list.innerHTML = html;
         modal.classList.add('show');
@@ -3991,6 +3998,10 @@ function getProfilePage() {
           const data = await res.json();
           if(data.success) {
             this.showToast('领取成功！', 'success');
+            // 更新本地已领取奖励列表
+            if (window.__userInfo && !window.__userInfo.claimedRewards.includes(level)) {
+              window.__userInfo.claimedRewards.push(level);
+            }
             document.getElementById('rewardModal').classList.remove('show');
             this.fetchUserInfo();
           } else {
