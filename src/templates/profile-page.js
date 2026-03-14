@@ -665,7 +665,8 @@ export function getProfilePage() {
             if (window.__userInfo && !window.__userInfo.claimedRewards.includes(level)) {
               window.__userInfo.claimedRewards.push(level);
             }
-            document.getElementById('rewardModal').classList.remove('show');
+            // 重新打开弹窗显示已领取状态
+            this.openRewardModal();
             this.fetchUserInfo();
           } else {
             const msg = data.error === '奖励已领取' ? '该奖励已经领取过了' : data.error;
@@ -715,6 +716,7 @@ export function getProfilePage() {
       logout() {
         if(confirm('确定要退出登录吗？')) {
           localStorage.removeItem('moe_username');
+          localStorage.removeItem('moe_token');
           window.location.href = '/';
         }
       },
