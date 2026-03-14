@@ -593,7 +593,7 @@ export function getProfilePage() {
         list.innerHTML = '<div class="no-title">加载中...</div>';
         modal.classList.add('show');
 
-        fetch('/user/titles', { headers: { 'X-User-ID': this.username } })
+        fetch('/user/titles', { headers: { 'X-Session-Token': this.token } })
           .then(res => res.json())
           .then(data => {
             if (data.success && data.titles.length > 0) {
@@ -655,7 +655,7 @@ export function getProfilePage() {
         try {
           const res = await fetch('/user/claim-reward', {
             method: 'POST',
-            headers: { 'X-User-ID': this.username },
+            headers: { 'X-Session-Token': this.token },
             body: JSON.stringify({ targetLevel: level })
           });
           const data = await res.json();
@@ -678,7 +678,7 @@ export function getProfilePage() {
         try {
           const res = await fetch('/user/equip-title', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-User-ID': this.username },
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': this.token },
             body: JSON.stringify({ titleId })
           });
           const data = await res.json();
@@ -700,7 +700,7 @@ export function getProfilePage() {
           try {
             const res = await fetch('/user/update-profile', {
               method: 'POST',
-              headers: { 'X-User-ID': this.username },
+              headers: { 'X-Session-Token': this.token },
               body: JSON.stringify({ nickname: newNick })
             });
             const data = await res.json();
