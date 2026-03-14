@@ -361,6 +361,11 @@ export class UserService {
       currentTitle = { name: userRes.active_title };
     }
 
+    const claimedRewardsResult = await this.env.DB.prepare(
+      'SELECT level FROM level_rewards WHERE user_id = ?'
+    ).bind(currentUser.id).all();
+    const claimedRewards = claimedRewardsResult.results ? claimedRewardsResult.results.map(r => r.level) : [];
+
     const responseData = {
       username: userRes.username,
       nickname: userRes.nickname,
@@ -372,7 +377,8 @@ export class UserService {
       exp: currentExp,
       level_progress: levelProgress,
       required_exp_next: requiredExpForNextLevel, 
-      title: currentTitle
+      title: currentTitle,
+      claimedRewards
     };
 
     this.ctx.waitUntil(

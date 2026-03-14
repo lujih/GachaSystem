@@ -937,6 +937,21 @@ const NEUTRAL_CSS = `
     pointer-events: none; 
     top: auto !important; 
   }
+  @media (max-width: 768px) {
+    .site-runtime {
+      position: relative !important;
+      bottom: auto !important;
+      left: auto !important;
+      transform: none !important;
+      z-index: auto !important;
+      pointer-events: auto !important;
+      margin-top: 20px;
+      width: 100%;
+    }
+    .site-runtime .site-runtime-card {
+      justify-content: center;
+    }
+  }
   .site-runtime-card {
     display: flex;
     align-items: center;
@@ -1272,6 +1287,7 @@ function getHtmlPage(siteStartTime) {
         </div>
       </div>
     </div>
+    <div id="siteRuntime" class="site-runtime"></div>
   </div>
 
   <div id="authModal" class="modal">
@@ -1572,6 +1588,17 @@ function getHtmlPage(siteStartTime) {
   </div>
 
   <script>
+    // HTML 转义函数，防止 XSS
+    function escapeHtml(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     const App = {
       username: localStorage.getItem('moe_username'),
       nickname: null, loading: false, adminPwd: null, logsData: [], currentAdminTab: 'log', inventory: {},
@@ -1870,6 +1897,9 @@ switchPool(pool) {
           } catch(e) { console.error('Inv load failed', e); }
       },
       updateUI(user) {
+        // 保存用户信息供奖励弹窗使用
+        window.__userInfo = user;
+        
         // --- 1. 更新顶部导航栏 (Header) ---
         // 必须做非空检查，防止报错中断代码执行
 const navNick = document.getElementById('navNickname');
@@ -1923,7 +1953,7 @@ const navNick = document.getElementById('navNickname');
         const titleEl = document.getElementById('currentTitleDisplay');
         if (titleEl) {
             if (user.title && user.title.name) {
-                titleEl.innerHTML = \`<span class="title-badge" style="background:linear-gradient(135deg, #3B82F6, #8B5CF6); font-size:1rem; padding:4px 10px;">\${user.title.name}</span>\`;
+                titleEl.innerHTML = `<span class="title-badge" style="background:linear-gradient(135deg, #3B82F6, #8B5CF6); font-size:1rem; padding:4px 10px;">${escapeHtml(user.title.name)}</span>`;
             } else {
                 titleEl.innerHTML = \'<span style="color:#CBD5E1; font-weight:normal;">暂无称号</span>\';
             }
@@ -2247,7 +2277,7 @@ const navNick = document.getElementById('navNickname');
             list.innerHTML = this.logsData.map(log => {
               const tag = log.tag || 'optimization';
               const tagInfo = tagLabels[tag] || tagLabels.optimization;
-              return \`<div class="log-item"><div class="log-meta"><span>\${log.date}</span> <span class="log-tag" style="background:\${tagInfo.color}"><i class="\${tagInfo.icon}"></i> \${tagInfo.text}</span></div><div class="log-content">\${log.content}</div></div>\`;
+              return `<div class="log-item"><div class="log-meta"><span>${escapeHtml(log.date)}</span> <span class="log-tag" style="background:${tagInfo.color}"><i class="${tagInfo.icon}"></i> ${tagInfo.text}</span></div><div class="log-content">${escapeHtml(log.content)}</div></div>`;
             }).join('');
             if (this.logsData.length > 3) document.getElementById('logToggle').style.display = 'block';
           }
@@ -2784,7 +2814,7 @@ const navNick = document.getElementById('navNickname');
               this._renderUserTable();
               this._updatePagination(data.total);
             } else { 
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-state-card"><i class="fas fa-exclamation-circle"></i><p>加载失败: ' + (data.error || '未知错误') + '</p></td></tr>'; 
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-state-card"><i class="fas fa-exclamation-circle"></i><p>加载失败: ' + escapeHtml(data.error || '未知错误') + '</p></td></tr>'; 
             }
         } catch(e) { 
             tbody.innerHTML = '<tr><td colspan="7" class="empty-state-card"><i class="fas fa-exclamation-circle"></i><p>网络错误</p></td></tr>';
@@ -2812,16 +2842,16 @@ const navNick = document.getElementById('navNickname');
         tbody.innerHTML = pagedUsers.map(u => {
             const formatDate = (ts) => ts ? new Date(ts).toLocaleString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
             const defaultAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23475569'/%3E%3C/svg%3E";
-            return \`<tr>
-                <td><img src="\${u.avatar}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid #E2E8F0;" onerror="this.src='\${defaultAvatar}'" /></td>
-                <td><div style="font-weight:600; color:#1E293B;">\${u.username}</div><div style="font-size:0.7rem; color:#64748B;">\${u.nickname}</div></td>
-                <td><span class="user-level-badge"><i class="fas fa-star"></i> Lv.\${u.level || 1}</span></td>
-                <td><span class="user-badge" style="background:rgba(99,102,241,0.15); color:#6366F1;">\${u.drawCount || 0}</span></td>
-                <td><div class="user-coins-cell"><span class="coins-value">\${u.coins || 0}</span><button class="coins-edit-btn" onclick="App.adminEditPoints('\${u.username}')" title="修改积分"><i class="fas fa-pen"></i></button></div></td>
-                <td style="font-size:0.75rem; color:#64748B;">\${formatDate(u.createdAt)}</td>
-                <td style="font-size:0.75rem; color:#64748B;">\${formatDate(u.lastLoginDate)}</td>
-                <td><div class="user-row-actions"><button class="delete-btn" onclick="App.deleteUser('\${u.username}')" title="删除用户"><i class="fas fa-trash"></i></button></div></td>
-            </tr>\`;
+            return `<tr>
+                <td><img src="${escapeHtml(u.avatar || '')}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid #E2E8F0;" onerror="this.src='${defaultAvatar}'" /></td>
+                <td><div style="font-weight:600; color:#1E293B;">${escapeHtml(u.username)}</div><div style="font-size:0.7rem; color:#64748B;">${escapeHtml(u.nickname || '')}</div></td>
+                <td><span class="user-level-badge"><i class="fas fa-star"></i> Lv.${u.level || 1}</span></td>
+                <td><span class="user-badge" style="background:rgba(99,102,241,0.15); color:#6366F1;">${u.drawCount || 0}</span></td>
+                <td><div class="user-coins-cell"><span class="coins-value">${u.coins || 0}</span><button class="coins-edit-btn" onclick="App.adminEditPoints('${escapeHtml(u.username)}')" title="修改积分"><i class="fas fa-pen"></i></button></div></td>
+                <td style="font-size:0.75rem; color:#64748B;">${formatDate(u.createdAt)}</td>
+                <td style="font-size:0.75rem; color:#64748B;">${formatDate(u.lastLoginDate)}</td>
+                <td><div class="user-row-actions"><button class="delete-btn" onclick="App.deleteUser('${escapeHtml(u.username)}')" title="删除用户"><i class="fas fa-trash"></i></button></div></td>
+            </tr>`;
         }).join('');
       },
       _updatePagination(total) {
@@ -2925,7 +2955,7 @@ const navNick = document.getElementById('navNickname');
             html += '</div>';
             container.innerHTML = html;
           } else {
-            container.innerHTML = '<div style="text-align:center; padding:60px; color:#EF4444;"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:16px; display:block;"></i>加载失败: ' + (d.error || 'Unknown') + '</div>';
+            container.innerHTML = '<div style="text-align:center; padding:60px; color:#EF4444;"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:16px; display:block;"></i>加载失败: ' + escapeHtml(d.error || 'Unknown') + '</div>';
           }
         } catch(e) {
           container.innerHTML = '<div style="text-align:center; padding:60px; color:#EF4444;"><i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:16px; display:block;"></i>网络错误</div>';
@@ -2949,7 +2979,7 @@ const navNick = document.getElementById('navNickname');
           this.toast('网络错误', 'warn');
         }
       },
-      renderAdminTable() { document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => \`<tr><td><input class="admin-input" value="\${log.date}" onchange="App.updateLog(\${idx}, 'date', this.value)"></td><td><input class="admin-input" value="\${log.content}" onchange="App.updateLog(\${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:6px 8px;" onchange="App.updateLog(\${idx}, 'tag', this.value)"><option value="optimization" \${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" \${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" \${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" \${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" \${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" \${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="admin-btn danger small" style="padding:6px 10px;" onclick="App.delLog(\${idx})"><i class="fas fa-trash-alt"></i></button></td></tr>\`).join(''); },
+      renderAdminTable() { document.getElementById('adminTbody').innerHTML = this.logsData.map((log, idx) => `<tr><td><input class="admin-input" value="${escapeHtml(log.date)}" onchange="App.updateLog(${idx}, 'date', this.value)"></td><td><input class="admin-input" value="${escapeHtml(log.content)}" onchange="App.updateLog(${idx}, 'content', this.value)"></td><td><select class="admin-input" style="padding:6px 8px;" onchange="App.updateLog(${idx}, 'tag', this.value)"><option value="optimization" ${log.tag === 'optimization' ? 'selected' : ''}>优化</option><option value="feature" ${log.tag === 'feature' ? 'selected' : ''}>功能</option><option value="bugfix" ${log.tag === 'bugfix' ? 'selected' : ''}>修复</option><option value="todo" ${log.tag === 'todo' ? 'selected' : ''}>待办</option><option value="documentation" ${log.tag === 'documentation' ? 'selected' : ''}>文档</option><option value="refactor" ${log.tag === 'refactor' ? 'selected' : ''}>重构</option></select></td><td><button class="admin-btn danger small" style="padding:6px 10px;" onclick="App.delLog(${idx})"><i class="fas fa-trash-alt"></i></button></td></tr>`).join(''); },
       updateLog(idx, field, val) { this.logsData[idx][field] = val; },
       quickAddLog() {
         const content = document.getElementById('quickLogContent').value.trim();
@@ -3007,7 +3037,7 @@ const navNick = document.getElementById('navNickname');
       },
       logout() { if(confirm('确定要注销吗？')) { localStorage.removeItem('moe_username'); location.reload(); } },
       preview(src) { document.getElementById('bigImg').src=src; document.getElementById('imgModal').classList.add('show'); },
-      toast(msg, type) { const div = document.createElement('div'); div.className = 'toast'; div.innerHTML = \`<span>\${type==='ok'?'✅':'⚠️'}</span> \${msg}\`; document.body.appendChild(div); setTimeout(() => div.remove(), 2500); }
+      toast(msg, type) { const div = document.createElement('div'); div.className = 'toast'; div.innerHTML = `<span>${type==='ok'?'✅':'⚠️'}</span> ${escapeHtml(msg)}`; document.body.appendChild(div); setTimeout(() => div.remove(), 2500); }
     };
     window.onload = () => {
         document.getElementById('ltdCostDisplay').innerText = '${CONFIG.LIMITED.COST} pts';
@@ -3040,7 +3070,6 @@ const navNick = document.getElementById('navNickname');
         }
     };
   </script>
-  <div id="siteRuntime" class="site-runtime"></div>
 </body>
 </html>
   `;
@@ -3204,7 +3233,7 @@ function getLibraryHtml(items, pager) {
         
         const userTag = document.createElement('div');
         userTag.className = 'user-tag';
-        userTag.innerHTML = '<i class="fas fa-user-circle"></i> ' + (item.username || 'Unknown');
+        userTag.innerHTML = '<i class="fas fa-user-circle"></i> ' + escapeHtml(item.username || 'Unknown');
         
         const dateDiv = document.createElement('div');
         dateDiv.style.fontSize = '0.7rem';
@@ -3937,25 +3966,29 @@ function getProfilePage() {
         const modal = document.getElementById('rewardModal');
         const list = document.getElementById('rewardList');
         const currentLevel = parseInt(document.getElementById('profileLevelBadge').textContent.replace('Lv.','')) || 1;
+        const claimedRewards = window.__userInfo?.claimedRewards || [];
         
         let html = '';
         for (const [lvl, reward] of Object.entries(MILESTONES)) {
           const level = parseInt(lvl);
           const isReached = currentLevel >= level;
-          let desc = \`金币 \${reward.coins}\`;
-          if (reward.title) desc += \` + 称号 [\${reward.title}]\`;
+          const isClaimed = claimedRewards.includes(level);
+          let desc = `金币 ${reward.coins}`;
+          if (reward.title) desc += ` + 称号 [${reward.title}]`;
           
-          html += \`
-            <div class="reward-item \${isReached ? 'reached' : ''}">
+          html += `
+            <div class="reward-item ${isReached ? 'reached' : ''}">
               <div>
-                <div class="reward-level">Lv.\${level}</div>
-                <div class="reward-desc">\${desc}</div>
+                <div class="reward-level">Lv.${level}</div>
+                <div class="reward-desc">${desc}</div>
               </div>
-              \${isReached 
-                ? \`<button class="reward-btn claim" onclick="App.claimReward(\${level})">领取</button>\` 
-                : '<span class="reward-btn disabled">未达标</span>'
+              ${isClaimed 
+                ? '<span class="reward-btn disabled" style="background:#9CA3AF;">已领取</span>'
+                : isReached 
+                  ? `<button class="reward-btn claim" onclick="App.claimReward(${level})">领取</button>` 
+                  : '<span class="reward-btn disabled">未达标</span>'
               }
-            </div>\`;
+            </div>`;
         }
         list.innerHTML = html;
         modal.classList.add('show');
@@ -3976,6 +4009,10 @@ function getProfilePage() {
           const data = await res.json();
           if(data.success) {
             this.showToast('领取成功！', 'success');
+            // 更新本地已领取奖励列表
+            if (window.__userInfo && !window.__userInfo.claimedRewards.includes(level)) {
+              window.__userInfo.claimedRewards.push(level);
+            }
             document.getElementById('rewardModal').classList.remove('show');
             this.fetchUserInfo();
           } else {
