@@ -2,7 +2,7 @@
 // 首页模板
 // =========================================
 
-import { NEUTRAL_CSS } from './components.js';
+import { NEUTRAL_CSS, PAGE_CSS } from './components.js';
 import { CONFIG } from '../config/index.js';
 
 export function getIndexPage(siteStartTime) {
@@ -17,6 +17,7 @@ export function getIndexPage(siteStartTime) {
   <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.bootcdn.net/ajax/libs/marked/12.0.1/marked.min.js"></script>
   ${NEUTRAL_CSS}
+  ${PAGE_CSS}
   <style>
     body { padding: 20px 20px 60px 20px; display: flex; flex-direction: column; align-items: center; }
     .header { width: 100%; max-width: 900px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding: 0 10px; }
