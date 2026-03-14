@@ -2,6 +2,8 @@
  * 技术配置层 - 系统实现相关配置
  */
 export const TECHNICAL_CONFIG = {
+  DEBUG_MODE_ENABLED: false, // 生产环境必须关闭，启用后可使用 X-User-ID header 调试
+
   KEYS: {
     CHANGELOG: 'system:changelog',
     ANNOUNCEMENT: 'system:announcement',

@@ -18,6 +18,41 @@ function normalizePath(pathname) {
   return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
 }
 
+function constantTimeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+function calculateLevelFromTotalExp(totalExp) {
+  const { BASE_EXP, EXP_MULTIPLIER, MAX_LEVEL } = CONFIG.LEVEL;
+  let accumulatedExp = 0;
+  let level = 1;
+
+  for (let l = 2; l <= MAX_LEVEL; l++) {
+    const requiredForNext = Math.floor(BASE_EXP * Math.pow(l, EXP_MULTIPLIER));
+    if (totalExp < accumulatedExp + requiredForNext) {
+      return {
+        level: l - 1,
+        currentExp: totalExp - accumulatedExp,
+        isMax: false
+      };
+    }
+    accumulatedExp += requiredForNext;
+  }
+
+  return {
+    level: MAX_LEVEL,
+    currentExp: totalExp - accumulatedExp,
+    isMax: true
+  };
+}
+
 export default {
   async fetch(request, env, ctx) {
     // 解析请求
@@ -41,12 +76,20 @@ export default {
     const token = request.headers.get('X-Session-Token');
     if (token) {
       const userDataStr = await env.KV_CACHE.get(`session:${token}`);
-      if (userDataStr) currentUser = JSON.parse(userDataStr);
+      if (userDataStr) {
+        try {
+          currentUser = JSON.parse(userDataStr);
+        } catch (e) {
+          console.error('Session cache corrupted, invalidating:', token);
+          await env.KV_CACHE.delete(`session:${token}`);
+        }
+      }
     }
-    // 调试模式
-    if (!currentUser) {
+    // 调试模式 - 仅在 DEBUG_MODE_ENABLED 为 true 时可用
+    if (!currentUser && TECHNICAL_CONFIG.DEBUG_MODE_ENABLED) {
       const debugUserId = request.headers.get('X-User-ID');
       if (debugUserId) {
+        console.warn('[DEBUG] Debug login bypass:', debugUserId);
         const user = await env.DB.prepare(
           'SELECT id, username, nickname, coins, level, exp, total_exp FROM users WHERE username = ?'
         ).bind(debugUserId).first();
@@ -178,7 +221,7 @@ async function handleGetAnnouncement(env) {
 async function handleAdminSaveAnnouncement(request, env) {
   try {
     const { password, announcement, refreshId } = await request.json();
-    if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
+    if (!constantTimeEqual(password, env.admin)) return jsonResponse({ error: '认证失败' }, 403);
     
     const oldData = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
     
@@ -324,16 +367,15 @@ async function handleLibraryApi(request, env) {
 
 async function handleAdminVerify(request, env) {
   const { password } = await request.json();
-  return jsonResponse({ success: password === env.admin }, password === env.admin ? 200 : 403);
+  const isValid = constantTimeEqual(password, env.admin);
+  return jsonResponse({ success: isValid }, isValid ? 200 : 403);
 }
 
 async function handleAdminUsers(request, env) {
   const { password, limit = 50, offset = 0 } = await request.json();
-  if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
+  if (!constantTimeEqual(password, env.admin)) return jsonResponse({ error: '认证失败' }, 403);
   
   try {
-    const userService = new UserService(env, {});
-    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().replace('T', ' ').split('.')[0];
@@ -347,7 +389,7 @@ async function handleAdminUsers(request, env) {
     ]);
     
     const users = usersResult.results ? usersResult.results.map(user => {
-      const levelInfo = userService.calculateLevelFromTotalExp(user.total_exp || 0);
+      const levelInfo = calculateLevelFromTotalExp(user.total_exp || 0);
       return {
         username: user.username,
         nickname: user.nickname || user.username,
@@ -373,7 +415,7 @@ async function handleAdminUsers(request, env) {
 async function handleAdminSaveLog(request, env) {
   try {
     const { password, logs } = await request.json();
-    if (password !== env.admin) return jsonResponse({ error: '认证失败' }, 403);
+    if (!constantTimeEqual(password, env.admin)) return jsonResponse({ error: '认证失败' }, 403);
     if (!logs || !Array.isArray(logs)) return jsonResponse({ error: '无效的日志数据' }, 400);
     
     await env.RECENT_REQUESTS.put(CONFIG.KEYS.CHANGELOG, JSON.stringify(logs), { 
@@ -391,7 +433,7 @@ async function handleAdminUpdatePoints(request, env) {
   try {
     const { password, targetId, amount } = await request.json();
     
-    if (password !== env.admin) {
+    if (!constantTimeEqual(password, env.admin)) {
       return jsonResponse({ error: '认证失败' }, 403);
     }
 
@@ -429,7 +471,7 @@ async function handleAdminDeleteUser(request, env) {
   try {
     const { password, targetId } = await request.json();
 
-    if (password !== env.admin) {
+    if (!constantTimeEqual(password, env.admin)) {
       return jsonResponse({ error: '认证失败' }, 403);
     }
 
@@ -457,7 +499,7 @@ async function handleAdminUploads(request, env) {
   try {
     const { password, status = 'pending', limit = 50, offset = 0 } = await request.json();
 
-    if (password !== env.admin) {
+    if (!constantTimeEqual(password, env.admin)) {
       return jsonResponse({ error: '认证失败' }, 403);
     }
 
@@ -497,7 +539,7 @@ async function handleAdminReviewUpload(request, env) {
   try {
     const { password, uploadId, action, rarity } = await request.json();
 
-    if (password !== env.admin) {
+    if (!constantTimeEqual(password, env.admin)) {
       return jsonResponse({ error: '认证失败' }, 403);
     }
 

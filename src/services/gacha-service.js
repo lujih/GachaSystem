@@ -111,10 +111,18 @@ async function uploadToGithub(env, path, content, extension, message) {
 }
 
 export class GachaService {
-  constructor(env, ctx, userService) {
+  constructor(env, ctx = null, userService = null) {
     this.env = env;
     this.ctx = ctx;
     this.userService = userService;
+  }
+
+  async safeWaitUntil(promise) {
+    if (this.ctx && typeof this.ctx.waitUntil === 'function') {
+      this.ctx.waitUntil(promise);
+    } else {
+      await promise;
+    }
   }
 
   async safeRefillGlobalBuffer(rarity, sourceList, slotIndex) {
@@ -181,7 +189,7 @@ export class GachaService {
       await this.env.KV_CACHE.put(bufferKey, JSON.stringify(selectedSlot.asset), { expirationTtl: CONFIG.TTL.BUFFER });
     }
 
-    this.ctx.waitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, selectedSlot.index));
+    this.safeWaitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, selectedSlot.index));
     return selectedSlot.asset;
   }
 
@@ -368,7 +376,7 @@ export class GachaService {
       ).bind(currentUser.id, rarity).run();
     }
 
-    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+    this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
 
     // 更新排行榜和图库（仅常驻池UR卡）
     if (asset.success) {
@@ -379,7 +387,7 @@ export class GachaService {
         username: currentUser.username,
         ts: getBeijingISOString()
       };
-      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
+      this.safeWaitUntil(updateGalleryIndex(this.env, galleryItem));
 
       // 只有UR加入排行榜
       if (rarity === 'UR') {
@@ -389,7 +397,7 @@ export class GachaService {
           imageUrl: asset.imageUrl,
           ts: Date.now()
         };
-        this.ctx.waitUntil(updateLeaderboard(this.env, leaderboardItem));
+        this.safeWaitUntil(updateLeaderboard(this.env, leaderboardItem));
       }
     }
 
@@ -448,7 +456,7 @@ export class GachaService {
       ).bind(currentUser.id, 'UR').run();
     }
 
-    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+    this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
 
     // 更新图库
     if (asset.success) {
@@ -458,7 +466,7 @@ export class GachaService {
         username: currentUser.username,
         ts: getBeijingISOString()
       };
-      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
+      this.safeWaitUntil(updateGalleryIndex(this.env, galleryItem));
     }
 
     return jsonResponse({
@@ -553,7 +561,7 @@ export class GachaService {
         username: currentUser.username,
         ts: getBeijingISOString()
       };
-      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
+      this.safeWaitUntil(updateGalleryIndex(this.env, galleryItem));
     }
 
     return jsonResponse({
@@ -596,7 +604,7 @@ export class GachaService {
 
     currentUser.coins -= price;
 
-    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+    this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
 
     // 更新图库（商城购买不加入排行榜）
     if (asset.success) {
@@ -606,7 +614,7 @@ export class GachaService {
         username: currentUser.username,
         ts: getBeijingISOString()
       };
-      this.ctx.waitUntil(updateGalleryIndex(this.env, galleryItem));
+      this.safeWaitUntil(updateGalleryIndex(this.env, galleryItem));
     }
 
     return jsonResponse({
@@ -658,7 +666,7 @@ export class GachaService {
       currentUser.coins = (currentUser.coins || 0) - bet;
     }
 
-    this.ctx.waitUntil(this.userService.invalidateUserCache(currentUser.id));
+    this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
 
     return jsonResponse({
       success: true, 

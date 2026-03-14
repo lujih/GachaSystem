@@ -8,9 +8,17 @@ import { getBeijingTime, getBeijingISOString, utcToBeijing } from '../utils/time
 import { jsonResponse } from '../utils/response.js';
 
 export class UserService {
-  constructor(env, ctx) {
+  constructor(env, ctx = null) {
     this.env = env;
     this.ctx = ctx;
+  }
+
+  async safeWaitUntil(promise) {
+    if (this.ctx && typeof this.ctx.waitUntil === 'function') {
+      this.ctx.waitUntil(promise);
+    } else {
+      await promise;
+    }
   }
 
   async hashPassword(password) {
@@ -381,7 +389,7 @@ export class UserService {
       claimedRewards
     };
 
-    this.ctx.waitUntil(
+    this.safeWaitUntil(
       this.env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: CONFIG.TTL.USER_INFO })
     );
 
@@ -408,7 +416,7 @@ export class UserService {
       });
     }
 
-    this.ctx.waitUntil(
+    this.safeWaitUntil(
       this.env.KV_CACHE.put(cacheKey, JSON.stringify(inventory), { expirationTtl: 60 })
     );
     
