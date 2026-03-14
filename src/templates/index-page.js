@@ -2,6 +2,8 @@
 // 首页模板
 // =========================================
 
+import { NEUTRAL_CSS } from './components.js';
+
 export function getIndexPage(siteStartTime) {
   return `
 <!DOCTYPE html>
@@ -664,7 +666,7 @@ switchPool(pool) {
         this._poolsLoading = true;
         
         try {
-          const res = await fetch('/limited/pools', { headers: { 'X-User-ID': this.username } });
+          const res = await fetch('/limited/pools', { headers: { 'X-Session-Token': localStorage.getItem('moe_token') } });
           const data = await res.json();
           
           if (data.success && data.pools) {
@@ -793,27 +795,36 @@ switchPool(pool) {
         document.getElementById('nickGroup').style.display = mode === 'register' ? 'block' : 'none';
       },
       async fetchUserInfo() {
-        if (!this.username) { document.getElementById('authModal').classList.add('show'); return; }
+        const token = localStorage.getItem('moe_token');
+        const savedUsername = localStorage.getItem('moe_username');
+        
+        if (!token) { 
+          document.getElementById('authModal').classList.add('show'); 
+          return; 
+        }
+        
         try {
-          const res = await fetch('/user/info', { headers: { 'X-User-ID': this.username } });
+          const res = await fetch('/user/info', { headers: { 'X-Session-Token': token } });
           const data = await res.json();
           if (data && data.username) { 
               this.username = data.username; 
               this.nickname = data.nickname;
-              // 强制转成数字，避免出现 undefined / NaN
               this.coins = Number.isFinite(Number(data.coins)) ? Number(data.coins) : 0;
               this.updateUI(data); 
           } else { 
               localStorage.removeItem('moe_username');
+              localStorage.removeItem('moe_token');
               this.username = null;
               document.getElementById('authModal').classList.add('show'); 
           }
-        } catch(e) {}
+        } catch(e) { 
+          document.getElementById('authModal').classList.add('show'); 
+        }
       },
       async fetchInventory() {
           if (!this.username) return;
           try {
-              const res = await fetch('/user/inventory', { headers: { 'X-User-ID': this.username } });
+              const res = await fetch('/user/inventory', { headers: { 'X-Session-Token': localStorage.getItem('moe_token') } });
               const data = await res.json();
               if (data) {
                   this.inventory = data; // 更新内存中的库存
@@ -1017,7 +1028,7 @@ switchPool(pool) {
         try {
             const res = await fetch('/user/check-in', { 
                 method: 'POST', 
-                headers: { 'X-User-ID': this.username } 
+                headers: { 'X-Session-Token': localStorage.getItem('moe_token') } 
             });
             const data = await res.json();
             
@@ -1113,6 +1124,7 @@ switchPool(pool) {
                 if(d.success) { 
                     this.username = d.user.username;
                     localStorage.setItem('moe_username', d.user.username);
+                    localStorage.setItem('moe_token', d.token);
                     this.updateUI(d.user);
                     document.getElementById('authModal').classList.remove('show');
                 } else { 
@@ -1252,7 +1264,7 @@ switchPool(pool) {
               console.log('[DrawDebug] Request body:', body);
           }
 
-          const fetchOptions = { method: method, headers: { 'X-User-ID': this.username, 'Content-Type': 'application/json' } };
+          const fetchOptions = { method: method, headers: { 'X-Session-Token': localStorage.getItem('moe_token'), 'Content-Type': 'application/json' } };
           if (body) fetchOptions.body = body;
           const res = await fetch(url, fetchOptions);
           const data = await res.json();
@@ -1288,7 +1300,7 @@ switchPool(pool) {
         placeholder.style.display = 'none';
         spinner.classList.add('show');
         try {
-          const res = await fetch('/user/craft', { method: 'POST', body: JSON.stringify({ targetRarity: target }), headers: { 'X-User-ID': this.username } });
+          const res = await fetch('/user/craft', { method: 'POST', body: JSON.stringify({ targetRarity: target }), headers: { 'X-Session-Token': localStorage.getItem('moe_token') } });
           const data = await res.json();
            if(data.error) throw new Error(this.mapError(data.error));
           this.handleDrawResult(data, img, tag, btn, true);
@@ -1420,7 +1432,7 @@ switchPool(pool) {
         placeholder.style.display = 'none';
         spinner.classList.add('show');
         try {
-          const res = await fetch('/shop/buy', { method: 'POST', body: JSON.stringify({ targetRarity: rarity }), headers: { 'X-User-ID': this.username } });
+          const res = await fetch('/shop/buy', { method: 'POST', body: JSON.stringify({ targetRarity: rarity }), headers: { 'X-Session-Token': localStorage.getItem('moe_token') } });
           const data = await res.json();
           if(data.error) throw new Error(this.mapError(data.error));
           this.handleDrawResult(data, img, tag, btn, true);
@@ -1566,7 +1578,7 @@ switchPool(pool) {
           const res = await fetch('/user/upload', {
             method: 'POST',
             body: formData,
-            headers: { 'X-User-ID': this.username }
+            headers: { 'X-Session-Token': localStorage.getItem('moe_token') }
           });
           
           const data = await res.json();
@@ -1617,7 +1629,7 @@ switchPool(pool) {
         msg.innerText = '骰子转动中...';
         
         try {
-          const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-User-ID': this.username, 'Content-Type': 'application/json' } });
+          const res = await fetch('/game/dice', { method: 'POST', body: JSON.stringify({ betAmount: bet, prediction: prediction }), headers: { 'X-Session-Token': localStorage.getItem('moe_token'), 'Content-Type': 'application/json' } });
           const data = await res.json();
           setTimeout(() => {
              this.loading = false; 
@@ -1961,7 +1973,7 @@ switchPool(pool) {
           }
         }, 350);
       },
-      logout() { if(confirm('确定要注销吗？')) { localStorage.removeItem('moe_username'); location.reload(); } },
+      logout() { if(confirm('确定要注销吗？')) { localStorage.removeItem('moe_username'); localStorage.removeItem('moe_token'); location.reload(); } },
       preview(src) { document.getElementById('bigImg').src=src; document.getElementById('imgModal').classList.add('show'); },
       toast(msg, type) { const div = document.createElement('div'); div.className = 'toast'; div.innerHTML = \`<span>\${type==='ok'?'✅':'⚠️'}</span> \${escapeHtml(msg)}\`; document.body.appendChild(div); setTimeout(() => div.remove(), 2500); }
     };

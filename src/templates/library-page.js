@@ -2,6 +2,8 @@
 // 图库页模板
 // =========================================
 
+import { NEUTRAL_CSS } from './components.js';
+
 export function getLibraryPage(items, pager) {
   const LIBRARY_CSS = `
   <style>
