@@ -512,18 +512,21 @@ export function getProfilePage() {
     
     const App = {
       username: localStorage.getItem('moe_username'),
+      token: localStorage.getItem('moe_token'),
       
       async init() {
-        if (!this.username) {
+        const token = localStorage.getItem('moe_token');
+        if (!token) {
           window.location.href = '/';
           return;
         }
+        this.token = token;
         await Promise.all([this.fetchUserInfo(), this.fetchInventory()]);
       },
 
       async fetchUserInfo() {
         try {
-          const res = await fetch('/user/info', { headers: { 'X-User-ID': this.username } });
+          const res = await fetch('/user/info', { headers: { 'X-Session-Token': this.token } });
           const data = await res.json();
           if (data && data.username) {
             this.updateUI(data);
@@ -538,7 +541,7 @@ export function getProfilePage() {
 
       async fetchInventory() {
         try {
-          const res = await fetch('/user/inventory', { headers: { 'X-User-ID': this.username } });
+          const res = await fetch('/user/inventory', { headers: { 'X-Session-Token': this.token } });
           const data = await res.json();
           if (data) this.updateInventoryUI(data);
         } catch(e) { console.error('Failed to load inventory', e); }
