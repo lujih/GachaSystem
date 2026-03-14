@@ -3,6 +3,7 @@
 // =========================================
 
 import { NEUTRAL_CSS } from './components.js';
+import { CONFIG } from '../config/index.js';
 
 export function getIndexPage(siteStartTime) {
   return `
