@@ -10,7 +10,9 @@ export const TECHNICAL_CONFIG = {
     LEADERBOARD: 'system:leaderboard',
     SITE_START_TIME: 'system:site_start_time',
     BUFFER_PREFIX: 'sys:buffer:',
-    DRAW_BLACKLIST: 'sys:draw:blacklist:'
+    DRAW_BLACKLIST: 'sys:draw:blacklist:',
+    STATS_DAILY: 'system:stats:daily',
+    STATS_TOTAL: 'system:stats:total'
   },
 
   TTL: {
@@ -18,7 +20,7 @@ export const TECHNICAL_CONFIG = {
     BUFFER: 86400,
     CACHE: 60 * 5,
     LEADERBOARD: 86400 * 30,
-    USER_INFO: 60,
+    USER_INFO: 30,
     PUBLIC_API: 60,
     STATIC_ASSET: 31536000,
     BUFFER_SLOTS: 10,

@@ -115,45 +115,46 @@ export default {
       }
     };
 
-    // 路由表
-    const routes = {
-      'GET /': () => handleRoute(() => handleHome(env)),
-      'GET /user/profile': () => handleRoute(() => handleProfile()),
-      'POST /auth/register': () => handleRoute(() => userService.register(request)),
-      'POST /auth/login': () => handleRoute(() => userService.login(request)),
-      'GET /user/info': () => handleRoute(() => userService.getInfo(currentUser)),
-      'GET /user/inventory': () => handleRoute(() => userService.getInventory(currentUser)),
-      'POST /user/update-profile': () => handleRoute(() => userService.updateProfile(currentUser, request)),
-      'POST /user/check-in': () => handleRoute(() => userService.checkIn(currentUser, request)),
-      'POST /user/claim-reward': () => handleRoute(() => userService.claimReward(currentUser, request)),
-      'GET /user/titles': () => handleRoute(() => userService.getTitles(currentUser)),
-      'POST /user/equip-title': () => handleRoute(() => userService.equipTitle(currentUser, request)),
-      'POST /user/upload': () => handleRoute(() => gachaService.uploadImage(currentUser, request)),
-      'GET /user/uploads': () => handleRoute(() => gachaService.getUserUploads(currentUser, request)),
-      'GET /limited/pools': () => handleRoute(() => gachaService.getLimitedPools(currentUser)),
-      'GET /draw': () => handleRoute(() => gachaService.draw(currentUser)),
-      'POST /draw/limited': () => handleRoute(() => gachaService.drawLimited(currentUser, request)),
-      'POST /user/craft': () => handleRoute(() => gachaService.craft(currentUser, request)),
-      'POST /shop/buy': () => handleRoute(() => gachaService.shopBuy(currentUser, request)),
-      'POST /game/dice': () => handleRoute(() => gachaService.playDice(currentUser, request)),
-      'GET /showcase': () => handleRoute(() => handleShowcase(env)),
-      'GET /changelog': () => handleRoute(() => handleChangelog(env, request)),
-      'GET /announcement': () => handleRoute(() => handleGetAnnouncement(env)),
-      'GET /library': () => handleRoute(() => handleLibrary(request, env, url)),
-      'GET /api/library/items': () => handleRoute(() => handleLibraryApi(request, env)),
-      'GET /favicon.ico': () => new Response(null, { status: 204 }),
-      'POST /admin/users': () => handleRoute(() => handleAdminUsers(request, env)),
-      'POST /admin/verify': () => handleRoute(() => handleAdminVerify(request, env)),
-      'POST /admin/save-changelog': () => handleRoute(() => handleAdminSaveLog(request, env)),
-      'POST /admin/save-announcement': () => handleRoute(() => handleAdminSaveAnnouncement(request, env)),
-      'POST /admin/update-points': () => handleRoute(() => handleAdminUpdatePoints(request, env)),
-      'POST /admin/delete-user': () => handleRoute(() => handleAdminDeleteUser(request, env)),
-      'POST /admin/uploads': () => handleRoute(() => handleAdminUploads(request, env)),
-      'POST /admin/review-upload': () => handleRoute(() => handleAdminReviewUpload(request, env)),
-    };
+    // 路由表 (使用 Map 提升查找性能)
+    const routes = new Map([
+      ['GET /', () => handleRoute(() => handleHome(env))],
+      ['GET /user/profile', () => handleRoute(() => handleProfile())],
+      ['POST /auth/register', () => handleRoute(() => userService.register(request))],
+      ['POST /auth/login', () => handleRoute(() => userService.login(request))],
+      ['GET /user/info', () => handleRoute(() => userService.getInfo(currentUser))],
+      ['GET /user/inventory', () => handleRoute(() => userService.getInventory(currentUser))],
+      ['POST /user/update-profile', () => handleRoute(() => userService.updateProfile(currentUser, request))],
+      ['POST /user/check-in', () => handleRoute(() => userService.checkIn(currentUser, request))],
+      ['POST /user/claim-reward', () => handleRoute(() => userService.claimReward(currentUser, request))],
+      ['GET /user/titles', () => handleRoute(() => userService.getTitles(currentUser))],
+      ['POST /user/equip-title', () => handleRoute(() => userService.equipTitle(currentUser, request))],
+      ['POST /user/upload', () => handleRoute(() => gachaService.uploadImage(currentUser, request))],
+      ['GET /user/uploads', () => handleRoute(() => gachaService.getUserUploads(currentUser, request))],
+      ['GET /limited/pools', () => handleRoute(() => gachaService.getLimitedPools(currentUser))],
+      ['GET /draw', () => handleRoute(() => gachaService.draw(currentUser))],
+      ['POST /draw/limited', () => handleRoute(() => gachaService.drawLimited(currentUser, request))],
+      ['POST /user/craft', () => handleRoute(() => gachaService.craft(currentUser, request))],
+      ['POST /shop/buy', () => handleRoute(() => gachaService.shopBuy(currentUser, request))],
+      ['POST /game/dice', () => handleRoute(() => gachaService.playDice(currentUser, request))],
+      ['GET /showcase', () => handleRoute(() => handleShowcase(env))],
+      ['GET /api/stats', () => handleRoute(() => handleStats(env))],
+      ['GET /changelog', () => handleRoute(() => handleChangelog(env, request))],
+      ['GET /announcement', () => handleRoute(() => handleGetAnnouncement(env))],
+      ['GET /library', () => handleRoute(() => handleLibrary(request, env, url))],
+      ['GET /api/library/items', () => handleRoute(() => handleLibraryApi(request, env))],
+      ['GET /favicon.ico', () => new Response(null, { status: 204 })],
+      ['POST /admin/users', () => handleRoute(() => handleAdminUsers(request, env))],
+      ['POST /admin/verify', () => handleRoute(() => handleAdminVerify(request, env))],
+      ['POST /admin/save-changelog', () => handleRoute(() => handleAdminSaveLog(request, env))],
+      ['POST /admin/save-announcement', () => handleRoute(() => handleAdminSaveAnnouncement(request, env))],
+      ['POST /admin/update-points', () => handleRoute(() => handleAdminUpdatePoints(request, env))],
+      ['POST /admin/delete-user', () => handleRoute(() => handleAdminDeleteUser(request, env))],
+      ['POST /admin/uploads', () => handleRoute(() => handleAdminUploads(request, env))],
+      ['POST /admin/review-upload', () => handleRoute(() => handleAdminReviewUpload(request, env))],
+    ]);
 
     const routeKey = `${method} ${pathname}`;
-    const handler = routes[routeKey];
+    const handler = routes.get(routeKey);
 
     if (handler) {
       return await handler();
@@ -173,16 +174,39 @@ export default {
 // =========================================
 
 async function handleHome(env) {
+  const cacheKey = 'html:home';
+  
+  // 尝试从缓存读取
+  const cachedHtml = await env.KV_CACHE.get(cacheKey);
+  if (cachedHtml) {
+    return new Response(cachedHtml, {
+      headers: { 
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'public, max-age=60',
+        'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=86400',
+        'X-Cache-Status': 'HIT'
+      } 
+    });
+  }
+  
+  // 生成 HTML
   let siteStartTime = await env.KV_CACHE.get(CONFIG.KEYS.SITE_START_TIME);
   if (!siteStartTime) {
     siteStartTime = Date.now().toString();
     await env.KV_CACHE.put(CONFIG.KEYS.SITE_START_TIME, siteStartTime);
   }
-  return new Response(getIndexPage(siteStartTime), {
+  
+  const html = getIndexPage(siteStartTime);
+  
+  // 缓存 HTML (5分钟)
+  await env.KV_CACHE.put(cacheKey, html, { expirationTtl: 300 });
+  
+  return new Response(html, {
     headers: { 
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=60',
-      'CDN-Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
+      'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=86400',
+      'X-Cache-Status': 'MISS'
     } 
   });
 }
@@ -265,25 +289,89 @@ async function handleShowcase(env) {
   });
 }
 
+async function handleStats(env) {
+  const cacheKey = CONFIG.KEYS.STATS_DAILY;
+  
+  // 尝试从缓存读取
+  const cached = await env.KV_CACHE.get(cacheKey, { type: 'json' });
+  if (cached) {
+    return jsonResponse(cached, 200, { 
+      'X-Cache-Status': 'HIT',
+      'Cache-Control': 'public, max-age=60'
+    });
+  }
+  
+  try {
+    // 并行查询统计数据
+    const [
+      userCountRes,
+      todayCountRes,
+      totalDrawsRes,
+      galleryCountRes,
+      todayDrawsRes
+    ] = await Promise.all([
+      env.DB.prepare('SELECT COUNT(*) as total FROM users').first(),
+      env.DB.prepare("SELECT COUNT(*) as total FROM users WHERE created_at >= date('now')").first(),
+      env.DB.prepare('SELECT COALESCE(SUM(draw_count), 0) as total FROM users').first(),
+      env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first(),
+      env.DB.prepare("SELECT COUNT(*) as total FROM logs WHERE action = 'draw' AND created_at >= date('now')").first()
+    ]);
+    
+    const stats = {
+      totalUsers: userCountRes.total || 0,
+      todayUsers: todayCountRes.total || 0,
+      totalDraws: totalDrawsRes.total || 0,
+      totalGallery: galleryCountRes.total || 0,
+      todayDraws: todayDrawsRes.total || 0,
+      updatedAt: getBeijingISOString()
+    };
+    
+    // 缓存 5 分钟
+    await env.KV_CACHE.put(cacheKey, JSON.stringify(stats), { expirationTtl: 300 });
+    
+    return jsonResponse(stats, 200, { 
+      'X-Cache-Status': 'MISS',
+      'Cache-Control': 'public, max-age=60'
+    });
+  } catch (e) {
+    console.error('Stats Error:', e);
+    return jsonResponse({ error: '统计获取失败' }, 500);
+  }
+}
+
 async function handleLibrary(request, env, url) {
-  const page = parseInt(url.searchParams.get('page') || '1');
+  const cursor = url.searchParams.get('cursor') || null;
   const pageSize = 24;
-  const offset = (page - 1) * pageSize;
 
   try {
-    const [dataRes, countRes] = await Promise.all([
-      env.DB.prepare(
-        'SELECT url, username, created_at as ts FROM gallery ORDER BY created_at DESC LIMIT ? OFFSET ?'
-      ).bind(pageSize, offset).all(),
-      env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first()
-    ]);
+    let query, params;
+    
+    if (cursor) {
+      // 游标分页 (使用 id 作为游标)
+      query = 'SELECT id, url, username, created_at as ts FROM gallery WHERE id < ? ORDER BY id DESC LIMIT ?';
+      params = [parseInt(cursor), pageSize];
+    } else {
+      // 首页首次加载
+      query = 'SELECT id, url, username, created_at as ts FROM gallery ORDER BY id DESC LIMIT ?';
+      params = [pageSize];
+    }
+    
+    const dataRes = await env.DB.prepare(query).bind(...params).all();
+    const countRes = await env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first();
 
     const items = dataRes.results || [];
     const totalItems = countRes.total || 0;
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-    const currentPage = Math.max(1, Math.min(page, totalPages));
+    
+    // 计算下一页游标
+    const nextCursor = items.length === pageSize ? items[items.length - 1].id : null;
 
-    return new Response(getLibraryPage(items, { currentPage, totalPages, totalItems }), { 
+    return new Response(getLibraryPage(items, { 
+      currentPage: 1, 
+      totalPages, 
+      totalItems,
+      cursor: nextCursor
+    }), { 
       headers: { 
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'public, max-age=60', 
@@ -299,21 +387,20 @@ async function handleLibrary(request, env, url) {
 
 async function handleLibraryApi(request, env) {
   const url = new URL(request.url);
-  const page = parseInt(url.searchParams.get('page') || '1');
+  const cursor = url.searchParams.get('cursor') || null;
   const pageSize = parseInt(url.searchParams.get('pageSize') || '24');
-  const offset = (page - 1) * pageSize;
 
-  // 1. 尝试从 KV 读取缓存
-  const cacheKey = `lib:p:${page}:s:${pageSize}`;
+  const cacheKey = cursor ? `lib:c:${cursor}:s:${pageSize}` : `lib:latest:s:${pageSize}`;
   const countKey = `lib:count`;
   
   try {
+    // 1. 尝试从 KV 读取缓存
     const cachedData = await env.KV_CACHE.get(cacheKey, { type: 'json' });
     if (cachedData) {
       return jsonResponse(cachedData, 200, { 'X-Cache-Status': 'HIT' });
     }
 
-    // 2. 优化 Count 查询：尝试从 KV 获取总数，如果没有再查库 (缓存 5 分钟)
+    // 2. 获取总数
     let totalItems = await env.KV_CACHE.get(countKey, { type: 'json' });
     let shouldCacheCount = false;
     if (totalItems === null) {
@@ -322,27 +409,35 @@ async function handleLibraryApi(request, env) {
        shouldCacheCount = true;
     }
 
-    // 3. 查库获取数据
-    const dataRes = await env.DB.prepare(
-      'SELECT url, username, created_at as ts FROM gallery ORDER BY created_at DESC LIMIT ? OFFSET ?'
-    ).bind(pageSize, offset).all();
-
+    // 3. 游标分页查询
+    let query, params;
+    if (cursor) {
+      query = 'SELECT id, url, username, created_at as ts FROM gallery WHERE id < ? ORDER BY id DESC LIMIT ?';
+      params = [parseInt(cursor), pageSize];
+    } else {
+      query = 'SELECT id, url, username, created_at as ts FROM gallery ORDER BY id DESC LIMIT ?';
+      params = [pageSize];
+    }
+    
+    const dataRes = await env.DB.prepare(query).bind(...params).all();
     const items = dataRes.results || [];
-    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-    const currentPage = Math.max(1, Math.min(page, totalPages));
+    
+    // 计算下一页游标
+    const nextCursor = items.length === pageSize ? items[items.length - 1].id : null;
+    const currentPage = 1; // 游标模式下简化
 
     const responseData = {
       items,
       pagination: {
-        currentPage,
-        totalPages,
+        cursor: nextCursor,
+        hasMore: nextCursor !== null,
         totalItems,
         pageSize,
-        hasMore: currentPage < totalPages
+        currentPage
       }
     };
 
-    // 4. 写入缓存（同步等待以确保成功）
+    // 4. 写入缓存
     if (shouldCacheCount) {
       try {
         await env.KV_CACHE.put(countKey, JSON.stringify(totalItems), { expirationTtl: 300 });

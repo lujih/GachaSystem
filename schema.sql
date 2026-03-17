@@ -123,3 +123,6 @@ CREATE INDEX IF NOT EXISTS idx_uploads_pool ON user_uploads(status, rarity);
 CREATE INDEX IF NOT EXISTS idx_uploads_user ON user_uploads(user_id, created_at DESC);
 -- 索引：审核时按状态和时间查询
 CREATE INDEX IF NOT EXISTS idx_uploads_status_created ON user_uploads(status, created_at DESC);
+
+-- gallery: 游标分页优化 (使用 id 作为游标)
+CREATE INDEX IF NOT EXISTS idx_gallery_id ON gallery(id DESC);
