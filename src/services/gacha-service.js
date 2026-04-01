@@ -338,30 +338,35 @@ export class GachaService {
 
     const asset = await this.consumeGlobalBuffer(rarity, sourceList);
 
-    // 扣除抽卡费用并奖励积分
-    const netCoinsChange = coinsReward - cost;
-    await this.env.DB.prepare(
-      'UPDATE users SET coins = coins + ?, draw_count = draw_count + 1 WHERE id = ?'
-    ).bind(netCoinsChange, currentUser.id).run();
-
+    // 合并所有用户字段更新到一个 batch 事务中
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || 0;
+    const netCoinsChange = coinsReward - cost;
+    
     currentUser.coins = (currentUser.coins || 0) + netCoinsChange;
     currentUser.draw_count = (currentUser.draw_count || 0) + 1;
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
 
-    // 更新数据库
-    await this.env.DB.prepare(
-      'UPDATE users SET total_exp = total_exp + ? WHERE id = ?'
-    ).bind(expGain, currentUser.id).run();
-
     const levelUpInfo = this.calculateLevelUpRaw(currentUser, expGain);
     if (levelUpInfo.hasLevelUp) {
-      await this.env.DB.prepare('UPDATE users SET level = ?, exp = ?, total_exp = total_exp + ? WHERE id = ?')
-        .bind(levelUpInfo.newLevel, levelUpInfo.newExp, expGain, currentUser.id).run();
       currentUser.level = levelUpInfo.newLevel;
       currentUser.exp = levelUpInfo.newExp;
     }
 
+    // 构建用户数据 batch
+    const userBatch = [
+      this.env.DB.prepare(
+        'UPDATE users SET coins = coins + ?, draw_count = draw_count + 1, total_exp = total_exp + ? WHERE id = ?'
+      ).bind(netCoinsChange, expGain, currentUser.id)
+    ];
+    if (levelUpInfo.hasLevelUp) {
+      userBatch.push(
+        this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?')
+          .bind(levelUpInfo.newLevel, levelUpInfo.newExp, currentUser.id)
+      );
+    }
+    await this.env.DB.batch(userBatch);
+
+    // 库存更新
     const existing = await this.env.DB.prepare(
       'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
     ).bind(currentUser.id, rarity).first();
@@ -435,26 +440,19 @@ export class GachaService {
     // 限定池实时请求，不使用预抽卡缓存
     const asset = await this.fetchAndUploadRandom(sources);
 
-    await this.env.DB.prepare(
-      'UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ?'
-    ).bind(cost, currentUser.id).run();
-
     currentUser.coins -= cost;
     currentUser.draw_count = (currentUser.draw_count || 0) + 1;
 
-    const existing = await this.env.DB.prepare(
-      'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
-    ).bind(currentUser.id, 'UR').first();
-
-    if (existing) {
-      await this.env.DB.prepare(
-        'UPDATE inventory SET count = count + 1 WHERE user_id = ? AND rarity = ?'
-      ).bind(currentUser.id, 'UR').run();
-    } else {
-      await this.env.DB.prepare(
-        'INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)'
-      ).bind(currentUser.id, 'UR').run();
-    }
+    // 使用 batch 事务同时更新用户数据和库存
+    await this.env.DB.batch([
+      this.env.DB.prepare(
+        'UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ?'
+      ).bind(cost, currentUser.id),
+      this.env.DB.prepare(
+        `INSERT INTO inventory (user_id, rarity, count) VALUES (?, 'UR', 1)
+         ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`
+      ).bind(currentUser.id)
+    ]);
 
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
 
@@ -531,26 +529,19 @@ export class GachaService {
       return jsonResponse({ error: `合成需要 ${cost} 张 ${sourceRarity} 卡` }, 400);
     }
 
-    await this.env.DB.prepare(
-      'UPDATE inventory SET count = count - ? WHERE user_id = ? AND rarity = ?'
-    ).bind(cost, currentUser.id, sourceRarity).run();
-
     const targetSources = CONFIG.SOURCES.filter(s => s.rarity === targetRarity);
     const asset = await this.consumeGlobalBuffer(targetRarity, targetSources);
 
-    const existing = await this.env.DB.prepare(
-      'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
-    ).bind(currentUser.id, targetRarity).first();
-
-    if (existing) {
-      await this.env.DB.prepare(
-        'UPDATE inventory SET count = count + 1 WHERE user_id = ? AND rarity = ?'
-      ).bind(currentUser.id, targetRarity).run();
-    } else {
-      await this.env.DB.prepare(
-        'INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)'
-      ).bind(currentUser.id, targetRarity).run();
-    }
+    // 使用 batch 事务原子性更新库存（扣除材料 + 增加成品）
+    await this.env.DB.batch([
+      this.env.DB.prepare(
+        'UPDATE inventory SET count = count - ? WHERE user_id = ? AND rarity = ?'
+      ).bind(cost, currentUser.id, sourceRarity),
+      this.env.DB.prepare(
+        `INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
+         ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`
+      ).bind(currentUser.id, targetRarity)
+    ]);
 
     const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT;
 
@@ -581,28 +572,21 @@ export class GachaService {
     if (!price) return jsonResponse({ error: '商品不存在' }, 400);
     if (currentUser.coins < price) return jsonResponse({ error: '积分不足' }, 400);
 
-    await this.env.DB.prepare(
-      'UPDATE users SET coins = coins - ? WHERE id = ?'
-    ).bind(price, currentUser.id).run();
-
     const sources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
     const asset = await this.consumeGlobalBuffer(rarity, sources);
 
-    const existing = await this.env.DB.prepare(
-      'SELECT 1 FROM inventory WHERE user_id = ? AND rarity = ?'
-    ).bind(currentUser.id, rarity).first();
-
-    if (existing) {
-      await this.env.DB.prepare(
-        'UPDATE inventory SET count = count + 1 WHERE user_id = ? AND rarity = ?'
-      ).bind(currentUser.id, rarity).run();
-    } else {
-      await this.env.DB.prepare(
-        'INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)'
-      ).bind(currentUser.id, rarity).run();
-    }
-
     currentUser.coins -= price;
+
+    // 使用 batch 事务同时更新用户余额和库存
+    await this.env.DB.batch([
+      this.env.DB.prepare(
+        'UPDATE users SET coins = coins - ? WHERE id = ?'
+      ).bind(price, currentUser.id),
+      this.env.DB.prepare(
+        `INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1)
+         ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1`
+      ).bind(currentUser.id, rarity)
+    ]);
 
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
 
@@ -652,18 +636,16 @@ export class GachaService {
 
     if (isWin) {
       const winAmount = bet * payout;
+      currentUser.coins = (currentUser.coins || 0) + winAmount - bet;
+      currentUser.wins = (currentUser.wins || 0) + 1;
       await this.env.DB.prepare(
         'UPDATE users SET coins = coins + ?, wins = wins + 1 WHERE id = ?'
       ).bind(winAmount - bet, currentUser.id).run();
-
-      currentUser.coins = (currentUser.coins || 0) + winAmount - bet;
-      currentUser.wins = (currentUser.wins || 0) + 1;
     } else {
+      currentUser.coins = (currentUser.coins || 0) - bet;
       await this.env.DB.prepare(
         'UPDATE users SET coins = coins - ? WHERE id = ?'
       ).bind(bet, currentUser.id).run();
-
-      currentUser.coins = (currentUser.coins || 0) - bet;
     }
 
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
