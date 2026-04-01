@@ -104,16 +104,20 @@ export function getLibraryPage(items, pager) {
       totalItems: ${pager.totalItems},
       allItems: ${JSON.stringify(items)},
       
+      // 游标分页关键：后端返回的 cursor 值
+      cursor: ${JSON.stringify(pager.cursor)},
+      
       pageSize: 24,
       isLoading: false,
-      lastRenderedIndex: -1, 
+      lastRenderedIndex: -1,
+      hasMore: ${pager.cursor !== null},
 
       init() {
         this.setupImageLazyLoad(); 
         this.lastRenderedIndex = this.allItems.length - 1; 
         this.setupBackToTop();
         
-        if (this.currentPage < this.totalPages) {
+        if (this.hasMore) {
           this.setupInfiniteScroll();
         }
       },
@@ -177,9 +181,8 @@ export function getLibraryPage(items, pager) {
       setupInfiniteScroll() {
         const scrollContainer = document.getElementById('scrollContainer');
         
-        // 使用滚动事件监听代替 IntersectionObserver
         const handleScroll = () => {
-          if (this.isLoading || this.currentPage >= this.totalPages) return;
+          if (this.isLoading || !this.hasMore) return;
           
           const scrollTop = scrollContainer.scrollTop;
           const scrollHeight = scrollContainer.scrollHeight;
@@ -196,21 +199,24 @@ export function getLibraryPage(items, pager) {
       },
       
       async loadMore() {
-        if (this.isLoading || this.currentPage >= this.totalPages) return;
+        if (this.isLoading || !this.hasMore) return;
         this.isLoading = true;
         
-        const nextPage = this.currentPage + 1;
-        
         try {
-          const response = await fetch(\`/api/library/items?page=\${nextPage}&pageSize=\${this.pageSize}\`);
+          const url = this.cursor
+            ? \`/api/library/items?cursor=\${this.cursor}&pageSize=\${this.pageSize}\`
+            : \`/api/library/items?pageSize=\${this.pageSize}\`;
+          
+          const response = await fetch(url);
           if (!response.ok) {
             throw new Error(\`HTTP error! status: \${response.status}\`);
           }
           const data = await response.json();
           
-          // 更新总页数（后端可能重新计算）
+          // 更新游标和总数
           if (data.pagination) {
-            this.totalPages = data.pagination.totalPages;
+            this.cursor = data.pagination.cursor;
+            this.hasMore = data.pagination.hasMore;
             this.totalItems = data.pagination.totalItems;
           }
           
@@ -221,17 +227,11 @@ export function getLibraryPage(items, pager) {
             
             if (newItems.length > 0) {
               this.allItems = this.allItems.concat(newItems);
-              this.currentPage = data.pagination ? data.pagination.currentPage : nextPage;
               this.renderNewItems();
-            } else if (this.currentPage < this.totalPages) {
-              // 如果没有新数据但还有下一页，尝试继续加载
-              this.currentPage = nextPage;
-              if (this.currentPage < this.totalPages) {
-                setTimeout(() => this.loadMore(), 100);
-              }
+            } else if (this.hasMore) {
+              // 如果没有新数据但还有下一页，重试
+              setTimeout(() => this.loadMore(), 100);
             }
-          } else {
-             this.currentPage = this.totalPages; 
           }
         } catch (error) {
           console.error('加载更多失败:', error);
