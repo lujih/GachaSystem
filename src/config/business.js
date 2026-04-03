@@ -2,7 +2,7 @@
  * 业务配置层 - 游戏逻辑相关配置
  */
 export const BUSINESS_CONFIG = {
-  // 图源配置
+  // 图源配置（每个稀有度多个备用源）
   SOURCES: [
     { name: 'Random Anime', url: 'https://api.anosu.top/img', rarity: 'N' },
     { name: 'Kemonomimi', url: 'https://api.anosu.top/img?sort=furry', rarity: 'R' },
@@ -10,7 +10,20 @@ export const BUSINESS_CONFIG = {
     { name: 'Stockings', url: 'https://api.anosu.top/img?sort=setu', rarity: 'SSR' },
     { name: 'Absolute Territory', url: 'https://moe.jitsu.top/api?sort=r18', rarity: 'UR' }
   ],
-  
+
+  // 图源备用池（当主源失败时 fallback 使用）
+  FALLBACK_SOURCES: [
+    { url: 'https://api.lolimi.cn/API/api/api.php', rarity: 'SR' },
+    { url: 'https://api.lolimi.cn/API/api/api.php?n=', rarity: 'N' },
+    { url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
+  ],
+
+  // 保底配置
+  PITY: {
+    SSR: { at: 10, guaranteed: 'SSR' },    // 小保底：10 抽不 SSR 必 SSR
+    UR: { at: 50, guaranteed: 'UR' },       // 大保底：50 抽不 UR 必 UR
+  },
+
   // 限定池配置
   LIMITED: {
     COST: 500,
@@ -27,7 +40,7 @@ export const BUSINESS_CONFIG = {
         name: '玩家共建池',
         description: '由玩家上传的精选图片库，持续更新中',
         sources: [
-          { name: 'Community Uploads', url: 'https://github_images.mahiro-seeker.dpdns.org/?format=json', rarity: 'UR' } 
+          { name: 'Community Uploads', url: 'https://github_images.mahiro-seeker.dpdns.org/?format=json', rarity: 'UR' }
         ],
         type: 'api'
       },
@@ -50,16 +63,18 @@ export const BUSINESS_CONFIG = {
     },
     DEFAULT_POOL: 'genshin'
   },
-  
+
   // 游戏数值配置
   GAME: {
     POINTS: { 'N': 5, 'R': 15, 'SR': 50, 'SSR': 200, 'UR': 1000 },
     DRAW_COST: 0,
+    MULTI_DRAW_COST: 0,          // 十连抽消耗
+    MULTI_DRAW_COUNT: 10,        // 十连抽取卡次数
     CRAFT_COST: 5,
     SHOP: { 'R': 150, 'SR': 600, 'SSR': 2500, 'UR': 10000 },
-    DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2 }
+    DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2, COOLDOWN_MS: 3000 }
   },
-  
+
   // 等级系统配置
   LEVEL: {
     EXP_GAIN: {

@@ -132,6 +132,8 @@ export default {
       ['GET /user/uploads', () => handleRoute(() => gachaService.getUserUploads(currentUser, request))],
       ['GET /limited/pools', () => handleRoute(() => gachaService.getLimitedPools(currentUser))],
       ['GET /draw', () => handleRoute(() => gachaService.draw(currentUser))],
+      ['POST /draw/multi', () => handleRoute(() => gachaService.multiDraw(currentUser, request))],
+      ['GET /draw/history', () => handleRoute(() => gachaService.getDrawHistory(currentUser, request))],
       ['POST /draw/limited', () => handleRoute(() => gachaService.drawLimited(currentUser, request))],
       ['POST /user/craft', () => handleRoute(() => gachaService.craft(currentUser, request))],
       ['POST /shop/buy', () => handleRoute(() => gachaService.shopBuy(currentUser, request))],

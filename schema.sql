@@ -84,16 +84,33 @@ CREATE TABLE IF NOT EXISTS user_uploads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     username TEXT NOT NULL,
-    r2_key TEXT NOT NULL,    -- R2 中的临时文件名
-    github_path TEXT,        -- GitHub 存储路径（审核通过后设置）
-    url TEXT NOT NULL,       -- 公网访问地址（审核前为R2 URL，审核后为GitHub CDN URL）
-    rarity TEXT DEFAULT 'N', -- 审核时确定稀有度
-    status TEXT DEFAULT 'pending', -- pending(待审), approved(通过), rejected(拒绝)
+    r2_key TEXT NOT NULL,
+    github_path TEXT,
+    url TEXT NOT NULL,
+    rarity TEXT DEFAULT 'N',
+    status TEXT DEFAULT 'pending',
     created_at INTEGER NOT NULL,
     reviewed_at INTEGER,
     CONSTRAINT fk_upload_user FOREIGN KEY (user_id) 
         REFERENCES users(id) ON DELETE CASCADE
 ) STRICT;
+
+-- 8. 抽卡历史记录 (2026-04-02 新增)
+CREATE TABLE IF NOT EXISTS draw_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    rarity TEXT NOT NULL,
+    is_pity INTEGER DEFAULT 0 NOT NULL,
+    source_name TEXT,
+    created_at INTEGER NOT NULL,
+    CONSTRAINT fk_draw_history_user FOREIGN KEY (user_id) 
+        REFERENCES users(id) ON DELETE CASCADE
+) STRICT;
+
+-- 索引：抽卡历史记录查询优化
+CREATE INDEX IF NOT EXISTS idx_draw_history_user_created ON draw_history(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_draw_history_rarity ON draw_history(user_id, rarity);
 
 -- =========================================
 -- 索引优化
