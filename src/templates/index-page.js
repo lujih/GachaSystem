@@ -178,8 +178,8 @@ export function getIndexPage(siteStartTime) {
         <button class="btn" onclick="App.draw()" id="drawBtn">
           <i class="fas fa-bolt"></i> <span>召唤</span>
         </button>
-        <button class="btn" onclick="App.openMultiDraw()" id="multiDrawBtn" style="background:linear-gradient(45deg,#6366F1,#8B5CF6);border-color:#6366F1;">
-          <i class="fas fa-layer-group"></i> <span>10连抽</span>
+        <button class="btn secondary" onclick="App.openMultiDraw()" id="multiDrawBtn" title="十连抽">
+          <i class="fas fa-layer-group"></i>
         </button>
         <button class="btn secondary" onclick="App.openCraft()" style="background:#FFF7ED; border-color:#FED7AA;">
           <i class="fas fa-flask"></i>
@@ -197,9 +197,9 @@ export function getIndexPage(siteStartTime) {
           <i class="fas fa-cloud-upload-alt"></i>
         </button>
         <a href="/library" class="btn secondary"><i class="fas fa-th-large"></i></a>
-        <a href="/draw/history" class="btn secondary" style="background:#FFF1F2; border-color:#FECDD3; color:#E11D48;" title="抽卡记录">
+        <button class="btn secondary" onclick="App.openDrawHistory()" title="抽卡记录">
           <i class="fas fa-scroll"></i>
-        </a>
+        </button>
       </div>
     </div>
 
@@ -290,6 +290,41 @@ export function getIndexPage(siteStartTime) {
         <button class="bet-btn big" onclick="App.playDice('big')"><div>押大 (4-6)</div></button>
       </div>
       <div id="diceMsg" style="margin-top:15px; font-weight:bold; height:20px; color:#334155;"></div>
+    </div>
+  </div>
+
+  <div id="multiDrawModal" class="modal">
+    <div class="modal-content">
+      <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
+      <h3><i class="fas fa-layer-group" style="color:#8B5CF6;margin-right:8px;"></i>十连召唤</h3>
+      <p style="color:var(--text-light); font-size:0.9rem; margin-bottom:15px;">一次十连，欧气加倍！</p>
+      <div style="background:#FEF3C7;padding:12px;border-radius:10px;margin-bottom:20px;text-align:center;">
+        <span style="font-size:0.9rem;color:#92400E;">消耗: <b id="multiDrawCost">0</b> pts</span>
+      </div>
+      <button class="btn" style="width:100%;background:linear-gradient(135deg,#6366F1,#8B5CF6);box-shadow:0 4px 0 #5B21B6;" onclick="App.doMultiDraw()" id="multiDrawBtnInner">
+        <i class="fas fa-bolt"></i> 十连召唤
+      </button>
+      <div id="multiDrawMsg" style="margin-top:15px;font-weight:bold;height:20px;font-size:0.9rem;transition:0.3s;"></div>
+      <div id="multiDrawResults" style="margin-top:15px;"></div>
+    </div>
+  </div>
+
+  <div id="drawHistoryModal" class="modal">
+    <div class="modal-content" style="max-width:640px;">
+      <button class="modal-close-btn" onclick="App.closeModals()"><i class="fas fa-times"></i></button>
+      <h3><i class="fas fa-scroll" style="color:#E11D48;margin-right:8px;"></i>抽卡记录</h3>
+      <div class="history-filters" style="display:flex;gap:8px;margin-bottom:15px;">
+        <select id="historyRarityFilter" class="history-filter-select" onchange="App.loadDrawHistory(1)">
+          <option value="">全部稀有度</option>
+          <option value="UR">UR</option>
+          <option value="SSR">SSR</option>
+          <option value="SR">SR</option>
+          <option value="R">R</option>
+          <option value="N">N</option>
+        </select>
+      </div>
+      <div id="drawHistoryList" style="max-height:420px;overflow-y:auto;"></div>
+      <div id="drawHistoryPagination" style="display:flex;justify-content:center;gap:8px;margin-top:15px;"></div>
     </div>
   </div>
 
@@ -1447,6 +1482,108 @@ switchPool(pool) {
         } catch(e) { this.loading = false; document.getElementById('loadingSpinner').classList.remove('show'); this.switchPool(this.currentPool); this.toast(e.message, 'warn'); }
       },
       openDice() { if(!this.username) return document.getElementById('authModal').classList.add('show'); document.getElementById('diceModal').classList.add('show'); document.getElementById('diceIcon').className = 'fas fa-dice-d6'; document.getElementById('diceMsg').innerText = ''; },
+      openMultiDraw() {
+        if(!this.username) return document.getElementById('authModal').classList.add('show');
+        const costEl = document.getElementById('multiDrawCost');
+        if(costEl) costEl.innerText = '0';
+        document.getElementById('multiDrawMsg').innerText = '';
+        document.getElementById('multiDrawResults').innerHTML = '';
+        document.getElementById('multiDrawModal').classList.add('show');
+      },
+      async doMultiDraw() {
+        if(this.loading) return;
+        this.loading = true;
+        const btn = document.getElementById('multiDrawBtnInner');
+        const msg = document.getElementById('multiDrawMsg');
+        const results = document.getElementById('multiDrawResults');
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 召唤中...';
+        btn.disabled = true;
+        msg.innerText = '';
+        results.innerHTML = '';
+        try {
+          const res = await fetch('/draw/multi', {
+            method: 'POST',
+            body: JSON.stringify({ count: 10 }),
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': localStorage.getItem('moe_token') }
+          });
+          const data = await res.json();
+          if(data.error) throw new Error(this.mapError(data.error));
+          this.coins = data.userCoins;
+          const cost = data.totalCost || 0;
+          const costEl = document.getElementById('multiDrawCost');
+          if(costEl) costEl.innerText = cost;
+          const rarityOrder = { UR: 0, SSR: 1, SR: 2, R: 3, N: 4 };
+          const sortedCards = (data.cards || []).sort((a, b) => (rarityOrder[a.rarity] || 4) - (rarityOrder[b.rarity] || 4));
+          const colors = { UR: '#EF4444', SSR: '#F59E0B', SR: '#8B5CF6', R: '#3B82F6', N: '#6B7280' };
+          let html = '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">';
+          sortedCards.forEach(c => {
+            const color = colors[c.rarity] || '#6B7280';
+            const isPityTag = c.isPity ? '<div style="font-size:0.6rem;color:#EF4444;position:absolute;top:2px;right:2px;background:white;padding:1px 3px;border-radius:3px;">保底</div>' : '';
+            let cardContent;
+            if(c.asset && c.asset.url) {
+              cardContent = '<img src="' + c.asset.url + '" style="width:100%;height:100%;object-fit:cover;border-radius:6px;" onerror="this.style.display=\'none\';this.parentElement.innerHTML+=\'❌\'">';
+            } else {
+              cardContent = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#1E293B;border-radius:6px;font-weight:900;font-size:1.1rem;color:' + color + ';">' + c.rarity + '</div>';
+            }
+            const previewUrl = c.asset && c.asset.url ? c.asset.url : '';
+            html += '<div style="position:relative;aspect-ratio:1;border:2px solid ' + color + ';border-radius:8px;overflow:hidden;cursor:pointer;" onclick="App.preview(\'' + previewUrl + '\')">' + cardContent + isPityTag + '</div>';
+          });
+          html += '</div>';
+          if(data.levelUp) html += '<div style="margin-top:12px;text-align:center;font-size:0.9rem;color:#059669;background:#ECFDF5;padding:8px;border-radius:10px;">🎉 等级提升至 Lv.' + data.levelUp.newLevel + '！</div>';
+          results.innerHTML = html;
+          msg.innerHTML = '<span style="color:#059669;">十连完成！当前积分: ' + data.userCoins + '</span>';
+          if(document.getElementById('coinsDisplay')) document.getElementById('coinsDisplay').innerText = data.userCoins;
+        } catch(e) {
+          msg.innerHTML = '<span style="color:#EF4444;">' + this.mapError(e.message) + '</span>';
+        } finally {
+          this.loading = false;
+          btn.innerHTML = '<i class="fas fa-bolt"></i> 十连召唤';
+          btn.disabled = false;
+        }
+      },
+      async openDrawHistory() {
+        if(!this.username) return document.getElementById('authModal').classList.add('show');
+        document.getElementById('drawHistoryModal').classList.add('show');
+        await this.loadDrawHistory(1);
+      },
+      async loadDrawHistory(page) {
+        page = page || 1;
+        const listEl = document.getElementById('drawHistoryList');
+        const pagEl = document.getElementById('drawHistoryPagination');
+        listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94A3B8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;margin-bottom:8px;display:block;"></i>加载中...</div>';
+        pagEl.innerHTML = '';
+        try {
+          const rarity = document.getElementById('historyRarityFilter') ? document.getElementById('historyRarityFilter').value : '';
+          let url = '/draw/history?page=' + page + '&limit=20';
+          if(rarity) url += '&rarity=' + rarity;
+          const res = await fetch(url, { headers: { 'X-Session-Token': localStorage.getItem('moe_token') } });
+          const data = await res.json();
+          if(data.error) throw new Error(data.error);
+          const history = data.history || [];
+          const totalPages = (data.pagination && data.pagination.totalPages) || 1;
+          if(!history.length) {
+            listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94A3B8;"><i class="fas fa-inbox" style="font-size:2rem;margin-bottom:8px;display:block;opacity:0.4;"></i>暂无抽卡记录</div>';
+            return;
+          }
+          const colors = { UR: '#EF4444', SSR: '#F59E0B', SR: '#8B5CF6', R: '#3B82F6', N: '#6B7280' };
+          listEl.innerHTML = history.map(h => {
+            const color = colors[h.rarity] || '#6B7280';
+            const timeStr = h.created_at ? new Date(h.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+            const pityTag = h.is_pity ? '<span style="font-size:0.65rem;background:#FEF2F2;color:#E11D48;padding:2px 6px;border-radius:4px;margin-left:4px;">保底</span>' : '';
+            const sourceTag = h.source_name ? '<span style="font-size:0.65rem;color:#94A3B8;">' + h.source_name + '</span>' : '';
+            return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;margin-bottom:6px;background:#F8FAFC;border-left:3px solid ' + color + ';"><span style="font-weight:700;color:' + color + ';min-width:36px;font-size:0.85rem;">' + h.rarity + '</span><span style="flex:1;font-size:0.8rem;color:#64748B;">' + timeStr + pityTag + ' ' + sourceTag + '</span></div>';
+          }).join('');
+          if(totalPages > 1) {
+            let pagHtml = '';
+            if(page > 1) pagHtml += '<button class="btn secondary" style="padding:6px 14px;font-size:0.8rem;" onclick="App.loadDrawHistory(' + (page-1) + ')">上一页</button>';
+            pagHtml += '<span style="font-size:0.8rem;color:#94A3B8;display:flex;align-items:center;">' + page + '/' + totalPages + '</span>';
+            if(page < totalPages) pagHtml += '<button class="btn secondary" style="padding:6px 14px;font-size:0.8rem;" onclick="App.loadDrawHistory(' + (page+1) + ')">下一页</button>';
+            pagEl.innerHTML = pagHtml;
+          }
+        } catch(e) {
+          listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#EF4444;">加载失败: ' + e.message + '</div>';
+        }
+      },
       openUpload() { 
         if(!this.username) return document.getElementById('authModal').classList.add('show'); 
         
