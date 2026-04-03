@@ -1521,7 +1521,7 @@ switchPool(pool) {
             const isPityTag = c.isPity ? '<div style="font-size:0.6rem;color:#EF4444;position:absolute;top:2px;right:2px;background:white;padding:1px 3px;border-radius:3px;">保底</div>' : '';
             let cardContent;
             if(c.asset && c.asset.url) {
-              cardContent = '<img src="' + c.asset.url + '" style="width:100%;height:100%;object-fit:cover;border-radius:6px;" onerror="this.style.display=\'none\';this.parentElement.innerHTML+=\'❌\'">';
+              cardContent = '<img src="' + c.asset.url + '" style="width:100%;height:100%;object-fit:cover;border-radius:6px;" onerror="this.remove()">';
             } else {
               cardContent = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#1E293B;border-radius:6px;font-weight:900;font-size:1.1rem;color:' + color + ';">' + c.rarity + '</div>';
             }
