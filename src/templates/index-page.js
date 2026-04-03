@@ -1512,25 +1512,49 @@ switchPool(pool) {
           const cost = data.totalCost || 0;
           const costEl = document.getElementById('multiDrawCost');
           if(costEl) costEl.innerText = cost;
-          const rarityOrder = { UR: 0, SSR: 1, SR: 2, R: 3, N: 4 };
-          const sortedCards = (data.cards || []).sort((a, b) => (rarityOrder[a.rarity] || 4) - (rarityOrder[b.rarity] || 4));
-          const colors = { UR: '#EF4444', SSR: '#F59E0B', SR: '#8B5CF6', R: '#3B82F6', N: '#6B7280' };
-          let html = '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">';
-          sortedCards.forEach(c => {
-            const color = colors[c.rarity] || '#6B7280';
-            const isPityTag = c.isPity ? '<div style="font-size:0.6rem;color:#EF4444;position:absolute;top:2px;right:2px;background:white;padding:1px 3px;border-radius:3px;">保底</div>' : '';
-            let cardContent;
+          var rarityOrder = { UR: 0, SSR: 1, SR: 2, R: 3, N: 4 };
+          var sortedCards = (data.cards || []).sort(function(a, b) { return (rarityOrder[a.rarity] || 4) - (rarityOrder[b.rarity] || 4); });
+          var colors = { UR: '#EF4444', SSR: '#F59E0B', SR: '#8B5CF6', R: '#3B82F6', N: '#6B7280' };
+          var grid = document.createElement('div');
+          grid.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);gap:8px;';
+          sortedCards.forEach(function(c) {
+            var color = colors[c.rarity] || '#6B7280';
+            var card = document.createElement('div');
+            card.style.cssText = 'position:relative;aspect-ratio:1;border:2px solid '+color+';border-radius:8px;overflow:hidden;cursor:pointer;';
             if(c.asset && c.asset.url) {
-              cardContent = '<img src="' + c.asset.url + '" style="width:100%;height:100%;object-fit:cover;border-radius:6px;" onerror="this.remove()">';
+              var img = document.createElement('img');
+              img.src = c.asset.url;
+              img.setAttribute('data-preview', c.asset.url);
+              img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:6px;';
+              img.onerror = function() { this.remove(); };
+              card.appendChild(img);
             } else {
-              cardContent = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#1E293B;border-radius:6px;font-weight:900;font-size:1.1rem;color:' + color + ';">' + c.rarity + '</div>';
+              var placeholder = document.createElement('div');
+              placeholder.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#1E293B;border-radius:6px;font-weight:900;font-size:1.1rem;color:'+color+';';
+              placeholder.textContent = c.rarity;
+              card.appendChild(placeholder);
             }
-            const previewUrl = c.asset && c.asset.url ? c.asset.url : '';
-            html += '<div style="position:relative;aspect-ratio:1;border:2px solid ' + color + ';border-radius:8px;overflow:hidden;cursor:pointer;" onclick="App.preview(\'' + previewUrl + '\')">' + cardContent + isPityTag + '</div>';
+            if(c.isPity) {
+              var tag = document.createElement('div');
+              tag.style.cssText = 'font-size:0.6rem;color:#EF4444;position:absolute;top:2px;right:2px;background:white;padding:1px 3px;border-radius:3px;';
+              tag.textContent = '保底';
+              card.appendChild(tag);
+            }
+            if(c.asset && c.asset.url) card.setAttribute('data-preview', c.asset.url);
+            card.addEventListener('click', function() {
+              var u = this.getAttribute('data-preview');
+              if(u) App.preview(u);
+            });
+            grid.appendChild(card);
           });
-          html += '</div>';
-          if(data.levelUp) html += '<div style="margin-top:12px;text-align:center;font-size:0.9rem;color:#059669;background:#ECFDF5;padding:8px;border-radius:10px;">🎉 等级提升至 Lv.' + data.levelUp.newLevel + '！</div>';
-          results.innerHTML = html;
+          results.innerHTML = '';
+          results.appendChild(grid);
+          if(data.levelUp) {
+            var lv = document.createElement('div');
+            lv.style.cssText = 'margin-top:12px;text-align:center;font-size:0.9rem;color:#059669;background:#ECFDF5;padding:8px;border-radius:10px;';
+            lv.textContent = '\ud83c\udf89 \u7b49\u7ea7\u63d0\u5347\u81f3 Lv.' + data.levelUp.newLevel + '\uff01';
+            results.appendChild(lv);
+          }
           msg.innerHTML = '<span style="color:#059669;">十连完成！当前积分: ' + data.userCoins + '</span>';
           if(document.getElementById('coinsDisplay')) document.getElementById('coinsDisplay').innerText = data.userCoins;
         } catch(e) {
