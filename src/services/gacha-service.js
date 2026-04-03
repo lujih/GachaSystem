@@ -554,27 +554,77 @@ export class GachaService {
     return jsonResponse({ success: true, card: asset, pool: poolConfig.name || pool, userCoins: currentUser.coins });
   }
 
-  // ==================== 合成系统 ====================
+  // ==================== 获取限定池列表 ====================
+  async getLimitedPools(currentUser) {
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+    const pools = [];
+    for (const [id, config] of Object.entries(CONFIG.LIMITED.POOLS)) {
+      let count = '可用';
+      let available = config.sources && config.sources.length > 0;
+      if (id === 'github_repo' && config.sources && config.sources[0]) {
+        try {
+          const res = await fetch(config.sources[0].url, { method: 'GET' });
+          const data = await res.json();
+          count = data.total || '可用';
+        } catch (e) {
+          console.error('[getLimitedPools] Failed to fetch count:', e);
+        }
+      }
+      pools.push({
+        id,
+        name: config.name,
+        description: config.description,
+        cost: CONFIG.LIMITED.COST,
+        available,
+        count
+      });
+    }
+    return jsonResponse({ success: true, pools, defaultPool: CONFIG.LIMITED.DEFAULT_POOL });
+  }
+
+  // ==================== 合成系统（消耗库存卡材料） ====================
   async craft(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const { targetRarity, poolId } = await request.json();
-    const recipe = poolId ? (CONFIG.SYNTHESIS.POOL_RECIPES[poolId] || CONFIG.SYNTHESIS.DEFAULT) : CONFIG.SYNTHESIS.DEFAULT;
-    const material = recipe[targetRarity] || { cost: 1000, chance: 0.5 };
-    if (currentUser.coins < material.cost) return jsonResponse({ error: '积分不足' }, 400);
-    currentUser.coins -= material.cost;
-    await this.env.DB.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').bind(material.cost, currentUser.id).run();
-    const success = Math.random() < material.chance;
-    if (success) {
-      const sourceList = CONFIG.SOURCES.filter(s => s.rarity === targetRarity);
-      if (sourceList.length === 0) return jsonResponse({ error: `找不到 ${targetRarity} 图源` }, 500);
-      const asset = await this.consumeGlobalBuffer(targetRarity, sourceList);
-      await this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, targetRarity).run();
-      if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
-      this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-      return jsonResponse({ success: true, card: asset, userCoins: currentUser.coins, message: '合成成功！' });
+    const { targetRarity } = await request.json();
+    const cost = CONFIG.GAME.CRAFT_COST;
+    const rarityMap = { 'R': 'N', 'SR': 'R', 'SSR': 'SR', 'UR': 'SSR' };
+    const sourceRarity = rarityMap[targetRarity];
+    if (!sourceRarity) return jsonResponse({ error: '无效的合成目标' }, 400);
+    const inventory = await this.env.DB.prepare(
+      'SELECT count FROM inventory WHERE user_id = ? AND rarity = ?'
+    ).bind(currentUser.id, sourceRarity).first();
+    if (!inventory || inventory.count < cost) {
+      return jsonResponse({ error: `合成需要 ${cost} 张 ${sourceRarity} 卡` }, 400);
     }
+    const targetSources = CONFIG.SOURCES.filter(s => s.rarity === targetRarity);
+    if (targetSources.length === 0) return jsonResponse({ error: `找不到 ${targetRarity} 图源` }, 500);
+    const asset = await this.consumeGlobalBuffer(targetRarity, targetSources);
+    // batch 事务：扣除材料 + 增加成品
+    await this.env.DB.batch([
+      this.env.DB.prepare('UPDATE inventory SET count = count - ? WHERE user_id = ? AND rarity = ?').bind(cost, currentUser.id, sourceRarity),
+      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, targetRarity)
+    ]);
+    const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT || 50;
+    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+    const levelUpInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
+    let levelUpResult = null;
+    if (levelUpInfo.level > currentUser.level) {
+      levelUpResult = {
+        newLevel: levelUpInfo.level,
+        coinsReward: (levelUpInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL
+      };
+      currentUser.level = levelUpResult.newLevel;
+      currentUser.exp = levelUpInfo.currentExp;
+    }
+    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-    return jsonResponse({ success: false, message: '合成失败!', userCoins: currentUser.coins });
+    return jsonResponse({
+      success: true,
+      card: asset,
+      consumed: `${cost} 张 ${sourceRarity}`,
+      expGained: expGain,
+      levelUp: levelUpResult
+    });
   }
 
   // ==================== 商店购买 ====================
@@ -649,6 +699,71 @@ export class GachaService {
       message: `🎲 ${roll1} + ${roll2} = ${sum}, ${reward > cost ? '恭喜中奖！' : '下次好运！'}`,
       userCoins: currentUser.coins
     });
+  }
+
+  // ==================== 获取限定池列表 ====================
+  async getLimitedPools(currentUser) {
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+    const pools = [];
+    for (const [id, config] of Object.entries(CONFIG.LIMITED.POOLS)) {
+      let count = '可用';
+      let available = config.sources && config.sources.length > 0;
+      if (id === 'github_repo' && config.sources && config.sources[0]) {
+        try {
+          const res = await fetch(config.sources[0].url, { method: 'GET' });
+          const data = await res.json();
+          count = data.total || '可用';
+        } catch (e) {
+          console.error('[getLimitedPools] count fetch failed:', e);
+        }
+      }
+      pools.push({ id, name: config.name, description: config.description, cost: CONFIG.LIMITED.COST, available, count });
+    }
+    return jsonResponse({ success: true, pools, defaultPool: CONFIG.LIMITED.DEFAULT_POOL });
+  }
+
+  // ==================== 图片上传 ====================
+  async uploadImage(currentUser, request) {
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+    try {
+      const formData = await request.formData();
+      const file = formData.get('image');
+      const rarity = formData.get('rarity') || 'N';
+      if (!file) return jsonResponse({ error: '未提供图片' }, 400);
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) return jsonResponse({ error: '无效的文件类型' }, 400);
+      const maxSize = 5 * 1024 * 1024;
+      if (file.size > maxSize) return jsonResponse({ error: '文件过大，最大5MB' }, 400);
+      const arrayBuffer = await file.arrayBuffer();
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 8);
+      const ext = file.name.split('.').pop() || 'jpg';
+      const r2Key = `uploads/${currentUser.id}_${timestamp}_${random}.${ext}`;
+      const r2Url = `${CONFIG.R2_DOMAIN}/${r2Key}`;
+      await this.env.R2_BUCKET.put(r2Key, arrayBuffer, {
+        httpMetadata: { contentType: file.type, cacheControl: 'public, max-age=3600' }
+      });
+      await this.env.DB.prepare(
+        'INSERT INTO user_uploads (user_id, username, r2_key, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(currentUser.id, currentUser.username, r2Key, r2Url, rarity, 'pending', Date.now()).run();
+      return jsonResponse({ success: true, url: r2Url, message: '上传成功，等待审核' });
+    } catch (e) {
+      console.error('Upload error:', e);
+      return jsonResponse({ error: '上传失败: ' + e.message }, 500);
+    }
+  }
+
+  async getUserUploads(currentUser, request) {
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = 20;
+    const offset = (page - 1) * limit;
+    const total = await this.env.DB.prepare('SELECT COUNT(*) as count FROM user_uploads WHERE user_id = ?').bind(currentUser.id).first();
+    const uploads = await this.env.DB.prepare(
+      'SELECT * FROM user_uploads WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    ).bind(currentUser.id, limit, offset).all();
+    return jsonResponse({ success: true, uploads: uploads.results || [], total: total.count, page, totalPages: Math.ceil(total.count / limit) });
   }
 
   // ==================== 用户信息 ====================

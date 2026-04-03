@@ -178,6 +178,9 @@ export function getIndexPage(siteStartTime) {
         <button class="btn" onclick="App.draw()" id="drawBtn">
           <i class="fas fa-bolt"></i> <span>召唤</span>
         </button>
+        <button class="btn" onclick="App.openMultiDraw()" id="multiDrawBtn" style="background:linear-gradient(45deg,#6366F1,#8B5CF6);border-color:#6366F1;">
+          <i class="fas fa-layer-group"></i> <span>10连抽</span>
+        </button>
         <button class="btn secondary" onclick="App.openCraft()" style="background:#FFF7ED; border-color:#FED7AA;">
           <i class="fas fa-flask"></i>
         </button>
@@ -194,6 +197,9 @@ export function getIndexPage(siteStartTime) {
           <i class="fas fa-cloud-upload-alt"></i>
         </button>
         <a href="/library" class="btn secondary"><i class="fas fa-th-large"></i></a>
+        <a href="/draw/history" class="btn secondary" style="background:#FFF1F2; border-color:#FECDD3; color:#E11D48;" title="抽卡记录">
+          <i class="fas fa-scroll"></i>
+        </a>
       </div>
     </div>
 
