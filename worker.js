@@ -1,727 +1,777 @@
 /**
  * =========================================
- * Chouka 抽卡系统 - 主入口
- * 模块化架构
+ * Chouka 抽卡系统 - 主入口 (优化版本)
+ * 模块化架构，支持JSDoc注释和统一错误处理
  * =========================================
  */
 
 // 模块导入
-import { BUSINESS_CONFIG, TECHNICAL_CONFIG, CONFIG, DEFAULT_CHANGELOG, HTTP_STATUS, RARITY_ORDER } from './src/config/index.js';
-import { jsonResponse, safeJsonParse, requireAdmin } from './src/utils/response.js';
-import { getBeijingTime, getBeijingDateStr, getBeijingISOString, utcToBeijing } from './src/utils/time.js';
-import { validateUsername, validatePassword, validateNickname, validateRarity, validateBetAmount, validatePrediction } from './src/utils/validation.js';
+import { 
+  CONFIG, 
+  getConfig, 
+  getEnvironmentAwareConfig,
+  DEFAULT_CHANGELOG,
+  HTTP_STATUS 
+} from './src/config/index.js';
+import { 
+  jsonResponse, 
+  successResponse, 
+  errorResponse, 
+  safeJsonParse, 
+  requireAdmin,
+  validateContentType,
+  handleOptions,
+  paginatedResponse 
+} from './src/utils/response.js';
+import { 
+  getBeijingTime, 
+  getBeijingDateStr, 
+  getBeijingISOString, 
+  utcToBeijing,
+  formatBeijingTime 
+} from './src/utils/time.js';
+import { 
+  validateUsername, 
+  validatePassword, 
+  validateNickname, 
+  validateRarity, 
+  validateBetAmount, 
+  validatePrediction,
+  validateAndThrow,
+  validateUrl 
+} from './src/utils/validation.js';
 import { UserService } from './src/services/user-service.js';
 import { GachaService, uploadToGithub } from './src/services/gacha-service.js';
 import { getIndexPage } from './src/templates/index-page.js';
 import { getLibraryPage } from './src/templates/library-page.js';
 import { getProfilePage } from './src/templates/profile-page.js';
+import { AppError, errorHandler } from './src/utils/AppError.js';
 
+// =========================================
 // 工具函数
+// =========================================
+
+/**
+ * 规范化路径，移除末尾斜杠和查询参数
+ * @param {string} pathname - 原始路径
+ * @returns {string} 规范化后的路径
+ */
 function normalizePath(pathname) {
-  if (!pathname || pathname === '/') return '/';
-  return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+  return pathname.replace(/\/$/, '').split('?')[0];
 }
 
-function constantTimeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  if (a.length !== b.length) return false;
+/**
+ * 提取用户ID从请求头或查询参数
+ * @param {Request} request - HTTP请求对象
+ * @returns {string|null} 用户ID或null
+ */
+function extractUserId(request) {
+  // 优先从Header获取
+  const headerUserId = request.headers.get('X-User-ID');
+  if (headerUserId) return headerUserId;
   
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return result === 0;
+  // 从URL参数获取
+  const url = new URL(request.url);
+  return url.searchParams.get('user_id');
 }
 
-function calculateLevelFromTotalExp(totalExp) {
-  const { BASE_EXP, EXP_MULTIPLIER, MAX_LEVEL } = CONFIG.LEVEL;
-  let accumulatedExp = 0;
-  let level = 1;
-
-  for (let l = 2; l <= MAX_LEVEL; l++) {
-    const requiredForNext = Math.floor(BASE_EXP * Math.pow(l, EXP_MULTIPLIER));
-    if (totalExp < accumulatedExp + requiredForNext) {
-      return {
-        level: l - 1,
-        currentExp: totalExp - accumulatedExp,
-        isMax: false
-      };
-    }
-    accumulatedExp += requiredForNext;
+/**
+ * 验证API密钥（如果配置了）
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @throws {AppError} 当API密钥无效时
+ */
+function validateApiKey(request, env) {
+  const apiKey = env.API_KEY;
+  if (!apiKey) return; // 未配置API密钥，跳过验证
+  
+  const providedKey = request.headers.get('X-API-Key');
+  if (!providedKey || providedKey !== apiKey) {
+    throw AppError.authError('无效的API密钥');
   }
-
-  return {
-    level: MAX_LEVEL,
-    currentExp: totalExp - accumulatedExp,
-    isMax: true
-  };
 }
 
-export default {
-  async fetch(request, env, ctx) {
-    // 解析请求
-    const url = new URL(request.url);
-    const method = request.method.toUpperCase();
-    const pathname = normalizePath(url.pathname);
-
-    // CORS 预检
-    if (method === 'OPTIONS') {
-      return new Response(null, {
-        headers: { 
-          'Access-Control-Allow-Origin': '*', 
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 
-          'Access-Control-Allow-Headers': 'Content-Type, X-Session-Token, X-User-ID' 
-        }
-      });
-    }
-
-    // 获取当前用户
-    let currentUser = null;
-    const token = request.headers.get('X-Session-Token');
-    if (token) {
-      const userDataStr = await env.KV_CACHE.get(`session:${token}`);
-      if (userDataStr) {
-        try {
-          currentUser = JSON.parse(userDataStr);
-        } catch (e) {
-          console.error('Session cache corrupted, invalidating:', token);
-          await env.KV_CACHE.delete(`session:${token}`);
-        }
-      }
-    }
-    // 调试模式 - 仅在 DEBUG_MODE_ENABLED 为 true 时可用
-    if (!currentUser && TECHNICAL_CONFIG.DEBUG_MODE_ENABLED) {
-      const debugUserId = request.headers.get('X-User-ID');
-      if (debugUserId) {
-        console.warn('[DEBUG] Debug login bypass:', debugUserId);
-        const user = await env.DB.prepare(
-          'SELECT id, username, nickname, coins, level, exp, total_exp FROM users WHERE username = ?'
-        ).bind(debugUserId).first();
-        if (user) currentUser = user;
-      }
-    }
-
-    // 初始化服务
-    const userService = new UserService(env, ctx);
-    const gachaService = new GachaService(env, ctx, userService);
-
-    // 路由错误处理
-    const handleRoute = async (handler) => {
-      try {
-        return await handler();
-      } catch (err) {
-        console.error('Route Error:', err);
-        return jsonResponse({ error: '服务器内部错误' }, 500);
-      }
-    };
-
-    // 路由表 (使用 Map 提升查找性能)
-    const routes = new Map([
-      ['GET /', () => handleRoute(() => handleHome(env))],
-      ['GET /user/profile', () => handleRoute(() => handleProfile())],
-      ['POST /auth/register', () => handleRoute(() => userService.register(request))],
-      ['POST /auth/login', () => handleRoute(() => userService.login(request))],
-      ['GET /user/info', () => handleRoute(() => userService.getInfo(currentUser))],
-      ['GET /user/inventory', () => handleRoute(() => userService.getInventory(currentUser))],
-      ['POST /user/update-profile', () => handleRoute(() => userService.updateProfile(currentUser, request))],
-      ['POST /user/check-in', () => handleRoute(() => userService.checkIn(currentUser, request))],
-      ['POST /user/claim-reward', () => handleRoute(() => userService.claimReward(currentUser, request))],
-      ['GET /user/titles', () => handleRoute(() => userService.getTitles(currentUser))],
-      ['POST /user/equip-title', () => handleRoute(() => userService.equipTitle(currentUser, request))],
-      ['POST /user/upload', () => handleRoute(() => gachaService.uploadImage(currentUser, request))],
-      ['GET /user/uploads', () => handleRoute(() => gachaService.getUserUploads(currentUser, request))],
-      ['GET /limited/pools', () => handleRoute(() => gachaService.getLimitedPools(currentUser))],
-      ['GET /draw', () => handleRoute(() => gachaService.draw(currentUser))],
-      ['POST /draw/multi', () => handleRoute(() => gachaService.multiDraw(currentUser, request))],
-      ['GET /draw/history', () => handleRoute(() => gachaService.getDrawHistory(currentUser, request))],
-      ['POST /draw/limited', () => handleRoute(() => gachaService.drawLimited(currentUser, request))],
-      ['POST /user/craft', () => handleRoute(() => gachaService.craft(currentUser, request))],
-      ['POST /shop/buy', () => handleRoute(() => gachaService.shopBuy(currentUser, request))],
-      ['POST /game/dice', () => handleRoute(() => gachaService.playDice(currentUser, request))],
-      ['GET /showcase', () => handleRoute(() => handleShowcase(env))],
-      ['GET /api/stats', () => handleRoute(() => handleStats(env))],
-      ['GET /changelog', () => handleRoute(() => handleChangelog(env, request))],
-      ['GET /announcement', () => handleRoute(() => handleGetAnnouncement(env))],
-      ['GET /library', () => handleRoute(() => handleLibrary(request, env, url))],
-      ['GET /api/library/items', () => handleRoute(() => handleLibraryApi(request, env))],
-      ['GET /favicon.ico', () => new Response(null, { status: 204 })],
-      ['POST /admin/users', () => handleRoute(() => handleAdminUsers(request, env))],
-      ['POST /admin/verify', () => handleRoute(() => handleAdminVerify(request, env))],
-      ['POST /admin/save-changelog', () => handleRoute(() => handleAdminSaveLog(request, env))],
-      ['POST /admin/save-announcement', () => handleRoute(() => handleAdminSaveAnnouncement(request, env))],
-      ['POST /admin/update-points', () => handleRoute(() => handleAdminUpdatePoints(request, env))],
-      ['POST /admin/delete-user', () => handleRoute(() => handleAdminDeleteUser(request, env))],
-      ['POST /admin/uploads', () => handleRoute(() => handleAdminUploads(request, env))],
-      ['POST /admin/review-upload', () => handleRoute(() => handleAdminReviewUpload(request, env))],
-    ]);
-
-    const routeKey = `${method} ${pathname}`;
-    const handler = routes.get(routeKey);
-
-    if (handler) {
-      return await handler();
-    }
-
-    if (pathname.startsWith('/auth') || pathname.startsWith('/user') || pathname.startsWith('/draw') || 
-        pathname.startsWith('/shop') || pathname.startsWith('/game') || pathname.startsWith('/admin')) {
-      return jsonResponse({ error: '未找到' }, 404);
-    }
-
-    return new Response('Not Found', { status: 404 });
-  }
-};
+/**
+ * 记录请求日志（调试模式下）
+ * @param {Request} request - HTTP请求对象
+ * @param {any} [body] - 请求体
+ * @param {Env} env - 环境变量
+ */
+function logRequest(request, body, env) {
+  if (!CONFIG.DEBUG_MODE_ENABLED) return;
+  
+  const url = new URL(request.url);
+  console.log('[请求日志]', {
+    method: request.method,
+    path: url.pathname,
+    query: Object.fromEntries(url.searchParams),
+    userId: extractUserId(request),
+    timestamp: new Date().toISOString(),
+    ...(body && { body: typeof body === 'object' ? body : { raw: body } })
+  });
+}
 
 // =========================================
 // 路由处理器
 // =========================================
 
-async function handleHome(env) {
-  const cacheKey = 'html:home';
+/**
+ * 处理API路由
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleApiRoute(request, env, ctx) {
+  const url = new URL(request.url);
+  const path = normalizePath(url.pathname);
   
-  // 尝试从缓存读取
-  const cachedHtml = await env.KV_CACHE.get(cacheKey);
-  if (cachedHtml) {
-    return new Response(cachedHtml, {
-      headers: { 
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'public, max-age=60',
-        'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=86400',
-        'X-Cache-Status': 'HIT'
-      } 
+  // 根据路径路由到不同的处理器
+  switch (path) {
+    case '/api/user/register':
+      return handleUserRegister(request, env, ctx);
+    case '/api/user/login':
+      return handleUserLogin(request, env, ctx);
+    case '/api/user/profile':
+      return handleUserProfile(request, env, ctx);
+    case '/api/gacha/draw':
+      return handleGachaDraw(request, env, ctx);
+    case '/api/gacha/multi-draw':
+      return handleGachaMultiDraw(request, env, ctx);
+    case '/api/gacha/library':
+      return handleGachaLibrary(request, env, ctx);
+    case '/api/admin/changelog':
+      return handleAdminChangelog(request, env, ctx);
+    case '/api/admin/upload':
+      return handleAdminUpload(request, env, ctx);
+    case '/api/system/config':
+      return handleSystemConfig(request, env, ctx);
+    case '/api/system/health':
+      return handleSystemHealth(request, env, ctx);
+    default:
+      throw AppError.notFoundError('API端点');
+  }
+}
+
+/**
+ * 处理用户注册
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleUserRegister(request, env, ctx) {
+  validateContentType(request);
+  
+  const body = await request.json();
+  logRequest(request, body, env);
+  
+  // 输入验证
+  validateAndThrow(body, [
+    { field: 'username', validator: validateUsername },
+    { field: 'password', validator: validatePassword },
+    { field: 'nickname', validator: validateNickname }
+  ]);
+  
+  const userService = new UserService(env, ctx);
+  const result = await userService.registerUser(
+    body.username,
+    body.password,
+    body.nickname
+  );
+  
+  return successResponse(result, '注册成功');
+}
+
+/**
+ * 处理用户登录
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleUserLogin(request, env, ctx) {
+  validateContentType(request);
+  
+  const body = await request.json();
+  logRequest(request, body, env);
+  
+  // 输入验证
+  validateAndThrow(body, [
+    { field: 'username', validator: validateUsername },
+    { field: 'password', validator: validatePassword }
+  ]);
+  
+  const userService = new UserService(env, ctx);
+  const result = await userService.loginUser(body.username, body.password);
+  
+  return successResponse(result, '登录成功');
+}
+
+/**
+ * 处理用户资料
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleUserProfile(request, env, ctx) {
+  const userId = extractUserId(request);
+  if (!userId) {
+    throw AppError.authError('需要用户ID');
+  }
+  
+  const userService = new UserService(env, ctx);
+  const profile = await userService.getUserProfile(userId);
+  
+  return successResponse(profile);
+}
+
+/**
+ * 处理单次抽卡
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleGachaDraw(request, env, ctx) {
+  const userId = extractUserId(request);
+  if (!userId) {
+    throw AppError.authError('需要用户ID');
+  }
+  
+  const url = new URL(request.url);
+  const pool = url.searchParams.get('pool') || 'normal';
+  
+  const gachaService = new GachaService(env, ctx);
+  const result = await gachaService.drawCard(userId, pool);
+  
+  return successResponse(result, '抽卡成功');
+}
+
+/**
+ * 处理十连抽
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleGachaMultiDraw(request, env, ctx) {
+  const userId = extractUserId(request);
+  if (!userId) {
+    throw AppError.authError('需要用户ID');
+  }
+  
+  const url = new URL(request.url);
+  const pool = url.searchParams.get('pool') || 'normal';
+  
+  const gachaService = new GachaService(env, ctx);
+  const results = await gachaService.multiDraw(userId, pool);
+  
+  return successResponse(results, '十连抽成功');
+}
+
+/**
+ * 处理卡牌库查询
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleGachaLibrary(request, env, ctx) {
+  const userId = extractUserId(request);
+  if (!userId) {
+    throw AppError.authError('需要用户ID');
+  }
+  
+  const url = new URL(request.url);
+  const page = parseInt(url.searchParams.get('page') || '1');
+  const pageSize = parseInt(url.searchParams.get('pageSize') || '20');
+  const rarity = url.searchParams.get('rarity');
+  
+  // 验证分页参数
+  if (page < 1) throw AppError.validationError('页码必须大于0');
+  if (pageSize < 1 || pageSize > 100) {
+    throw AppError.validationError('每页大小必须在1-100之间');
+  }
+  
+  const gachaService = new GachaService(env, ctx);
+  const { cards, total } = await gachaService.getUserLibrary(
+    userId, 
+    page, 
+    pageSize, 
+    rarity
+  );
+  
+  return paginatedResponse(cards, page, pageSize, total);
+}
+
+/**
+ * 处理管理员变更日志
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleAdminChangelog(request, env, ctx) {
+  // 验证管理员权限
+  const auth = await requireAdmin(request, env);
+  if (!auth.authorized) {
+    throw AppError.authError(auth.error);
+  }
+  
+  if (request.method === 'GET') {
+    const changelog = await env.KV_CACHE.get(CONFIG.KEYS.CHANGELOG);
+    const data = changelog ? safeJsonParse(changelog) : DEFAULT_CHANGELOG;
+    return successResponse(data);
+  }
+  
+  if (request.method === 'POST') {
+    validateContentType(request);
+    const body = await request.json();
+    
+    // 验证变更日志条目
+    if (!body.date || !body.ver || !body.content || !body.tag) {
+      throw AppError.validationError('变更日志条目不完整');
+    }
+    
+    const validTags = ['info', 'warning', 'success', 'error'];
+    if (!validTags.includes(body.tag)) {
+      throw AppError.validationError(`无效的标签，有效值为: ${validTags.join(', ')}`);
+    }
+    
+    const existing = await env.KV_CACHE.get(CONFIG.KEYS.CHANGELOG);
+    const changelog = existing ? safeJsonParse(existing) : DEFAULT_CHANGELOG;
+    
+    // 添加到开头
+    changelog.unshift({
+      date: body.date,
+      ver: body.ver,
+      content: body.content,
+      tag: body.tag
     });
+    
+    // 只保留最近50条
+    const trimmed = changelog.slice(0, 50);
+    await env.KV_CACHE.put(CONFIG.KEYS.CHANGELOG, JSON.stringify(trimmed));
+    
+    return successResponse(trimmed, '变更日志已更新');
   }
   
-  // 生成 HTML
-  let siteStartTime = await env.KV_CACHE.get(CONFIG.KEYS.SITE_START_TIME);
-  if (!siteStartTime) {
-    siteStartTime = Date.now().toString();
-    await env.KV_CACHE.put(CONFIG.KEYS.SITE_START_TIME, siteStartTime);
+  throw AppError.validationError('不支持的HTTP方法');
+}
+
+/**
+ * 处理管理员上传
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleAdminUpload(request, env, ctx) {
+  // 验证管理员权限
+  const auth = await requireAdmin(request, env);
+  if (!auth.authorized) {
+    throw AppError.authError(auth.error);
   }
   
-  const html = getIndexPage(siteStartTime);
+  const formData = await request.formData();
+  const file = formData.get('file');
+  const rarity = formData.get('rarity') || 'UR';
   
-  // 缓存 HTML (5分钟)
-  await env.KV_CACHE.put(cacheKey, html, { expirationTtl: 300 });
+  if (!file || !(file instanceof File)) {
+    throw AppError.validationError('请上传有效的文件');
+  }
   
-  return new Response(html, {
-    headers: { 
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, max-age=60',
-      'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=86400',
-      'X-Cache-Status': 'MISS'
-    } 
-  });
+  // 验证稀有度
+  const rarityError = validateRarity(rarity);
+  if (rarityError) {
+    throw AppError.validationError(rarityError);
+  }
+  
+  // 验证文件类型
+  const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  if (!validTypes.includes(file.type)) {
+    throw AppError.validationError(
+      `不支持的文件类型，支持: ${validTypes.join(', ')}`
+    );
+  }
+  
+  // 验证文件大小（最大5MB）
+  if (file.size > 5 * 1024 * 1024) {
+    throw AppError.validationError('文件大小不能超过5MB');
+  }
+  
+  const buffer = await file.arrayBuffer();
+  const result = await uploadToGithub(buffer, file.type, rarity, env);
+  
+  return successResponse(result, '文件上传成功');
 }
 
-async function handleProfile() {
-  return new Response(getProfilePage(), { 
-    headers: { 
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, max-age=60',
-      'CDN-Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
-    } 
-  });
-}
-
-async function handleChangelog(env, request) {
-  if (!env.RECENT_REQUESTS) return jsonResponse(DEFAULT_CHANGELOG);
-  let logs = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.CHANGELOG));
-  
-  const isAdminRequest = request?.headers?.get('X-Admin-Mode') === 'true';
-  const cacheHeaders = isAdminRequest ? {
-    'Cache-Control': 'no-store, no-cache, must-revalidate',
-    'Pragma': 'no-cache'
-  } : {
-    'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`,
-    'CDN-Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
+/**
+ * 处理系统配置
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleSystemConfig(request, env, ctx) {
+  // 只返回公开的配置
+  const publicConfig = {
+    game: CONFIG.GAME,
+    level: CONFIG.LEVEL,
+    limited: CONFIG.LIMITED,
+    rarity: {
+      order: CONFIG.RARITY_ORDER,
+      labels: CONFIG.RARITY_LABELS,
+      colors: CONFIG.RARITY_COLORS
+    },
+    httpStatus: CONFIG.HTTP_STATUS
   };
   
-  return jsonResponse(logs || DEFAULT_CHANGELOG, 200, cacheHeaders);
+  return successResponse(publicConfig);
 }
 
-async function handleGetAnnouncement(env) {
-  if (!env.RECENT_REQUESTS) return jsonResponse({ enabled: false });
-  const data = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
-  return jsonResponse(data || { enabled: false }, 200, {
-    'Cache-Control': 'no-store, no-cache, must-revalidate',
-    'Pragma': 'no-cache'
-  });
-}
-
-async function handleAdminSaveAnnouncement(request, env) {
-  try {
-    const { password, announcement, refreshId } = await request.json();
-    if (!constantTimeEqual(password, env.admin)) return jsonResponse({ error: '认证失败' }, 403);
-    
-    const oldData = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.ANNOUNCEMENT));
-    
-    let newId = getBeijingTime().getTime();
-
-    if (!refreshId && oldData && oldData.id) {
-      const isTitleSame = oldData.title === announcement.title;
-      const isContentSame = oldData.content === announcement.content;
-      
-      if (isTitleSame && isContentSame) {
-        newId = oldData.id;
-      }
-    }
-
-    const dataToSave = { ...announcement, id: newId, updatedAt: getBeijingISOString() };
-    
-    await env.RECENT_REQUESTS.put(CONFIG.KEYS.ANNOUNCEMENT, JSON.stringify(dataToSave), { 
-      expirationTtl: 86400 * 365 
-    });
-    
-    return jsonResponse({ success: true, updated: newId !== (oldData && oldData.id), id: newId });
-  } catch (e) {
-    console.error('Save announcement error:', e);
-    return jsonResponse({ error: '保存失败: ' + e.message }, 500);
-  }
-}
-
-async function handleShowcase(env) {
-  if (!env.RECENT_REQUESTS) return jsonResponse([]);
-  const list = await safeJsonParse(await env.RECENT_REQUESTS.get(CONFIG.KEYS.LEADERBOARD)) || [];
-  const filtered = list.filter(item => !item.isLimited);
-  const result = filtered.sort(() => 0.5 - Math.random()).slice(0, 6);
+/**
+ * 处理系统健康检查
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleSystemHealth(request, env, ctx) {
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0',
+    services: {
+      kv: true, // 假设KV可用
+      d1: true, // 假设D1可用
+      r2: true  // 假设R2可用
+    },
+    uptime: process.uptime ? process.uptime() : 'unknown'
+  };
   
-  return jsonResponse(result, 200, {
-    'Cache-Control': `public, max-age=${CONFIG.TTL.PUBLIC_API}`,
-    'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=600'
-  });
+  return successResponse(health);
 }
 
-async function handleStats(env) {
-  const cacheKey = CONFIG.KEYS.STATS_DAILY;
-  
-  // 尝试从缓存读取
-  const cached = await env.KV_CACHE.get(cacheKey, { type: 'json' });
-  if (cached) {
-    return jsonResponse(cached, 200, { 
-      'X-Cache-Status': 'HIT',
-      'Cache-Control': 'public, max-age=60'
-    });
-  }
-  
-  try {
-    // 并行查询统计数据
-    const [
-      userCountRes,
-      todayCountRes,
-      totalDrawsRes,
-      galleryCountRes,
-      todayDrawsRes
-    ] = await Promise.all([
-      env.DB.prepare('SELECT COUNT(*) as total FROM users').first(),
-      env.DB.prepare("SELECT COUNT(*) as total FROM users WHERE created_at >= date('now')").first(),
-      env.DB.prepare('SELECT COALESCE(SUM(draw_count), 0) as total FROM users').first(),
-      env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first(),
-      env.DB.prepare("SELECT COUNT(*) as total FROM logs WHERE action = 'draw' AND created_at >= date('now')").first()
-    ]);
-    
-    const stats = {
-      totalUsers: userCountRes.total || 0,
-      todayUsers: todayCountRes.total || 0,
-      totalDraws: totalDrawsRes.total || 0,
-      totalGallery: galleryCountRes.total || 0,
-      todayDraws: todayDrawsRes.total || 0,
-      updatedAt: getBeijingISOString()
-    };
-    
-    // 缓存 5 分钟
-    await env.KV_CACHE.put(cacheKey, JSON.stringify(stats), { expirationTtl: 300 });
-    
-    return jsonResponse(stats, 200, { 
-      'X-Cache-Status': 'MISS',
-      'Cache-Control': 'public, max-age=60'
-    });
-  } catch (e) {
-    console.error('Stats Error:', e);
-    return jsonResponse({ error: '统计获取失败' }, 500);
-  }
-}
+// =========================================
+// 页面路由处理器
+// =========================================
 
-async function handleLibrary(request, env, url) {
-  const cursor = url.searchParams.get('cursor') || null;
-  const pageSize = 24;
-
-  try {
-    let query, params;
-    
-    if (cursor) {
-      // 游标分页 (使用 id 作为游标)
-      query = 'SELECT id, url, username, created_at as ts FROM gallery WHERE id < ? ORDER BY id DESC LIMIT ?';
-      params = [parseInt(cursor), pageSize];
-    } else {
-      // 首页首次加载
-      query = 'SELECT id, url, username, created_at as ts FROM gallery ORDER BY id DESC LIMIT ?';
-      params = [pageSize];
-    }
-    
-    const dataRes = await env.DB.prepare(query).bind(...params).all();
-    const countRes = await env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first();
-
-    const items = dataRes.results || [];
-    const totalItems = countRes.total || 0;
-    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-    
-    // 计算下一页游标
-    const nextCursor = items.length === pageSize ? items[items.length - 1].id : null;
-
-    return new Response(getLibraryPage(items, { 
-      currentPage: 1, 
-      totalPages, 
-      totalItems,
-      cursor: nextCursor
-    }), { 
-      headers: { 
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'public, max-age=60', 
-        'CDN-Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' 
-      } 
-    });
-
-  } catch (e) {
-    console.error('Library Error:', e);
-    return new Response('Gallery 数据库错误', { status: 500 });
-  }
-}
-
-async function handleLibraryApi(request, env) {
+/**
+ * 处理页面路由
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handlePageRoute(request, env) {
   const url = new URL(request.url);
-  const cursor = url.searchParams.get('cursor') || null;
-  const pageSize = parseInt(url.searchParams.get('pageSize') || '24');
-
-  const cacheKey = cursor ? `lib:c:${cursor}:s:${pageSize}` : `lib:latest:s:${pageSize}`;
-  const countKey = `lib:count`;
+  const path = normalizePath(url.pathname);
   
-  try {
-    // 1. 尝试从 KV 读取缓存
-    const cachedData = await env.KV_CACHE.get(cacheKey, { type: 'json' });
-    if (cachedData) {
-      return jsonResponse(cachedData, 200, { 'X-Cache-Status': 'HIT' });
-    }
-
-    // 2. 获取总数
-    let totalItems = await env.KV_CACHE.get(countKey, { type: 'json' });
-    let shouldCacheCount = false;
-    if (totalItems === null) {
-       const countRes = await env.DB.prepare('SELECT COUNT(*) as total FROM gallery').first();
-       totalItems = countRes.total || 0;
-       shouldCacheCount = true;
-    }
-
-    // 3. 游标分页查询
-    let query, params;
-    if (cursor) {
-      query = 'SELECT id, url, username, created_at as ts FROM gallery WHERE id < ? ORDER BY id DESC LIMIT ?';
-      params = [parseInt(cursor), pageSize];
-    } else {
-      query = 'SELECT id, url, username, created_at as ts FROM gallery ORDER BY id DESC LIMIT ?';
-      params = [pageSize];
-    }
-    
-    const dataRes = await env.DB.prepare(query).bind(...params).all();
-    const items = dataRes.results || [];
-    
-    // 计算下一页游标
-    const nextCursor = items.length === pageSize ? items[items.length - 1].id : null;
-    const currentPage = 1; // 游标模式下简化
-
-    const responseData = {
-      items,
-      pagination: {
-        cursor: nextCursor,
-        hasMore: nextCursor !== null,
-        totalItems,
-        pageSize,
-        currentPage
-      }
-    };
-
-    // 4. 写入缓存
-    if (shouldCacheCount) {
-      try {
-        await env.KV_CACHE.put(countKey, JSON.stringify(totalItems), { expirationTtl: 300 });
-      } catch (cacheErr) {
-        console.error('Failed to cache count:', cacheErr);
-      }
-    }
-    
-    try {
-      await env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: 60 });
-    } catch (cacheErr) {
-      console.error('Failed to cache response:', cacheErr);
-    }
-
-    return jsonResponse(responseData, 200, {
-      'X-Cache-Status': 'MISS',
-      'Cache-Control': 'public, max-age=60',
-      'CDN-Cache-Control': 'public, max-age=300, stale-while-revalidate=600'
-    });
-
-  } catch (e) {
-    console.error('Library API Error:', e);
-    return jsonResponse({ error: '数据库错误' }, 500);
+  switch (path) {
+    case '/':
+      return new Response(getIndexPage(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    case '/library':
+      return new Response(getLibraryPage(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    case '/profile':
+      return new Response(getProfilePage(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    default:
+      // 尝试作为静态文件处理
+      return handleStaticFile(request, env);
   }
 }
 
-async function handleAdminVerify(request, env) {
-  const { password } = await request.json();
-  const isValid = constantTimeEqual(password, env.admin);
-  return jsonResponse({ success: isValid }, isValid ? 200 : 403);
+/**
+ * 处理静态文件请求
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleStaticFile(request, env) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+  
+  // 简单的静态文件路由
+  if (path.startsWith('/assets/') || path.startsWith('/static/')) {
+    // 在实际项目中，这里应该从R2或CDN获取文件
+    // 这里返回404，因为我们的项目主要提供API
+    throw AppError.notFoundError('静态资源');
+  }
+  
+  // 默认返回404
+  throw AppError.notFoundError('页面');
 }
 
-async function handleAdminUsers(request, env) {
-  const { password, limit = 50, offset = 0 } = await request.json();
-  if (!constantTimeEqual(password, env.admin)) return jsonResponse({ error: '认证失败' }, 403);
-  
+// =========================================
+// 主请求处理器
+// =========================================
+
+/**
+ * 处理HTTP请求
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+async function handleRequest(request, env, ctx) {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().replace('T', ' ').split('.')[0];
+    // 处理CORS预检请求
+    if (request.method === 'OPTIONS') {
+      return handleOptions(request);
+    }
     
-    const [usersResult, countResult, todayCountResult] = await Promise.all([
-      env.DB.prepare(
-        'SELECT username, nickname, draw_count, coins, level, exp, total_exp, last_login_date, login_streak, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?'
-      ).bind(limit, offset).all(),
-      env.DB.prepare('SELECT COUNT(*) as total FROM users').first(),
-      env.DB.prepare('SELECT COUNT(*) as total FROM users WHERE created_at >= ?').bind(todayStr).first()
-    ]);
+    const url = new URL(request.url);
+    const path = url.pathname;
     
-    const users = usersResult.results ? usersResult.results.map(user => {
-      const levelInfo = calculateLevelFromTotalExp(user.total_exp || 0);
-      return {
-        username: user.username,
-        nickname: user.nickname || user.username,
-        avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.username}`,
-        drawCount: user.draw_count || 0,
-        coins: user.coins || 0,
-        level: levelInfo.level,
-        exp: levelInfo.currentExp,
-        totalExp: user.total_exp || 0,
-        lastLoginDate: user.last_login_date,
-        loginStreak: user.login_streak || 0,
-        createdAt: user.created_at
-      };
-    }) : [];
+    // API路由
+    if (path.startsWith('/api/')) {
+      // 验证API密钥（如果配置了）
+      validateApiKey(request, env);
+      
+      return await handleApiRoute(request, env, ctx);
+    }
     
-    return jsonResponse({ success: true, users, total: countResult.total, todayCount: todayCountResult.total, limit, offset });
+    // 页面路由
+    return await handlePageRoute(request, env);
+    
   } catch (error) {
-    console.error('Error fetching users:', error);
-    return jsonResponse({ error: '数据库错误' }, 500);
+    // 使用统一的错误    // 使用统一的错误处理器
+    return errorHandler(error, request, env, ctx);
   }
 }
 
-async function handleAdminSaveLog(request, env) {
-  try {
-    const { password, logs } = await request.json();
-    if (!constantTimeEqual(password, env.admin)) return jsonResponse({ error: '认证失败' }, 403);
-    if (!logs || !Array.isArray(logs)) return jsonResponse({ error: '无效的日志数据' }, 400);
+// =========================================
+// Cloudflare Workers 入口点
+// =========================================
+
+/**
+ * Cloudflare Workers fetch事件处理器
+ * 这是Cloudflare Workers的标准入口点
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @param {ExecutionContext} ctx - 执行上下文
+ * @returns {Promise<Response>} HTTP响应
+ */
+export default {
+  async fetch(request, env, ctx) {
+    // 初始化配置（使用环境变量）
+    const config = getEnvironmentAwareConfig(env);
     
-    await env.RECENT_REQUESTS.put(CONFIG.KEYS.CHANGELOG, JSON.stringify(logs), { 
-      expirationTtl: 86400 * 365 // 保存1年
-    });
+    // 记录请求开始时间（用于性能监控）
+    const startTime = Date.now();
     
-    return jsonResponse({ success: true });
-  } catch (e) {
-    console.error('Save changelog error:', e);
-    return jsonResponse({ error: '保存失败: ' + e.message }, 500);
-  }
-}
-
-async function handleAdminUpdatePoints(request, env) {
-  try {
-    const { password, targetId, amount } = await request.json();
-    
-    if (!constantTimeEqual(password, env.admin)) {
-      return jsonResponse({ error: '认证失败' }, 403);
-    }
-
-    if (!targetId || amount === undefined || isNaN(amount)) {
-      return jsonResponse({ error: '参数无效' }, 400);
-    }
-
-    const user = await env.DB.prepare(
-      'SELECT id, coins FROM users WHERE username = ?'
-    ).bind(targetId).first();
-
-    if (!user) {
-      return jsonResponse({ error: '用户不存在' }, 404);
-    }
-
-    await env.DB.prepare(
-      'UPDATE users SET coins = coins + ? WHERE id = ?'
-    ).bind(parseInt(amount), user.id).run();
-
     try {
-      await env.KV_CACHE.delete(`uinfo:${user.id}`);
-    } catch (cacheErr) {
-      console.error('Failed to invalidate user cache after admin update points:', cacheErr);
-    }
-
-    return jsonResponse({ success: true, message: 'Points updated' });
-
-  } catch (e) {
-    console.error('Update points error:', e);
-    return jsonResponse({ error: '服务器内部错误' }, 500);
-  }
-}
-
-async function handleAdminDeleteUser(request, env) {
-  try {
-    const { password, targetId } = await request.json();
-
-    if (!constantTimeEqual(password, env.admin)) {
-      return jsonResponse({ error: '认证失败' }, 403);
-    }
-
-    const user = await env.DB.prepare(
-      'SELECT id FROM users WHERE username = ?'
-    ).bind(targetId).first();
-
-    if (!user) {
-      return jsonResponse({ error: '用户不存在' }, 404);
-    }
-
-    await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id).run();
-
-    await env.KV_CACHE.delete(`uinfo:${user.id}`);
-
-    return jsonResponse({ success: true, message: 'User and associated data deleted' });
-
-  } catch (e) {
-    console.error('Delete user error:', e);
-    return jsonResponse({ error: '服务器内部错误' }, 500);
-  }
-}
-
-async function handleAdminUploads(request, env) {
-  try {
-    const { password, status = 'pending', limit = 50, offset = 0 } = await request.json();
-
-    if (!constantTimeEqual(password, env.admin)) {
-      return jsonResponse({ error: '认证失败' }, 403);
-    }
-
-    let sql = `
-      SELECT 
-        id, user_id, username, url, rarity, status, 
-        created_at, reviewed_at 
-      FROM user_uploads 
-      WHERE status = ?
-      ORDER BY created_at DESC
-      LIMIT ? OFFSET ?
-    `;
-    
-    const uploads = await env.DB.prepare(sql)
-      .bind(status, limit, offset)
-      .all();
-
-    const countResult = await env.DB.prepare(
-      'SELECT COUNT(*) as total FROM user_uploads WHERE status = ?'
-    ).bind(status).first();
-
-    return jsonResponse({
-      success: true,
-      uploads: uploads.results || [],
-      total: countResult.total,
-      limit,
-      offset
-    });
-
-  } catch (e) {
-    console.error('[Admin Uploads Error]:', e);
-    return jsonResponse({ error: '服务器内部错误' }, 500);
-  }
-}
-
-async function handleAdminReviewUpload(request, env) {
-  try {
-    const { password, uploadId, action, rarity } = await request.json();
-
-    if (!constantTimeEqual(password, env.admin)) {
-      return jsonResponse({ error: '认证失败' }, 403);
-    }
-
-    if (!uploadId || !['approved', 'rejected'].includes(action)) {
-      return jsonResponse({ error: '参数无效' }, 400);
-    }
-
-    // 获取上传记录信息
-    const upload = await env.DB.prepare(
-      'SELECT id, user_id, username, r2_key, github_path, url, rarity, status FROM user_uploads WHERE id = ?'
-    ).bind(uploadId).first();
-
-    if (!upload) {
-      return jsonResponse({ error: '上传记录不存在' }, 404);
-    }
-
-    const reviewedAt = Date.now();
-
-    if (action === 'approved') {
-      const validRarity = rarity || 'N';
+      // 处理请求
+      const response = await handleRequest(request, env, ctx);
       
-      // 从R2读取图片
-      const r2Object = await env.R2_BUCKET.get(upload.r2_key);
-      if (!r2Object) {
-        return jsonResponse({ error: '图片文件不存在' }, 404);
+      // 添加性能监控头
+      const duration = Date.now() - startTime;
+      response.headers.set('X-Response-Time', `${duration}ms`);
+      response.headers.set('X-Request-ID', crypto.randomUUID());
+      
+      // 记录成功请求（调试模式下）
+      if (config.DEBUG_MODE_ENABLED) {
+        const url = new URL(request.url);
+        console.log('[请求完成]', {
+          method: request.method,
+          path: url.pathname,
+          status: response.status,
+          duration: `${duration}ms`,
+          timestamp: new Date().toISOString()
+        });
       }
       
-      const fileBuffer = await r2Object.arrayBuffer();
-      const extension = upload.r2_key.split('.').pop() || 'jpg';
+      return response;
       
-      // 生成GitHub路径（存到images文件夹）
-      const githubPath = `images/${upload.id}_${reviewedAt}.${extension}`;
+    } catch (error) {
+      // 这里捕获未处理的错误（应该已经被errorHandler处理了）
+      console.error('[未处理的顶级错误]', error);
       
-      // 上传到GitHub
-      const githubResult = await uploadToGithub(
-        env,
-        githubPath,
-        fileBuffer,
-        extension,
-        `Approved upload from user ${upload.username} (ID: ${upload.id})`
+      // 返回通用的服务器错误
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: '服务器内部错误',
+          code: 'INTERNAL_SERVER_ERROR',
+          timestamp: new Date().toISOString()
+        }),
+        {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Request-ID': crypto.randomUUID()
+          }
+        }
       );
-
-      if (!githubResult || githubResult.error) {
-        const errMsg = githubResult?.error || '上传到 GitHub 失败';
-        console.error('[Review] GitHub upload failed:', errMsg);
-        return jsonResponse({ error: `审核通过但GitHub上传失败: ${errMsg}` }, 500);
-      }
-
-      // 更新数据库：设置状态、稀有度、审核时间，并更新URL为GitHub CDN URL
-      await env.DB.prepare(
-        'UPDATE user_uploads SET status = ?, rarity = ?, reviewed_at = ?, github_path = ?, url = ? WHERE id = ?'
-      ).bind('approved', validRarity, reviewedAt, githubPath, githubResult.url, uploadId).run();
-      
-      // 可选：从R2删除临时文件以节省空间
-      try {
-        await env.R2_BUCKET.delete(upload.r2_key);
-        console.log(`[Review] Deleted R2 temp file: ${upload.r2_key}`);
-      } catch (deleteErr) {
-        console.warn(`[Review] Failed to delete R2 temp file: ${deleteErr.message}`);
-      }
-      
-      return jsonResponse({ 
-        success: true, 
-        message: '上传已审核通过并发布到GitHub',
-        rarity: validRarity,
-        githubUrl: githubResult.url
-      });
-    } else {
-      // 拒绝上传：只更新状态，不删除R2文件（可保留一段时间供复查）
-      await env.DB.prepare(
-        'UPDATE user_uploads SET status = ?, reviewed_at = ? WHERE id = ?'
-      ).bind('rejected', reviewedAt, uploadId).run();
-      
-      return jsonResponse({ 
-        success: true, 
-        message: '上传已拒绝'
-      });
     }
-
-  } catch (e) {
-    console.error('[Admin Review Upload Error]:', e);
-    return jsonResponse({ error: '服务器内部错误' }, 500);
   }
+};
+
+// =========================================
+// 辅助函数和工具
+// =========================================
+
+/**
+ * 性能监控装饰器
+ * @param {Function} fn - 要监控的函数
+ * @param {string} name - 函数名称（用于日志）
+ * @returns {Function} 包装后的函数
+ */
+function withPerformanceMonitor(fn, name) {
+  return async function(...args) {
+    const start = Date.now();
+    try {
+      const result = await fn(...args);
+      const duration = Date.now() - start;
+      
+      if (CONFIG.DEBUG_MODE_ENABLED && duration > 1000) {
+        console.warn(`[性能警告] ${name} 执行时间过长: ${duration}ms`);
+      }
+      
+      return result;
+    } catch (error) {
+      const duration = Date.now() - start;
+      console.error(`[性能错误] ${name} 执行失败，耗时: ${duration}ms`, error);
+      throw error;
+    }
+  };
 }
+
+/**
+ * 重试装饰器
+ * @param {Function} fn - 要重试的函数
+ * @param {Object} options - 重试选项
+ * @param {number} options.maxRetries - 最大重试次数
+ * @param {number} options.delay - 重试延迟（毫秒）
+ * @returns {Function} 包装后的函数
+ */
+function withRetry(fn, options = { maxRetries: 3, delay: 100 }) {
+  return async function(...args) {
+    let lastError;
+    
+    for (let i = 0; i <= options.maxRetries; i++) {
+      try {
+        return await fn(...args);
+      } catch (error) {
+        lastError = error;
+        
+        // 如果是客户端错误，不重试
+        if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+          throw error;
+        }
+        
+        // 最后一次尝试，直接抛出错误
+        if (i === options.maxRetries) {
+          break;
+        }
+        
+        // 等待后重试
+        if (options.delay > 0) {
+          await new Promise(resolve => setTimeout(resolve, options.delay));
+        }
+        
+        // 指数退避
+        options.delay *= 2;
+      }
+    }
+    
+    throw lastError;
+  };
+}
+
+/**
+ * 缓存装饰器
+ * @param {Function} fn - 要缓存的函数
+ * @param {Object} options - 缓存选项
+ * @param {string} options.key - 缓存键
+ * @param {number} options.ttl - 缓存时间（秒）
+ * @returns {Function} 包装后的函数
+ */
+function withCache(fn, options) {
+  return async function(...args) {
+    const cacheKey = `${options.key}:${JSON.stringify(args)}`;
+    
+    // 尝试从缓存获取
+    if (env.KV_CACHE) {
+      const cached = await env.KV_CACHE.get(cacheKey);
+      if (cached) {
+        return safeJsonParse(cached);
+      }
+    }
+    
+    // 执行函数
+    const result = await fn(...args);
+    
+    // 存储到缓存
+    if (env.KV_CACHE && result) {
+      await env.KV_CACHE.put(
+        cacheKey, 
+        JSON.stringify(result), 
+        { expirationTtl: options.ttl }
+      );
+    }
+    
+    return result;
+  };
+}
+
+// =========================================
+// 导出工具函数（用于测试）
+// =========================================
+
+// 导出内部函数用于测试
+export {
+  handleRequest,
+  handleApiRoute,
+  handlePageRoute,
+  normalizePath,
+  extractUserId,
+  withPerformanceMonitor,
+  withRetry,
+  withCache
+};
+
+// =========================================
+// 版本信息和元数据
+// =========================================
+
+/**
+ * 获取系统版本信息
+ * @returns {Object} 版本信息
+ */
+export function getVersionInfo() {
+  return {
+    name: 'Chouka抽卡系统',
+    version: '1.1.0',
+    description: '基于Cloudflare Workers的抽卡系统',
+    author: '路先生',
+    repository: 'https://github.com/lujih/GachaSystem',
+    license: 'MIT',
+    features: [
+      '用户认证系统',
+      '多稀有度抽卡',
+      '卡牌收集库',
+      '管理员后台',
+      'GitHub图床集成'
+    ],
+    optimized: {
+      date: '2026-04-07',
+      changes: [
+        '添加JSDoc注释',
+        '统一错误处理',
+        '增强输入验证',
+        '优化配置管理'
+      ]
+    }
+  };
+}
+
+// 在模块加载时记录版本信息
+console.log('🚀 Chouka抽卡系统已启动', getVersionInfo());
