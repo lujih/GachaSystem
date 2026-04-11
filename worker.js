@@ -27,8 +27,7 @@ import {
   getBeijingTime, 
   getBeijingDateStr, 
   getBeijingISOString, 
-  utcToBeijing,
-  formatBeijingTime 
+  utcToBeijing
 } from './src/utils/time.js';
 import { 
   validateUsername, 

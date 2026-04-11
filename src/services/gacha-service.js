@@ -701,27 +701,6 @@ export class GachaService {
     });
   }
 
-  // ==================== 获取限定池列表 ====================
-  async getLimitedPools(currentUser) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const pools = [];
-    for (const [id, config] of Object.entries(CONFIG.LIMITED.POOLS)) {
-      let count = '可用';
-      let available = config.sources && config.sources.length > 0;
-      if (id === 'github_repo' && config.sources && config.sources[0]) {
-        try {
-          const res = await fetch(config.sources[0].url, { method: 'GET' });
-          const data = await res.json();
-          count = data.total || '可用';
-        } catch (e) {
-          console.error('[getLimitedPools] count fetch failed:', e);
-        }
-      }
-      pools.push({ id, name: config.name, description: config.description, cost: CONFIG.LIMITED.COST, available, count });
-    }
-    return jsonResponse({ success: true, pools, defaultPool: CONFIG.LIMITED.DEFAULT_POOL });
-  }
-
   // ==================== 图片上传 ====================
   async uploadImage(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
