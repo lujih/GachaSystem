@@ -315,7 +315,12 @@ async function handleUserProfile(request, env, ctx) {
  * 处理获取用户信息
  */
 async function handleUserInfo(request, env, ctx) {
+  const token = request.headers.get('X-Session-Token');
+  console.log('[handleUserInfo] Token:', token ? token.substring(0, 20) + '...' : 'none');
+  
   const currentUser = await getCurrentUser(request, env);
+  console.log('[handleUserInfo] CurrentUser:', currentUser);
+  
   if (!currentUser) {
     return jsonResponse({ error: '请先登录' }, 401);
   }
