@@ -444,11 +444,10 @@ async function handleSystemHealth(request, env, ctx) {
     timestamp: new Date().toISOString(),
     version: '1.0.0',
     services: {
-      kv: true, // 假设KV可用
-      d1: true, // 假设D1可用
-      r2: true  // 假设R2可用
-    },
-    uptime: process.uptime ? process.uptime() : 'unknown'
+      kv: !!env.KV_CACHE,
+      d1: !!env.DB,
+      r2: !!env.R2_BUCKET
+    }
   };
   
   return successResponse(health);
@@ -541,7 +540,7 @@ async function handleRequest(request, env, ctx) {
     return await handlePageRoute(request, env);
     
   } catch (error) {
-    // 使用统一的错误    // 使用统一的错误处理器
+    // 使用统一的错误处理器
     return errorHandler(error, request, env, ctx);
   }
 }
