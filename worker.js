@@ -266,9 +266,7 @@ async function handleUserRegister(request, env, ctx) {
   ]);
   
   const userService = new UserService(env, ctx);
-  const result = await userService.register(request);
-  
-  return successResponse(result, '注册成功');
+  return await userService.register(request);
 }
 
 /**
@@ -291,9 +289,7 @@ async function handleUserLogin(request, env, ctx) {
   ]);
   
   const userService = new UserService(env, ctx);
-  const result = await userService.login(request);
-  
-  return successResponse(result, '登录成功');
+  return await userService.login(request);
 }
 
 /**
