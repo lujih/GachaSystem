@@ -172,11 +172,20 @@ async function handleApiRoute(request, env, ctx) {
     // 游戏
     case '/api/game/dice':
       return handleGameDice(request, env, ctx);
+    // 展示和公告
+    case '/api/showcase':
+      return handleShowcase(request, env, ctx);
+    case '/api/announcement':
+      return handleAnnouncement(request, env, ctx);
     // 管理
     case '/api/admin/changelog':
       return handleAdminChangelog(request, env, ctx);
     case '/api/admin/upload':
       return handleAdminUpload(request, env, ctx);
+    case '/api/admin/save-changelog':
+      return handleAdminSaveChangelog(request, env, ctx);
+    case '/api/admin/save-announcement':
+      return handleAdminSaveAnnouncement(request, env, ctx);
     // 系统
     case '/api/system/config':
       return handleSystemConfig(request, env, ctx);
@@ -571,6 +580,81 @@ async function handleSystemHealth(request, env, ctx) {
   return successResponse(health);
 }
 
+/**
+ * 处理展示页面 - 获取精选掉落
+ */
+async function handleShowcase(request, env, ctx) {
+  try {
+    const cards = await env.DB.prepare(`
+      SELECT c.*, u.username 
+      FROM cards c 
+      LEFT JOIN users u ON c.user_id = u.id 
+      ORDER BY c.created_at DESC 
+      LIMIT 6
+    `).all();
+    
+    return jsonResponse({ cards: cards.results || [] });
+  } catch (error) {
+    console.error('[handleShowcase] Error:', error);
+    return jsonResponse({ cards: [] });
+  }
+}
+
+/**
+ * 处理公告
+ */
+async function handleAnnouncement(request, env, ctx) {
+  try {
+    const announcement = await env.KV_CACHE.get(CONFIG.KEYS.ANNOUNCEMENT, { type: 'json' });
+    return jsonResponse(announcement || { title: '', content: '', enabled: false });
+  } catch (error) {
+    console.error('[handleAnnouncement] Error:', error);
+    return jsonResponse({ title: '', content: '', enabled: false });
+  }
+}
+
+/**
+ * 处理保存更新日志
+ */
+async function handleAdminSaveChangelog(request, env, ctx) {
+  await requireAdmin(request, env);
+  validateContentType(request);
+  
+  const body = await request.json();
+  const { logs } = body;
+  
+  if (!Array.isArray(logs)) {
+    return jsonResponse({ error: '无效的日志格式' }, 400);
+  }
+  
+  const trimmed = logs.slice(0, 50);
+  await env.KV_CACHE.put(CONFIG.KEYS.CHANGELOG, JSON.stringify(trimmed));
+  
+  return successResponse({ message: '更新日志已保存' });
+}
+
+/**
+ * 处理保存公告
+ */
+async function handleAdminSaveAnnouncement(request, env, ctx) {
+  await requireAdmin(request, env);
+  validateContentType(request);
+  
+  const body = await request.json();
+  const { announcement } = body;
+  
+  if (!announcement) {
+    return jsonResponse({ error: '公告内容不能为空' }, 400);
+  }
+  
+  await env.KV_CACHE.put(
+    CONFIG.KEYS.ANNOUNCEMENT, 
+    JSON.stringify({ ...announcement, updatedAt: new Date().toISOString() })
+  );
+  
+  return successResponse({ message: '公告已保存' });
+}
+
 // =========================================
 // 页面路由处理器
 // =========================================
@@ -598,8 +682,17 @@ async function handlePageRoute(request, env) {
       return new Response(getProfilePage(), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
       });
+    case '/auth/login':
+      return new Response(getIndexPage(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    case '/showcase':
+    case '/changelog':
+    case '/announcement':
+      return new Response(getIndexPage(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
     default:
-      // 尝试作为静态文件处理
       return handleStaticFile(request, env);
   }
 }
