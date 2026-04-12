@@ -1,0 +1,25 @@
+{
+  "name": "chouka-gacha",
+  "version": "1.0.0",
+  "description": "Chouka Gacha System on Cloudflare Workers",
+  "main": "worker.js",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lujih/GachaSystem.git"
+  },
+  "keywords": [
+    "gacha",
+    "cloudflare-workers",
+    "d1",
+    "kv"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "wrangler": "^4.81.1"
+  }
+}

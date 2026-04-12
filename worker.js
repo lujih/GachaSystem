@@ -76,6 +76,22 @@ function extractUserId(request) {
 }
 
 /**
+ * 从请求中获取当前用户
+ * @param {Request} request - HTTP请求对象
+ * @param {Env} env - 环境变量
+ * @returns {Promise<Object|null>} 用户数据或null
+ */
+async function getCurrentUser(request, env) {
+  const token = request.headers.get('X-Session-Token');
+  if (!token) return null;
+  
+  const sessionData = await env.KV_CACHE.get(`session:${token}`, { type: 'json' });
+  if (!sessionData) return null;
+  
+  return sessionData;
+}
+
+/**
  * 验证API密钥（如果配置了）
  * @param {Request} request - HTTP请求对象
  * @param {Env} env - 环境变量
@@ -128,22 +144,40 @@ async function handleApiRoute(request, env, ctx) {
   
   // 根据路径路由到不同的处理器
   switch (path) {
+    // 用户相关
     case '/api/user/register':
       return handleUserRegister(request, env, ctx);
     case '/api/user/login':
       return handleUserLogin(request, env, ctx);
     case '/api/user/profile':
       return handleUserProfile(request, env, ctx);
+    case '/api/user/info':
+      return handleUserInfo(request, env, ctx);
+    case '/api/user/inventory':
+      return handleUserInventory(request, env, ctx);
+    case '/api/user/craft':
+      return handleUserCraft(request, env, ctx);
+    // 抽卡相关
     case '/api/gacha/draw':
       return handleGachaDraw(request, env, ctx);
     case '/api/gacha/multi-draw':
       return handleGachaMultiDraw(request, env, ctx);
     case '/api/gacha/library':
       return handleGachaLibrary(request, env, ctx);
+    case '/api/limited/pools':
+      return handleLimitedPools(request, env, ctx);
+    // 商店
+    case '/api/shop/buy':
+      return handleShopBuy(request, env, ctx);
+    // 游戏
+    case '/api/game/dice':
+      return handleGameDice(request, env, ctx);
+    // 管理
     case '/api/admin/changelog':
       return handleAdminChangelog(request, env, ctx);
     case '/api/admin/upload':
       return handleAdminUpload(request, env, ctx);
+    // 系统
     case '/api/system/config':
       return handleSystemConfig(request, env, ctx);
     case '/api/system/health':
@@ -174,11 +208,7 @@ async function handleUserRegister(request, env, ctx) {
   ]);
   
   const userService = new UserService(env, ctx);
-  const result = await userService.registerUser(
-    body.username,
-    body.password,
-    body.nickname
-  );
+  const result = await userService.register(request);
   
   return successResponse(result, '注册成功');
 }
@@ -203,7 +233,7 @@ async function handleUserLogin(request, env, ctx) {
   ]);
   
   const userService = new UserService(env, ctx);
-  const result = await userService.loginUser(body.username, body.password);
+  const result = await userService.login(request);
   
   return successResponse(result, '登录成功');
 }
@@ -225,6 +255,93 @@ async function handleUserProfile(request, env, ctx) {
   const profile = await userService.getUserProfile(userId);
   
   return successResponse(profile);
+}
+
+/**
+ * 处理获取用户信息
+ */
+async function handleUserInfo(request, env, ctx) {
+  const currentUser = await getCurrentUser(request, env);
+  if (!currentUser) {
+    return jsonResponse({ error: '请先登录' }, 401);
+  }
+  
+  const userService = new UserService(env, ctx);
+  return await userService.getInfo(currentUser);
+}
+
+/**
+ * 处理获取用户背包
+ */
+async function handleUserInventory(request, env, ctx) {
+  const currentUser = await getCurrentUser(request, env);
+  if (!currentUser) {
+    return jsonResponse({ error: '请先登录' }, 401);
+  }
+  
+  const userService = new UserService(env, ctx);
+  return await userService.getInventory(currentUser);
+}
+
+/**
+ * 处理卡片合成
+ */
+async function handleUserCraft(request, env, ctx) {
+  const currentUser = await getCurrentUser(request, env);
+  if (!currentUser) {
+    return jsonResponse({ error: '请先登录' }, 401);
+  }
+  
+  validateContentType(request);
+  const body = await request.json();
+  
+  const gachaService = new GachaService(env, ctx);
+  return await gachaService.craft(currentUser, body);
+}
+
+/**
+ * 处理获取限定池列表
+ */
+async function handleLimitedPools(request, env, ctx) {
+  const currentUser = await getCurrentUser(request, env);
+  if (!currentUser) {
+    return jsonResponse({ error: '请先登录' }, 401);
+  }
+  
+  const gachaService = new GachaService(env, ctx);
+  return await gachaService.getLimitedPools(currentUser);
+}
+
+/**
+ * 处理商店购买
+ */
+async function handleShopBuy(request, env, ctx) {
+  const currentUser = await getCurrentUser(request, env);
+  if (!currentUser) {
+    return jsonResponse({ error: '请先登录' }, 401);
+  }
+  
+  validateContentType(request);
+  const body = await request.json();
+  
+  const gachaService = new GachaService(env, ctx);
+  return await gachaService.shopBuy(currentUser, body);
+}
+
+/**
+ * 处理骰子游戏
+ */
+async function handleGameDice(request, env, ctx) {
+  const currentUser = await getCurrentUser(request, env);
+  if (!currentUser) {
+    return jsonResponse({ error: '请先登录' }, 401);
+  }
+  
+  validateContentType(request);
+  const body = await request.json();
+  
+  const gachaService = new GachaService(env, ctx);
+  return await gachaService.playDice(currentUser, { poolId: body.poolId, betAmount: body.betAmount, prediction: body.prediction });
 }
 
 /**
