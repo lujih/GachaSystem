@@ -142,58 +142,107 @@ async function handleApiRoute(request, env, ctx) {
   const url = new URL(request.url);
   const path = normalizePath(url.pathname);
   
-  // 根据路径路由到不同的处理器
-  switch (path) {
-    // 用户相关
-    case '/api/user/register':
+  // 根据路径前缀路由到不同的处理器
+  if (path.startsWith('/api/user/') || path === '/api/user') {
+    if (path === '/api/user/register' || path === '/auth/register') {
       return handleUserRegister(request, env, ctx);
-    case '/api/user/login':
+    }
+    if (path === '/api/user/login' || path === '/auth/login') {
       return handleUserLogin(request, env, ctx);
-    case '/api/user/profile':
+    }
+    if (path === '/api/user/profile') {
       return handleUserProfile(request, env, ctx);
-    case '/api/user/info':
+    }
+    if (path === '/api/user/info' || path === '/user/info') {
       return handleUserInfo(request, env, ctx);
-    case '/api/user/inventory':
+    }
+    if (path === '/api/user/inventory' || path === '/user/inventory') {
       return handleUserInventory(request, env, ctx);
-    case '/api/user/craft':
+    }
+    if (path === '/api/user/craft' || path === '/user/craft') {
       return handleUserCraft(request, env, ctx);
-    // 抽卡相关
-    case '/api/gacha/draw':
-      return handleGachaDraw(request, env, ctx);
-    case '/api/gacha/multi-draw':
-      return handleGachaMultiDraw(request, env, ctx);
-    case '/api/gacha/library':
-      return handleGachaLibrary(request, env, ctx);
-    case '/api/limited/pools':
-      return handleLimitedPools(request, env, ctx);
-    // 商店
-    case '/api/shop/buy':
-      return handleShopBuy(request, env, ctx);
-    // 游戏
-    case '/api/game/dice':
-      return handleGameDice(request, env, ctx);
-    // 展示和公告
-    case '/api/showcase':
-      return handleShowcase(request, env, ctx);
-    case '/api/announcement':
-      return handleAnnouncement(request, env, ctx);
-    // 管理
-    case '/api/admin/changelog':
-      return handleAdminChangelog(request, env, ctx);
-    case '/api/admin/upload':
-      return handleAdminUpload(request, env, ctx);
-    case '/api/admin/save-changelog':
-      return handleAdminSaveChangelog(request, env, ctx);
-    case '/api/admin/save-announcement':
-      return handleAdminSaveAnnouncement(request, env, ctx);
-    // 系统
-    case '/api/system/config':
-      return handleSystemConfig(request, env, ctx);
-    case '/api/system/health':
-      return handleSystemHealth(request, env, ctx);
-    default:
-      throw AppError.notFoundError('API端点');
+    }
+    if (path === '/user/check-in') {
+      return handleUserCheckIn(request, env, ctx);
+    }
+    if (path === '/user/upload' || path === '/api/user/upload') {
+      return handleUserUpload(request, env, ctx);
+    }
   }
+  
+  if (path.startsWith('/api/gacha/') || path.startsWith('/gacha/') || path.startsWith('/draw/')) {
+    if (path.includes('multi-draw') || path === '/draw/multi') {
+      return handleGachaMultiDraw(request, env, ctx);
+    }
+    return handleGachaDraw(request, env, ctx);
+  }
+  
+  if (path === '/api/gacha/library' || path === '/gacha/library') {
+    return handleGachaLibrary(request, env, ctx);
+  }
+  
+  if (path === '/api/limited/pools' || path === '/limited/pools') {
+    return handleLimitedPools(request, env, ctx);
+  }
+  
+  if (path === '/api/shop/buy' || path === '/shop/buy') {
+    return handleShopBuy(request, env, ctx);
+  }
+  
+  if (path === '/api/game/dice' || path === '/game/dice') {
+    return handleGameDice(request, env, ctx);
+  }
+  
+  if (path === '/api/showcase' || path === '/showcase') {
+    return handleShowcase(request, env, ctx);
+  }
+  
+  if (path === '/api/announcement' || path === '/announcement') {
+    return handleAnnouncement(request, env, ctx);
+  }
+  
+  // 管理相关
+  if (path.startsWith('/api/admin/') || path.startsWith('/admin/')) {
+    if (path === '/api/admin/changelog' || path === '/changelog') {
+      return handleAdminChangelog(request, env, ctx);
+    }
+    if (path === '/api/admin/upload') {
+      return handleAdminUpload(request, env, ctx);
+    }
+    if (path === '/api/admin/save-changelog' || path === '/admin/save-changelog') {
+      return handleAdminSaveChangelog(request, env, ctx);
+    }
+    if (path === '/api/admin/save-announcement' || path === '/admin/save-announcement') {
+      return handleAdminSaveAnnouncement(request, env, ctx);
+    }
+    if (path === '/admin/verify') {
+      return handleAdminVerify(request, env, ctx);
+    }
+    if (path === '/admin/users') {
+      return handleAdminUsers(request, env, ctx);
+    }
+    if (path === '/admin/update-points') {
+      return handleAdminUpdatePoints(request, env, ctx);
+    }
+    if (path === '/admin/delete-user') {
+      return handleAdminDeleteUser(request, env, ctx);
+    }
+    if (path === '/admin/uploads') {
+      return handleAdminUploads(request, env, ctx);
+    }
+    if (path === '/admin/review-upload') {
+      return handleAdminReviewUpload(request, env, ctx);
+    }
+  }
+  
+  if (path === '/api/system/config') {
+    return handleSystemConfig(request, env, ctx);
+  }
+  if (path === '/api/system/health') {
+    return handleSystemHealth(request, env, ctx);
+  }
+  
+  throw AppError.notFoundError('API端点');
 }
 
 /**
@@ -306,6 +355,135 @@ async function handleUserCraft(request, env, ctx) {
   
   const gachaService = new GachaService(env, ctx);
   return await gachaService.craft(currentUser, body);
+}
+
+/**
+ * 处理用户签到
+ */
+async function handleUserCheckIn(request, env, ctx) {
+  const currentUser = await getCurrentUser(request, env);
+  if (!currentUser) {
+    return jsonResponse({ error: '请先登录' }, 401);
+  }
+  
+  const userService = new UserService(env, ctx);
+  return await userService.checkIn(currentUser, request);
+}
+
+/**
+ * 处理用户上传
+ */
+async function handleUserUpload(request, env, ctx) {
+  const currentUser = await getCurrentUser(request, env);
+  if (!currentUser) {
+    return jsonResponse({ error: '请先登录' }, 401);
+  }
+  
+  const gachaService = new GachaService(env, ctx);
+  return await gachaService.uploadImage(currentUser, request);
+}
+
+/**
+ * 处理管理员验证
+ */
+async function handleAdminVerify(request, env, ctx) {
+  validateContentType(request);
+  const body = await request.json();
+  const { password } = body;
+  
+  if (password !== env.ADMIN) {
+    return jsonResponse({ error: '密码错误' }, 403);
+  }
+  
+  return jsonResponse({ success: true });
+}
+
+/**
+ * 处理管理员获取用户列表
+ */
+async function handleAdminUsers(request, env, ctx) {
+  await requireAdmin(request, env);
+  validateContentType(request);
+  const body = await request.json();
+  const { limit = 100, offset = 0 } = body;
+  
+  const users = await env.DB.prepare(
+    'SELECT id, username, nickname, coins, level, exp, total_exp, created_at FROM users ORDER BY id DESC LIMIT ? OFFSET ?'
+  ).bind(limit, offset).all();
+  
+  return jsonResponse({ users: users.results || [] });
+}
+
+/**
+ * 处理管理员更新用户积分
+ */
+async function handleAdminUpdatePoints(request, env, ctx) {
+  await requireAdmin(request, env);
+  validateContentType(request);
+  const body = await request.json();
+  const { targetId, amount } = body;
+  
+  if (!targetId || !amount) {
+    return jsonResponse({ error: '参数不完整' }, 400);
+  }
+  
+  await env.DB.prepare(
+    'UPDATE users SET coins = coins + ? WHERE id = ?'
+  ).bind(amount, targetId).run();
+  
+  return jsonResponse({ success: true });
+}
+
+/**
+ * 处理管理员删除用户
+ */
+async function handleAdminDeleteUser(request, env, ctx) {
+  await requireAdmin(request, env);
+  validateContentType(request);
+  const body = await request.json();
+  const { targetId } = body;
+  
+  if (!targetId) {
+    return jsonResponse({ error: '用户ID不能为空' }, 400);
+  }
+  
+  await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(targetId).run();
+  
+  return jsonResponse({ success: true });
+}
+
+/**
+ * 处理管理员获取上传列表
+ */
+async function handleAdminUploads(request, env, ctx) {
+  await requireAdmin(request, env);
+  
+  const pending = await env.DB.prepare(
+    'SELECT id, user_id, filename, rarity, status, created_at FROM card_uploads WHERE status = ? ORDER BY created_at DESC LIMIT 50'
+  ).bind('pending').all();
+  
+  return jsonResponse({ uploads: pending.results || [] });
+}
+
+/**
+ * 处理管理员审核上传
+ */
+async function handleAdminReviewUpload(request, env, ctx) {
+  await requireAdmin(request, env);
+  validateContentType(request);
+  const body = await request.json();
+  const { uploadId, approved } = body;
+  
+  if (!uploadId) {
+    return jsonResponse({ error: '上传ID不能为空' }, 400);
+  }
+  
+  const status = approved ? 'approved' : 'rejected';
+  await env.DB.prepare(
+    'UPDATE card_uploads SET status = ?, reviewed_at = ? WHERE id = ?'
+  ).bind(status, Date.now(), uploadId).run();
+  
+  return jsonResponse({ success: true });
 }
 
 /**
