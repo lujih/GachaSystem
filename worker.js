@@ -56,7 +56,8 @@ import { AppError, errorHandler } from './src/utils/AppError.js';
  * @returns {string} 规范化后的路径
  */
 function normalizePath(pathname) {
-  return pathname.replace(/\/$/, '').split('?')[0];
+  const normalized = pathname.replace(/\/$/, '').split('?')[0];
+  return normalized || '/';
 }
 
 /**
