@@ -1,7 +1,7 @@
 {
   "name": "chouka-gacha",
   "version": "1.0.0",
-  "description": "Chouka Gacha System on Cloudflare Workers",
+  "description": "Chouka Gacha System on Cloudflare Pages",
   "private": true,
   "sideEffects": false,
   "type": "module",
