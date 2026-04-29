@@ -2,7 +2,6 @@ import { UserService } from '../../src/services/user-service.js';
 import { GachaService } from '../../src/services/gacha-service.js';
 import { CONFIG, DEFAULT_CHANGELOG } from '../../src/config/index.js';
 import { jsonResponse, safeJsonParse, requireAdmin } from '../../src/utils/response.js';
-import { validateAndThrow, validateUsername, validatePassword, validateNickname } from '../../src/utils/validation.js';
 
 function getCurrentUser(context) {
   return context.data?.currentUser || null;
@@ -39,20 +38,9 @@ async function onRequest(context) {
   try {
     // ─── Auth ───
     if (path === '/auth/register' && method === 'POST') {
-      const body = await request.clone().json();
-      validateAndThrow(body, [
-        { field: 'username', validator: validateUsername },
-        { field: 'password', validator: validatePassword },
-        { field: 'nickname', validator: validateNickname },
-      ]);
       return await userService.register(request);
     }
     if (path === '/auth/login' && method === 'POST') {
-      const body = await request.clone().json();
-      validateAndThrow(body, [
-        { field: 'username', validator: validateUsername },
-        { field: 'password', validator: validatePassword },
-      ]);
       return await userService.login(request);
     }
 
