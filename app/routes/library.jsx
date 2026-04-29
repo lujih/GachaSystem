@@ -2,7 +2,10 @@ import { useLoaderData, useSearchParams, Link } from '@remix-run/react';
 import Header from '~/components/Header';
 
 export async function loader({ request, context }) {
-  const { env } = context.cloudflare;
+  const env = context?.cloudflare?.env;
+  if (!env?.DB) {
+    return { items: [], total: 0, page: 1, totalPages: 0, rarity: '' };
+  }
   const url = new URL(request.url);
   const page = parseInt(url.searchParams.get('page') || '1');
   const limit = 20;

@@ -8,12 +8,15 @@ import ShopPanel from '~/components/ShopPanel';
 import { useState } from 'react';
 
 export async function loader({ context }) {
-  const { env } = context.cloudflare;
+  const env = context?.cloudflare?.env;
+  if (!env?.DB) {
+    return { showcase: [], announcement: null };
+  }
   try {
     const result = await env.DB.prepare(
       'SELECT g.*, u.username FROM gallery g LEFT JOIN users u ON g.user_id = u.id ORDER BY g.created_at DESC LIMIT 6'
     ).all();
-    const announcement = await env.KV_CACHE.get('system:announcement', { type: 'json' });
+    const announcement = await env.KV_CACHE?.get('system:announcement', { type: 'json' });
     return {
       showcase: result.results || [],
       announcement: announcement || null,
