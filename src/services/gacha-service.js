@@ -630,16 +630,15 @@ export class GachaService {
   // ==================== 商店购买 ====================
   async shopBuy(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const { itemId, poolId } = await request.json();
-    const shopKey = poolId && CONFIG.SHOP.POOL_SHOPS[poolId] ? poolId : CONFIG.SHOP.DEFAULT_POOL;
-    const shopConfig = CONFIG.SHOP.POOL_SHOPS[shopKey];
+    const { targetRarity } = await request.json();
+    const shopConfig = CONFIG.GAME.SHOP;
     if (!shopConfig) return jsonResponse({ error: '商店不存在' }, 400);
-    const item = shopConfig.items[itemId];
-    if (!item) return jsonResponse({ error: '商品不存在' }, 400);
-    if (currentUser.coins < item.price) return jsonResponse({ error: '积分不足' }, 400);
-    currentUser.coins -= item.price;
-    const expGained = item.exp || 0;
-    if (expGained > 0) currentUser.total_exp = (currentUser.total_exp || 0) + expGained;
+    const price = shopConfig[targetRarity];
+    if (!price) return jsonResponse({ error: '商品不存在' }, 400);
+    if (currentUser.coins < price) return jsonResponse({ error: '积分不足' }, 400);
+    currentUser.coins -= price;
+    const expGained = CONFIG.LEVEL.EXP_GAIN.SHOP_BUY || 20;
+    currentUser.total_exp = (currentUser.total_exp || 0) + expGained;
     const levelUpInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
     let levelUpResult = null;
     if (levelUpInfo.level > currentUser.level) {
@@ -650,18 +649,20 @@ export class GachaService {
       currentUser.level = levelUpResult.newLevel;
       currentUser.exp = levelUpInfo.currentExp;
     }
+    const asset = await this.consumeGlobalBuffer(targetRarity, CONFIG.SOURCES.filter(s => s.rarity === targetRarity));
     await this.env.DB.batch([
-      this.env.DB.prepare('UPDATE users SET coins = coins - ?, total_exp = total_exp + ? WHERE id = ?').bind(item.price, expGained, currentUser.id),
-      this.env.DB.prepare('INSERT INTO shop_stats (shop_id, item_id, buyer, amount) VALUES (?, ?, ?, ?)').bind(shopKey, itemId, currentUser.id, 1)
+      this.env.DB.prepare('UPDATE users SET coins = coins - ?, total_exp = total_exp + ? WHERE id = ?').bind(price, expGained, currentUser.id),
+      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, targetRarity)
     ]);
     if (levelUpResult) {
-      this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, currentUser.exp, currentUser.id).run();
+      await this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, currentUser.exp, currentUser.id).run();
     }
+    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     return jsonResponse({
       success: true,
-      message: `成功购买 ${item.name}`,
-      item,
+      message: `成功购买 ${targetRarity} 卡片`,
+      card: asset,
       userCoins: currentUser.coins,
       levelUp: levelUpResult
     });
@@ -671,23 +672,22 @@ export class GachaService {
   async playDice(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     const { poolId, betAmount } = await request.json() || {};
-    const dicePool = poolId ? (CONFIG.GAME.DICE.POOLS[poolId] || CONFIG.GAME.DICE.DEFAULT) : CONFIG.GAME.DICE.DEFAULT;
-    const bet = Math.min(Math.max(parseInt(betAmount) || 1, dicePool.MIN || 1), dicePool.MAX || 5);
-    const cost = bet * dicePool.COST_PER_BET;
+    const diceConfig = CONFIG.GAME.DICE;
+    const bet = Math.min(Math.max(parseInt(betAmount) || 1, diceConfig.MIN_BET || 1), diceConfig.MAX_BET || 5);
+    const cost = bet;
     if (currentUser.coins < cost) return jsonResponse({ error: '积分不足' }, 400);
     const onCooldown = await this.checkDiceCooldown(currentUser.id);
     if (onCooldown) return jsonResponse({ error: '骰子冷却中，请稍候再试' }, 429);
     currentUser.coins -= cost;
-    if (bet >= dicePool.MAX) currentUser.diceCount = (currentUser.diceCount || 0) + 1;
+    if (bet >= diceConfig.MAX_BET) currentUser.diceCount = (currentUser.diceCount || 0) + 1;
     const roll1 = Math.floor(Math.random() * 6) + 1;
     const roll2 = Math.floor(Math.random() * 6) + 1;
     const sum = roll1 + roll2;
-    let reward = dicePool.REWARDS['default'] || 0;
-    if (dicePool.REWARDS['sum' + sum]) reward = dicePool.REWARDS['sum' + sum];
-    if (dicePool.REWARDS['bet' + bet]) reward = Math.max(reward, dicePool.REWARDS['bet' + bet]);
-    if (sum >= 10) reward = Math.max(reward, dicePool.REWARDS['high'] || 0);
-    if (roll1 === roll2) reward = Math.max(reward, dicePool.REWARDS['doubles'] || 0);
-    if (sum === dicePool.JACKPOT_SUM) reward = dicePool.JACKPOT_REWARD || 1000;
+    const payout = diceConfig.PAYOUT || 2;
+    let reward = 0;
+    if (sum >= 10) reward = Math.floor(cost * payout * 0.5);
+    if (roll1 === roll2) reward = Math.max(reward, Math.floor(cost * payout));
+    if (sum === 7) reward = Math.max(reward, Math.floor(cost * payout * 2));
     currentUser.coins += reward;
     await this.env.DB.batch([
       this.env.DB.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').bind(cost, currentUser.id),
