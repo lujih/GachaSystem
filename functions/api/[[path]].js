@@ -18,6 +18,24 @@ async function onRequest(context) {
   const userService = new UserService(env, context.ctx || null);
   const gachaService = new GachaService(env, context.ctx || null, userService);
 
+  // Health check — no auth required
+  if (path === '/health' && method === 'GET') {
+    return jsonResponse({
+      status: 'ok',
+      bindings: {
+        DB: !!env.DB,
+        KV_CACHE: !!env.KV_CACHE,
+        RECENT_REQUESTS: !!env.RECENT_REQUESTS,
+        R2_BUCKET: !!env.R2_BUCKET,
+      },
+      env: {
+        admin: !!env.admin,
+        GITHUB_TOKEN: !!env.GITHUB_TOKEN,
+        R2_DOMAIN: !!env.R2_DOMAIN,
+      },
+    });
+  }
+
   try {
     // ─── Auth ───
     if (path === '/auth/register' && method === 'POST') {
@@ -207,7 +225,10 @@ async function onRequest(context) {
     return jsonResponse({ error: '未知的API端点' }, 404);
   } catch (e) {
     console.error('[api] Error:', e);
-    return jsonResponse({ error: e.message || 'API服务错误' }, 500);
+    return jsonResponse({
+      error: e.message || 'API服务错误',
+      stack: process.env.NODE_ENV === 'development' ? e.stack : undefined,
+    }, 500);
   }
 }
 
