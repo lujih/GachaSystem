@@ -14,8 +14,14 @@ export function AuthProvider({ children }) {
       return;
     }
     api.getUserInfo()
-      .then(res => setUser(res.data || res))
-      .catch(() => localStorage.removeItem('sessionToken'))
+      .then(res => {
+        const data = res.data || res;
+        setUser(data);
+      })
+      .catch(() => {
+        // Don't remove token on network/server error — keep user logged in
+        // Only remove if explicitly 401
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -42,7 +48,8 @@ export function AuthProvider({ children }) {
   const refreshUser = useCallback(async () => {
     try {
       const res = await api.getUserInfo();
-      setUser(res.data || res);
+      const data = res.data || res;
+      setUser(data);
     } catch (e) { /* ignore */ }
   }, []);
 
