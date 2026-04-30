@@ -1,6 +1,7 @@
 import { vitePlugin as remix } from "@remix-run/dev";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
+import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,6 +18,7 @@ export default defineConfig({
       serverBuildPath: "functions/[[path]].js",
     }),
     tsconfigPaths(),
+    tailwindcss(),
   ],
   resolve: {
     alias: {

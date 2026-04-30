@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '~/hooks/useAuth';
 import { api } from '~/lib/api';
+import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
+import { Button } from '~/components/ui/button';
+import { Badge } from '~/components/ui/badge';
+
+const RARITY_CONFIG = {
+  N: { color: 'bg-gray-500', label: 'N' },
+  R: { color: 'bg-blue-500', label: 'R' },
+  SR: { color: 'bg-purple-500', label: 'SR' },
+  SSR: { color: 'bg-amber-500', label: 'SSR' },
+  UR: { color: 'bg-red-500', label: 'UR' },
+};
 
 export default function Inventory() {
   const { user } = useAuth();
@@ -25,35 +36,54 @@ export default function Inventory() {
   }
 
   const craftOptions = [
-    { target: 'R', source: 'N' },
-    { target: 'SR', source: 'R' },
-    { target: 'SSR', source: 'SR' },
-    { target: 'UR', source: 'SSR' },
+    { target: 'R', source: 'N', cost: 5 },
+    { target: 'SR', source: 'R', cost: 5 },
+    { target: 'SSR', source: 'SR', cost: 5 },
+    { target: 'UR', source: 'SSR', cost: 5 },
   ];
 
   return (
-    <div className="card">
-      <h3 style={{ marginBottom: 12 }}>背包</h3>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {['N', 'R', 'SR', 'SSR', 'UR'].map(r => (
-          <span key={r} className={`badge badge-${r}`} style={{ fontSize: '0.85rem', padding: '4px 12px' }}>
-            {r}: {inventory[r] || 0}
-          </span>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {craftOptions.map(o => (
-          <button
-            key={o.target}
-            className="btn btn-outline"
-            onClick={() => handleCraft(o.target)}
-            disabled={crafting || (inventory[o.source] || 0) < 5}
-            style={{ padding: '6px 14px', fontSize: '0.85rem' }}
-          >
-            5×{o.source} → 1×{o.target}
-          </button>
-        ))}
-      </div>
-    </div>
+    <Card className="glass border-indigo-200/50 overflow-hidden">
+      <div className="h-1 gradient-primary" />
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <span>🎒</span> 背包
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-5 gap-2">
+          {Object.entries(RARITY_CONFIG).map(([rarity, config]) => (
+            <div key={rarity} className="text-center p-3 rounded-lg bg-white/50 border border-white/20">
+              <Badge className={`${config.color} text-white mb-2`}>{config.label}</Badge>
+              <p className="text-2xl font-bold text-gray-800">{inventory[rarity] || 0}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-gray-200/50 pt-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">合成</h4>
+          <div className="grid grid-cols-2 gap-2">
+            {craftOptions.map(opt => (
+              <Button
+                key={opt.target}
+                variant="outline"
+                size="sm"
+                onClick={() => handleCraft(opt.target)}
+                disabled={crafting || (inventory[opt.source] || 0) < opt.cost}
+                className="justify-start gap-2 bg-white/50 hover:bg-white/80"
+              >
+                <Badge className={`${RARITY_CONFIG[opt.source].color} text-white text-[10px]`}>
+                  {opt.source}×{opt.cost}
+                </Badge>
+                <span className="text-gray-400">→</span>
+                <Badge className={`${RARITY_CONFIG[opt.target].color} text-white text-[10px]`}>
+                  {opt.target}×1
+                </Badge>
+              </Button>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -5,6 +5,8 @@ import Leaderboard from '~/components/Leaderboard';
 import Inventory from '~/components/Inventory';
 import DiceGame from '~/components/DiceGame';
 import ShopPanel from '~/components/ShopPanel';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '~/components/ui/tabs';
+import { Card, CardContent } from '~/components/ui/card';
 import { useState } from 'react';
 
 export async function loader({ context }) {
@@ -31,49 +33,52 @@ export default function Index() {
   const [tab, setTab] = useState('draw');
 
   return (
-    <div className="container">
+    <div className="min-h-screen gradient-bg">
       <Header />
 
-      {announcement?.enabled && announcement?.content && (
-        <div style={{
-          background: 'var(--primary-light)', padding: '12px 16px', borderRadius: 'var(--radius-sm)',
-          marginBottom: 20, borderLeft: '3px solid var(--primary)',
-        }}>
-          <strong>{announcement.title}</strong>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-light)', marginTop: 4 }}>{announcement.content}</p>
-        </div>
-      )}
+      <main className="max-w-6xl mx-auto px-4 pt-20 pb-24">
+        {announcement?.enabled && announcement?.content && (
+          <Card className="mb-6 glass border-indigo-200/50 overflow-hidden">
+            <div className="h-1 gradient-primary" />
+            <CardContent className="p-4">
+              <h3 className="font-bold text-indigo-900 mb-1">{announcement.title}</h3>
+              <p className="text-sm text-gray-600">{announcement.content}</p>
+            </CardContent>
+          </Card>
+        )}
 
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, background: 'var(--card-bg)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', boxShadow: 'var(--shadow)' }}>
-        {[
-          { key: 'draw', label: '抽卡' },
-          { key: 'inventory', label: '背包' },
-          { key: 'dice', label: '骰子' },
-          { key: 'shop', label: '商店' },
-        ].map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              flex: 1, padding: '12px 8px', border: 'none', cursor: 'pointer',
-              background: tab === t.key ? 'var(--primary)' : 'transparent',
-              color: tab === t.key ? 'white' : 'var(--text-main)',
-              fontWeight: 600, fontSize: '0.9rem',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        <Tabs value={tab} onValueChange={setTab} className="mb-6">
+          <TabsList className="grid w-full grid-cols-4 glass">
+            <TabsTrigger value="draw" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
+              🎴 抽卡
+            </TabsTrigger>
+            <TabsTrigger value="inventory" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
+              🎒 背包
+            </TabsTrigger>
+            <TabsTrigger value="dice" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
+              🎲 骰子
+            </TabsTrigger>
+            <TabsTrigger value="shop" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
+              🛒 商店
+            </TabsTrigger>
+          </TabsList>
 
-      {tab === 'draw' && <DrawPanel />}
-      {tab === 'inventory' && <Inventory />}
-      {tab === 'dice' && <DiceGame />}
-      {tab === 'shop' && <ShopPanel />}
+          <TabsContent value="draw">
+            <DrawPanel />
+          </TabsContent>
+          <TabsContent value="inventory">
+            <Inventory />
+          </TabsContent>
+          <TabsContent value="dice">
+            <DiceGame />
+          </TabsContent>
+          <TabsContent value="shop">
+            <ShopPanel />
+          </TabsContent>
+        </Tabs>
 
-      <div style={{ marginTop: 20 }}>
         <Leaderboard showcase={showcase} />
-      </div>
+      </main>
     </div>
   );
 }
