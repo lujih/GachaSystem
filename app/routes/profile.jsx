@@ -1,8 +1,11 @@
-import { useLoaderData, useNavigate } from '@remix-run/react';
+import { useNavigate } from '@remix-run/react';
 import { useAuth } from '~/hooks/useAuth';
 import Header from '~/components/Header';
 import Inventory from '~/components/Inventory';
-import { useState } from 'react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '~/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
+import { Button } from '~/components/ui/button';
+import { Badge } from '~/components/ui/badge';
 import { api } from '~/lib/api';
 
 export function loader() {
@@ -12,78 +15,117 @@ export function loader() {
 export default function Profile() {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState('inventory');
 
   if (!user) {
     return (
-      <div className="container">
+      <div className="min-h-screen gradient-bg">
         <Header />
-        <div className="card" style={{ textAlign: 'center', padding: 60 }}>
-          <p style={{ marginBottom: 16, color: 'var(--text-light)' }}>请先登录</p>
-          <button className="btn btn-primary" onClick={() => navigate('/login')}>去登录</button>
-        </div>
+        <main className="max-w-6xl mx-auto px-4 pt-20 pb-24">
+          <Card className="glass border-indigo-200/50 overflow-hidden">
+            <div className="h-1 gradient-primary" />
+            <CardContent className="p-12 text-center">
+              <p className="text-5xl mb-4">👤</p>
+              <p className="text-gray-500 mb-4">请先登录</p>
+              <Button
+                onClick={() => navigate('/login')}
+                className="gradient-primary text-white"
+              >
+                去登录
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="container">
+    <div className="min-h-screen gradient-bg">
       <Header />
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <img
-            src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${user.username}`}
-            alt=""
-            style={{ width: 64, height: 64, borderRadius: '50%' }}
-          />
-          <div>
-            <h2>{user.nickname || user.username}</h2>
-            <p style={{ color: 'var(--text-light)', fontSize: '0.9rem' }}>
-              @{user.username} · Lv.{user.level} · 🪙 {user.coins}
-            </p>
-            {user.title && <span className="badge badge-SSR" style={{ marginTop: 4 }}>{user.title.name}</span>}
-          </div>
-          <div style={{ marginLeft: 'auto' }}>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-light)' }}>
-              抽卡次数: {user.drawCount || 0} · 胜场: {user.wins || 0}
-            </p>
-          </div>
-        </div>
-      </div>
+      <main className="max-w-6xl mx-auto px-4 pt-20 pb-24">
+        <Card className="glass border-indigo-200/50 overflow-hidden mb-6">
+          <div className="h-1 gradient-primary" />
+          <CardContent className="p-6">
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-400 to-purple-400 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                <span className="text-white text-3xl font-black">
+                  {(user.nickname || user.username || '?')[0].toUpperCase()}
+                </span>
+              </div>
 
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, background: 'var(--card-bg)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', boxShadow: 'var(--shadow)' }}>
-        {['inventory', 'activity'].map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              flex: 1, padding: '12px 8px', border: 'none', cursor: 'pointer',
-              background: tab === t ? 'var(--primary)' : 'transparent',
-              color: tab === t ? 'white' : 'var(--text-main)',
-              fontWeight: 600, fontSize: '0.9rem',
-            }}
-          >
-            {t === 'inventory' ? '背包' : '活动'}
-          </button>
-        ))}
-      </div>
+              <div className="text-center sm:text-left flex-1">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {user.nickname || user.username}
+                </h2>
+                <p className="text-gray-500">
+                  @{user.username}
+                </p>
+                {user.title && (
+                  <Badge className="mt-2 bg-amber-500 text-white">
+                    {user.title.name}
+                  </Badge>
+                )}
+              </div>
 
-      {tab === 'inventory' && <Inventory />}
-      {tab === 'activity' && (
-        <div className="card">
-          <h3>每日签到</h3>
-          <p style={{ color: 'var(--text-light)', marginBottom: 12 }}>每天签到可以获得金币和经验奖励</p>
-          <button className="btn btn-primary" onClick={async () => {
-            try {
-              await api.checkIn();
-              await refreshUser();
-            } catch (e) {}
-          }}>
-            签到
-          </button>
-        </div>
-      )}
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="px-4 py-2 rounded-lg bg-white/50">
+                  <p className="text-2xl font-bold text-indigo-600">{user.level}</p>
+                  <p className="text-xs text-gray-500">等级</p>
+                </div>
+                <div className="px-4 py-2 rounded-lg bg-white/50">
+                  <p className="text-2xl font-bold text-amber-600">{user.coins}</p>
+                  <p className="text-xs text-gray-500">金币</p>
+                </div>
+                <div className="px-4 py-2 rounded-lg bg-white/50">
+                  <p className="text-2xl font-bold text-purple-600">{user.drawCount || 0}</p>
+                  <p className="text-xs text-gray-500">抽卡</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Tabs defaultValue="inventory">
+          <TabsList className="grid w-full grid-cols-2 glass mb-6">
+            <TabsTrigger value="inventory" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
+              🎒 背包
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
+              📅 活动
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="inventory">
+            <Inventory />
+          </TabsContent>
+
+          <TabsContent value="activity">
+            <Card className="glass border-indigo-200/50 overflow-hidden">
+              <div className="h-1 gradient-primary" />
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span>📅</span> 每日签到
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-600 mb-4">每天签到可以获得金币和经验奖励</p>
+                <Button
+                  onClick={async () => {
+                    try {
+                      await api.checkIn();
+                      await refreshUser();
+                    } catch (e) {}
+                  }}
+                  className="gradient-primary text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-shadow"
+                >
+                  签到
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
     </div>
   );
 }
