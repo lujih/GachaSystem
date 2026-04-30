@@ -2,6 +2,11 @@ import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/reac
 import { AuthProvider } from "~/hooks/useAuth";
 import "~/styles/global.css";
 
+export const links = () => [
+  { rel: "preconnect", href: "https://fonts.googleapis.com" },
+  { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+];
+
 export default function App() {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
@@ -11,7 +16,7 @@ export default function App() {
         <Meta />
         <Links />
       </head>
-      <body suppressHydrationWarning>
+      <body suppressHydrationWarning className="bg-surface text-on-surface font-body-md min-h-screen overflow-x-hidden">
         <AuthProvider>
           <Outlet />
         </AuthProvider>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Synthesis &amp; Upgrade</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500&amp;family=Plus+Jakarta+Sans:wght@700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#554500",
+                        "surface-container": "#eeedf2",
+                        "on-secondary-container": "#005870",
+                        "secondary-fixed": "#bce9ff",
+                        "on-error-container": "#93000a",
+                        "surface-dim": "#dad9de",
+                        "outline-variant": "#dbbfc7",
+                        "surface-bright": "#faf9fe",
+                        "on-tertiary-container": "#473a00",
+                        "on-primary-fixed-variant": "#87154f",
+                        "surface-container-high": "#e9e7ed",
+                        "on-primary-container": "#770143",
+                        "on-secondary": "#ffffff",
+                        "background": "#faf9fe",
+                        "error-container": "#ffdad6",
+                        "on-error": "#ffffff",
+                        "on-surface": "#1a1b1f",
+                        "on-primary": "#ffffff",
+                        "primary": "#a63067",
+                        "tertiary": "#705d00",
+                        "inverse-surface": "#2f3034",
+                        "on-tertiary": "#ffffff",
+                        "surface-variant": "#e3e2e7",
+                        "secondary": "#006783",
+                        "on-secondary-fixed": "#001f29",
+                        "primary-fixed-dim": "#ffb0cb",
+                        "surface": "#faf9fe",
+                        "primary-container": "#ff77af",
+                        "surface-tint": "#a63067",
+                        "on-primary-fixed": "#3e0020",
+                        "surface-container-low": "#f4f3f8",
+                        "inverse-on-surface": "#f1f0f5",
+                        "on-background": "#1a1b1f",
+                        "on-secondary-fixed-variant": "#004d63",
+                        "outline": "#887178",
+                        "tertiary-container": "#c3a200",
+                        "primary-fixed": "#ffd9e4",
+                        "secondary-fixed-dim": "#63d3ff",
+                        "on-tertiary-fixed": "#221b00",
+                        "secondary-container": "#5dd1fd",
+                        "tertiary-fixed-dim": "#e8c426",
+                        "tertiary-fixed": "#ffe173",
+                        "on-surface-variant": "#554148",
+                        "surface-container-highest": "#e3e2e7",
+                        "surface-container-lowest": "#ffffff",
+                        "error": "#ba1a1a",
+                        "inverse-primary": "#ffb0cb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "sm": "12px",
+                        "xl": "64px",
+                        "gutter": "16px",
+                        "md": "24px",
+                        "base": "8px",
+                        "lg": "40px",
+                        "margin": "24px"
+                    },
+                    "fontFamily": {
+                        "button-text": ["Plus Jakarta Sans"],
+                        "headline-lg": ["Plus Jakarta Sans"],
+                        "display-lg": ["Plus Jakarta Sans"],
+                        "body-lg": ["Be Vietnam Pro"],
+                        "label-bold": ["Plus Jakarta Sans"],
+                        "body-md": ["Be Vietnam Pro"],
+                        "headline-md": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "button-text": ["18px", {"lineHeight": "1", "fontWeight": "800"}],
+                        "headline-lg": ["32px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                        "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "500"}],
+                        "label-bold": ["14px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Sheen animation for button */
+        @keyframes sheen {
+            0% { transform: skewX(-12deg) translateX(-150%); }
+            100% { transform: skewX(-12deg) translateX(250%); }
+        }
+        .animate-sheen:hover .sheen-layer {
+            animation: sheen 1s ease-in-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-surface font-body-md text-body-md text-on-surface antialiased overflow-x-hidden">
+<!-- TopAppBar (Anchored Brand Component) -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b-4 border-pink-200 dark:border-pink-900 shadow-[0px_4px_0px_0px_rgba(255,119,175,0.2)]">
+<div class="text-2xl font-black italic text-pink-600 dark:text-pink-300 drop-shadow-[2px_2px_0px_rgba(255,119,175,0.4)] font-['Plus_Jakarta_Sans']">
+            KiraKira Gacha
+        </div>
+<div class="flex items-center gap-sm">
+<button class="text-pink-500 dark:text-pink-400 font-['Plus_Jakarta_Sans'] font-bold tracking-tight hover:scale-105 transition-transform hover:text-pink-500 p-xs rounded-full">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+</button>
+<button class="text-pink-500 dark:text-pink-400 font-['Plus_Jakarta_Sans'] font-bold tracking-tight hover:scale-105 transition-transform hover:text-pink-500 p-xs rounded-full">
+<span class="material-symbols-outlined">stars</span>
+</button>
+<button class="text-pink-500 dark:text-pink-400 font-['Plus_Jakarta_Sans'] font-bold tracking-tight hover:scale-105 transition-transform hover:text-pink-500 p-xs rounded-full">
+<span class="material-symbols-outlined">settings</span>
+</button>
+</div>
+</header>
+<!-- Navigation Suppressed: Task-Focused Screen (Upgrade Action) -->
+<!-- Main Canvas -->
+<main class="min-h-screen pt-[80px] pb-xl px-gutter relative flex flex-col items-center">
+<!-- Background FX Layer (Halftone simulation & Sparkles) -->
+<div class="absolute inset-0 pointer-events-none opacity-20" style="background-image: radial-gradient(var(--tw-colors-primary-container) 2px, transparent 2px); background-size: 24px 24px;"></div>
+<div class="absolute top-20 left-10 text-tertiary-fixed opacity-50 animate-pulse"><span class="material-symbols-outlined text-[40px]">colors_spark</span></div>
+<div class="absolute bottom-40 right-20 text-secondary-container opacity-60 animate-pulse" style="animation-delay: 0.5s;"><span class="material-symbols-outlined text-[60px]">colors_spark</span></div>
+<!-- Task Header -->
+<div class="w-full max-w-6xl mt-margin mb-lg flex items-center justify-between relative z-10">
+<button class="flex items-center gap-xs font-label-bold text-label-bold text-on-surface-variant hover:text-primary transition-colors bg-surface-container-low px-sm py-xs rounded-full border-2 border-outline-variant shadow-[2px_2px_0px_0px_var(--tw-colors-outline-variant)]">
+<span class="material-symbols-outlined">arrow_back</span>
+                Cancel
+            </button>
+<div class="text-center absolute left-1/2 -translate-x-1/2">
+<h1 class="font-display-lg text-display-lg text-primary drop-shadow-[2px_2px_0px_var(--tw-colors-primary-container)]">Limit Break</h1>
+</div>
+<div class="w-[100px]"></div> <!-- Spacer for centering -->
+</div>
+<!-- Asymmetric Bento Grid Layout -->
+<div class="w-full max-w-5xl grid grid-cols-1 md:grid-cols-12 gap-lg relative z-10">
+<!-- Left: Character Card Focus (Anchor) -->
+<div class="md:col-span-5 relative group perspective-1000">
+<div class="w-full aspect-[3/4] rounded-xl border-4 border-primary bg-surface-container-lowest/80 backdrop-blur-md shadow-[8px_8px_0px_0px_var(--tw-colors-primary-fixed-dim)] transition-transform duration-300 ease-out group-hover:-rotate-2 group-hover:scale-[1.02] p-xs relative overflow-hidden flex flex-col">
+<!-- Decorative corner anchors -->
+<div class="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-secondary rounded-tl-lg z-20 m-xs pointer-events-none"></div>
+<div class="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-secondary rounded-br-lg z-20 m-xs pointer-events-none"></div>
+<!-- Target Image -->
+<div class="flex-1 rounded-lg overflow-hidden relative bg-surface-container-high border-2 border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="A vibrant, high-fidelity digital illustration of a magical girl anime character in a dynamic, action-ready pose. She wears an elaborate, frilly combat dress with glowing cyan accents and holds a large, ornate staff that sparkles with magic. The background is a clean, bright light-mode studio setting to emphasize her details. The art style emphasizes radiant optimism, high-contrast bold outlines, and tactile glassmorphism elements, characteristic of a high-end mobile gacha game." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0WVUR2voYpz5OG-gE3yG50iuo6yRGSZlRRxyIeXIcJWcxN_S0eHAaUxNgeJqlNJyPMVTsygQqgMYW-KhkfuWyS_lev0XFJ2u4B1cRGRxQPwu_99uJSCT9wj8IfJjQOpb8Em7C2vwwsQgopWOGJ5OMiS3AJXdb0lRwZZ0KzXfHjB46DDCe8WWFp6EJMc24RssVjqUZrgVYkoqC7PyZRe9_XTDsrWLp6zCqVeI4ymc54FQF1j_ZBrK9qjmLi4Fz2D6hC_xmWzCt"/>
+<!-- Level Badge overlay -->
+<div class="absolute bottom-sm left-sm bg-inverse-surface text-inverse-on-surface px-sm py-xs rounded-full border-2 border-on-surface shadow-[4px_4px_0px_0px_var(--tw-colors-primary)] flex items-center gap-xs">
+<span class="font-label-bold text-label-bold">Lv. 80</span>
+<span class="material-symbols-outlined text-[16px] text-tertiary-fixed">arrow_forward</span>
+<span class="font-label-bold text-label-bold text-secondary-container">Lv. 90</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right: Upgrade Mechanics & Catalysts -->
+<div class="md:col-span-7 flex flex-col gap-margin justify-center pl-0 md:pl-md">
+<!-- Success Rate Ring Card -->
+<div class="bg-surface-container-lowest/90 backdrop-blur-sm p-margin rounded-xl border-4 border-secondary-fixed shadow-[6px_6px_0px_0px_var(--tw-colors-secondary-fixed-dim)] flex items-center gap-margin relative overflow-hidden">
+<div class="absolute right-0 top-0 w-32 h-32 bg-secondary-container opacity-20 rounded-bl-full -z-10"></div>
+<!-- Progress Ring Simulation -->
+<div class="w-24 h-24 rounded-full relative flex items-center justify-center shrink-0 border-2 border-surface" style="background: conic-gradient(var(--tw-colors-secondary) 85%, var(--tw-colors-surface-variant) 0);">
+<div class="w-16 h-16 bg-surface-container-lowest rounded-full flex items-center justify-center shadow-inner">
+<span class="font-headline-lg text-headline-lg text-secondary drop-shadow-sm">85%</span>
+</div>
+</div>
+<div class="flex flex-col gap-xs">
+<h2 class="font-headline-md text-headline-md text-on-surface">Synthesis Rate</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">High chance of <span class="text-primary font-bold">Great Success!</span> Apply booster items to guarantee maximum stat growth.</p>
+</div>
+</div>
+<!-- Catalyst Material Slots -->
+<div class="bg-surface-container-low p-margin rounded-xl border-2 border-outline-variant shadow-[4px_4px_0px_0px_var(--tw-colors-surface-variant)] flex flex-col gap-sm">
+<div class="flex items-center justify-between">
+<h3 class="font-label-bold text-label-bold text-on-surface uppercase tracking-widest">Required Catalysts</h3>
+<span class="font-body-md text-body-md text-on-surface-variant">2 / 3 Met</span>
+</div>
+<div class="flex gap-sm flex-wrap">
+<!-- Slot 1 (Filled) -->
+<div class="w-20 h-20 rounded-lg border-2 border-primary bg-primary-fixed/20 flex items-center justify-center relative shadow-[2px_2px_0px_0px_var(--tw-colors-primary-container)] hover:translate-y-[-2px] transition-transform cursor-pointer">
+<img class="w-12 h-12 object-cover rounded-full border-2 border-surface shadow-sm" data-alt="A glowing, multifaceted crystalline gem in vibrant magenta, hovering slightly in mid-air. It emits soft pink sparkles and a gentle inner light against a bright background. The style is highly polished, cell-shaded 2D game art with thick outlines, consistent with a high-energy anime gacha interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDM1Ox8h9mycFzeS86x80lYcAccoSMrHTFdT4DrqIfcD85md7TBcA6xJZSAxPni6kXMUmVt-bhkYFqk_N-8RNFXN8VgrGj0uiC1EOGWtyK3t9X9GpDNa-VaVsc_TDjIEeBdmxSWIP2TC3ZAFP7b3m_msMtrkvcszcKY21s-BFRyvPXDVY5OMAWXzSrF8r-QA1ghcnakAcVTBdyLN6fKZIPQIw27XhC1aCiO3iBE87NOpTbsNljgPGuVuVikBQcKmktcJnZz90ap"/>
+<div class="absolute -bottom-2 -right-2 bg-on-surface text-surface font-label-bold text-[12px] px-2 py-[2px] rounded-full border-2 border-surface">15/10</div>
+</div>
+<!-- Slot 2 (Filled) -->
+<div class="w-20 h-20 rounded-lg border-2 border-primary bg-primary-fixed/20 flex items-center justify-center relative shadow-[2px_2px_0px_0px_var(--tw-colors-primary-container)] hover:translate-y-[-2px] transition-transform cursor-pointer">
+<img class="w-12 h-12 object-cover rounded shadow-sm" data-alt="An ancient, unrolled magical scroll with glowing cyan runes floating visibly off the parchment. The scroll is adorned with heavy gold trim and tied with a bright pink ribbon. The style is detailed, optimistic anime-style UI art with high-contrast outlines and a tactile, sticker-like appearance." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwj9X0d6Oj8ScovgqrkhAp26VSe7rgnAdFQNK5rifnM957UbucbPXRFOVTI15ztO-ardDjn-tmeUXO9NPxgAT8dfX2hWUArgIDav16Ld-VpkC3jT5FC0RmmkMVzXlQ4n7Zosq92FUI-Akc34ChqxGJMmf0iEWfw3AmxbSNRpPcq4Ki5Q5CaP32Cwv1feQPd-SaetinfmuiSMOyOAvqcZY-8UGsmv7iD2INuWgmRVJXV4eZ_rOoRYbl0myuw9MNWabDihfQhv9U"/>
+<div class="absolute -bottom-2 -right-2 bg-on-surface text-surface font-label-bold text-[12px] px-2 py-[2px] rounded-full border-2 border-surface">5/5</div>
+</div>
+<!-- Slot 3 (Empty/Missing) -->
+<div class="w-20 h-20 rounded-lg border-4 border-dashed border-outline bg-surface-dim flex items-center justify-center relative hover:bg-surface-container-highest transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-outline-variant text-[32px]">add_circle</span>
+<div class="absolute -bottom-2 -right-2 bg-error text-on-error font-label-bold text-[12px] px-2 py-[2px] rounded-full border-2 border-surface">0/1</div>
+</div>
+</div>
+</div>
+<!-- Action Button -->
+<button class="animate-sheen w-full py-md mt-sm bg-tertiary-fixed text-on-tertiary-fixed-variant font-button-text text-button-text text-[24px] rounded-full border-4 border-on-tertiary-fixed shadow-[0px_8px_0px_0px_var(--tw-colors-on-tertiary-fixed)] hover:translate-y-[4px] hover:shadow-[0px_4px_0px_0px_var(--tw-colors-on-tertiary-fixed)] active:translate-y-[8px] active:shadow-none transition-all relative overflow-hidden group">
+<span class="relative z-10 flex items-center justify-center gap-xs drop-shadow-[1px_1px_0px_rgba(255,255,255,0.8)]">
+<span class="material-symbols-outlined text-[28px]">auto_fix_high</span>
+                        Synthesize
+                    </span>
+<!-- Glossy Sheen Overlay -->
+<div class="sheen-layer absolute top-0 left-0 w-1/2 h-full bg-white/40 skew-x-[-20deg] -translate-x-[150%]"></div>
+</button>
+</div>
+</div>
+</main>
+</body></html>

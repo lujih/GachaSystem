@@ -1,23 +1,8 @@
 import { useState } from 'react';
-import { useAuth } from '~/hooks/useAuth';
 import Header from '~/components/Header';
 import { api } from '~/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
-import { Button } from '~/components/ui/button';
-import { Input } from '~/components/ui/input';
-import { Badge } from '~/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '~/components/ui/tabs';
-
-const RARITY_COLORS = {
-  N: 'bg-gray-500',
-  R: 'bg-blue-500',
-  SR: 'bg-purple-500',
-  SSR: 'bg-amber-500',
-  UR: 'bg-red-500',
-};
 
 export default function Admin() {
-  const { user } = useAuth();
   const [password, setPassword] = useState('');
   const [authed, setAuthed] = useState(false);
   const [error, setError] = useState('');
@@ -34,7 +19,7 @@ export default function Admin() {
         handleLoadUsers();
       }
     } catch (e) {
-      setError('密码错误');
+      setError('Invalid password');
     }
   }
 
@@ -54,215 +39,217 @@ export default function Admin() {
 
   if (!authed) {
     return (
-      <div className="min-h-screen gradient-bg">
-        <Header />
-        <main className="max-w-md mx-auto px-4 pt-20">
-          <Card className="glass border-indigo-200/50 overflow-hidden">
-            <div className="h-1 gradient-primary" />
-            <CardHeader className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-500/30">
-                <span className="text-white text-3xl">🔐</span>
+      <div className="min-h-screen bg-surface-container-low bg-grid-pattern flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="relative">
+            <div className="absolute inset-0 bg-primary translate-x-2 translate-y-2 rounded-[32px]" />
+            <div className="relative bg-surface-container-lowest border-[3px] border-primary rounded-[32px] p-8">
+              <div className="text-center mb-8">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-secondary-container border-4 border-secondary flex items-center justify-center">
+                  <span className="material-symbols-outlined text-4xl text-secondary symbol-filled">admin_panel_settings</span>
+                </div>
+                <h1 className="font-headline-lg text-headline-lg text-on-surface">Director Panel</h1>
+                <p className="font-body-md text-body-md text-on-surface-variant mt-2">Game Director Access Required</p>
               </div>
-              <CardTitle>管理员登录</CardTitle>
-            </CardHeader>
-            <CardContent>
+
               <div className="space-y-4">
-                <Input
+                <input
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="管理员密码"
-                  className="bg-white/50"
+                  placeholder="Enter admin password"
+                  className="w-full px-4 py-3 rounded-full bg-primary-fixed border-2 border-primary-fixed-dim focus:border-secondary focus:ring-0 focus:outline-none font-body-md text-on-primary-fixed placeholder-primary transition-all shadow-[2px_2px_0px_0px_#ffb0cb] focus:shadow-[4px_4px_0px_0px_#006783] focus:-translate-y-1"
                 />
                 {error && (
-                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                  <div className="p-3 rounded-lg bg-error-container border-2 border-error text-on-error-container text-sm">
                     {error}
                   </div>
                 )}
-                <Button
+                <button
                   onClick={handleVerify}
-                  className="w-full gradient-primary text-white"
+                  className="w-full bg-primary text-on-primary font-button-text text-button-text py-4 rounded-full border-4 border-on-primary-container shadow-[6px_6px_0px_0px_#770143] hover:shadow-none hover:translate-x-[6px] hover:translate-y-[6px] transition-all"
                 >
-                  验证
-                </Button>
+                  Verify Identity
+                </button>
               </div>
-            </CardContent>
-          </Card>
-        </main>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen gradient-bg">
-      <Header />
+    <div className="min-h-screen bg-surface-container-low bg-grid-pattern flex">
+      {/* Side Navigation */}
+      <nav className="hidden lg:flex flex-col w-64 fixed left-0 top-0 h-full z-40 bg-slate-50 border-r-4 border-cyan-100">
+        <div className="p-md border-b-2 border-slate-200">
+          <h1 className="text-xl font-bold text-cyan-600 font-['Plus_Jakarta_Sans']">Admin Panel</h1>
+          <p className="text-sm font-['Plus_Jakarta_Sans'] font-medium text-slate-500 mt-xs">Game Director Access</p>
+        </div>
+        <ul className="flex-1 py-margin flex flex-col gap-sm">
+          <li className="pl-md pr-sm">
+            <a className="flex items-center gap-sm px-sm py-sm font-['Plus_Jakarta_Sans'] font-medium bg-cyan-500 text-white font-bold rounded-r-full shadow-[4px_0px_0px_0px_rgba(0,188,212,1)] translate-x-1" href="#">
+              <span className="material-symbols-outlined symbol-filled">dashboard</span>
+              Dashboard
+            </a>
+          </li>
+          <li className="pl-md pr-sm">
+            <a className="flex items-center gap-sm px-sm py-sm font-['Plus_Jakarta_Sans'] font-medium text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 transition-colors rounded-r-full" href="#">
+              <span className="material-symbols-outlined">group</span>
+              Player Management
+            </a>
+          </li>
+          <li className="pl-md pr-sm">
+            <a className="flex items-center gap-sm px-sm py-sm font-['Plus_Jakarta_Sans'] font-medium text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 transition-colors rounded-r-full" href="#">
+              <span className="material-symbols-outlined">payments</span>
+              Economy Config
+            </a>
+          </li>
+          <li className="pl-md pr-sm">
+            <a className="flex items-center gap-sm px-sm py-sm font-['Plus_Jakarta_Sans'] font-medium text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 transition-colors rounded-r-full" href="#">
+              <span className="material-symbols-outlined">campaign</span>
+              Banner Schedule
+            </a>
+          </li>
+        </ul>
+      </nav>
 
-      <main className="max-w-6xl mx-auto px-4 pt-20 pb-24">
-        <Tabs defaultValue="users" onValueChange={(v) => {
-          if (v === 'users') handleLoadUsers();
-          if (v === 'uploads') handleLoadUploads();
-        }}>
-          <TabsList className="grid w-full grid-cols-3 glass mb-6">
-            <TabsTrigger value="users" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
-              👥 用户
-            </TabsTrigger>
-            <TabsTrigger value="uploads" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
-              📤 审核
-            </TabsTrigger>
-            <TabsTrigger value="announcement" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
-              📢 公告
-            </TabsTrigger>
-          </TabsList>
+      {/* Main Canvas */}
+      <main className="flex-1 lg:ml-64 min-h-screen overflow-y-auto relative pt-24 lg:pt-0 pb-xl">
+        <div className="max-w-[1400px] mx-auto p-margin lg:p-lg relative z-10 flex flex-col gap-margin">
+          {/* Page Header */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-md">
+            <div>
+              <h2 className="font-display-lg text-display-lg text-primary drop-shadow-[2px_2px_0px_rgba(255,119,175,0.4)]">
+                System Dashboard
+              </h2>
+              <p className="font-body-lg text-body-lg text-on-surface-variant mt-xs">
+                Real-time metrics and live pool configurations.
+              </p>
+            </div>
+          </div>
 
-          <TabsContent value="users">
-            <Card className="glass border-indigo-200/50 overflow-hidden">
-              <div className="h-1 gradient-primary" />
-              <CardContent className="p-4">
-                {users.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400">
-                    <p className="text-4xl mb-2">👥</p>
-                    <p>暂无用户</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {users.map(u => (
-                      <div
-                        key={u.id}
-                        className="flex items-center justify-between p-3 rounded-lg bg-white/50 border border-white/20"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex items-center justify-center">
-                            <span className="text-white font-bold text-sm">
-                              {(u.nickname || u.username || '?')[0].toUpperCase()}
-                            </span>
+          {/* Metrics Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-margin">
+            <MetricCard
+              icon="groups"
+              label="Active Users"
+              value="1,204,592"
+              trend="+12%"
+              color="primary"
+            />
+            <MetricCard
+              icon="paid"
+              label="Points Circulation"
+              value="84.5B"
+              color="secondary"
+            />
+            <MetricCard
+              icon="dns"
+              label="Server Health"
+              value="Optimal"
+              subtitle="All 14 clusters online"
+              color="tertiary"
+            />
+          </div>
+
+          {/* Users Table */}
+          <div className="bg-surface rounded-xl border-2 border-outline-variant shadow-[4px_4px_0px_0px_#dbbfc7] overflow-hidden">
+            <div className="p-md border-b-2 border-outline-variant bg-surface-container-low flex justify-between items-center">
+              <h3 className="font-headline-md text-headline-md text-on-surface flex items-center gap-xs">
+                <span className="material-symbols-outlined text-tertiary">group</span>
+                Recent Users
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-surface-variant sticky top-0 z-10 border-b-2 border-outline-variant">
+                  <tr>
+                    <th className="p-sm font-label-bold text-label-bold text-on-surface-variant uppercase">User</th>
+                    <th className="p-sm font-label-bold text-label-bold text-on-surface-variant uppercase">Level</th>
+                    <th className="p-sm font-label-bold text-label-bold text-on-surface-variant uppercase">Coins</th>
+                    <th className="p-sm font-label-bold text-label-bold text-on-surface-variant uppercase text-right">Pulls</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(u => (
+                    <tr key={u.id} className="border-b border-outline-variant/30 hover:bg-surface-container transition-colors">
+                      <td className="p-sm">
+                        <div className="flex items-center gap-sm">
+                          <div className="w-8 h-8 rounded-full bg-primary-fixed border border-primary flex items-center justify-center font-bold text-primary text-xs">
+                            {(u.nickname || u.username || '?')[0].toUpperCase()}
                           </div>
-                          <div>
-                            <p className="font-medium text-gray-800">{u.nickname || u.username}</p>
-                            <p className="text-xs text-gray-500">
-                              Lv.{u.level} · 🪙 {u.coins} · 抽卡{u.draw_count}次
-                            </p>
-                          </div>
+                          <span className="font-body-md font-bold text-on-surface">{u.nickname || u.username}</span>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="uploads">
-            <Card className="glass border-indigo-200/50 overflow-hidden">
-              <div className="h-1 gradient-primary" />
-              <CardHeader>
-                <div className="flex flex-wrap gap-2">
-                  {['pending', 'approved', 'rejected'].map(s => (
-                    <Button
-                      key={s}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleLoadUploads(s)}
-                      className="bg-white/50"
-                    >
-                      {s === 'pending' ? '待审核' : s === 'approved' ? '已通过' : '已拒绝'}
-                    </Button>
+                      </td>
+                      <td className="p-sm font-body-md text-on-surface-variant">Lv.{u.level}</td>
+                      <td className="p-sm font-body-md text-on-surface-variant">{u.coins?.toLocaleString()}</td>
+                      <td className="p-sm text-right font-body-md text-on-surface">{u.draw_count}</td>
+                    </tr>
                   ))}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {uploads.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400">
-                    <p className="text-4xl mb-2">📤</p>
-                    <p>暂无上传</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {uploads.map(u => (
-                      <div
-                        key={u.id}
-                        className="flex items-center gap-4 p-3 rounded-lg bg-white/50 border border-white/20"
-                      >
-                        <img
-                          src={u.url}
-                          alt=""
-                          className="w-20 h-20 rounded-lg object-cover"
-                        />
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-800">{u.username}</p>
-                          <Badge className={`${RARITY_COLORS[u.rarity || 'N']} text-white mt-1`}>
-                            {u.rarity || 'N'}
-                          </Badge>
-                        </div>
-                        {u.status === 'pending' && (
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={async () => {
-                                await api.adminReviewUpload(password, u.id, 'approved');
-                                handleLoadUploads();
-                              }}
-                              className="bg-emerald-500 text-white hover:bg-emerald-600"
-                            >
-                              通过
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={async () => {
-                                await api.adminReviewUpload(password, u.id, 'rejected');
-                                handleLoadUploads();
-                              }}
-                            >
-                              拒绝
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-          <TabsContent value="announcement">
-            <Card className="glass border-indigo-200/50 overflow-hidden">
-              <div className="h-1 gradient-primary" />
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <span>📢</span> 发布公告
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <Input
-                    value={announcement.title}
-                    onChange={e => setAnnouncement({ ...announcement, title: e.target.value })}
-                    placeholder="标题"
-                    className="bg-white/50"
-                  />
-                  <textarea
-                    value={announcement.content}
-                    onChange={e => setAnnouncement({ ...announcement, content: e.target.value })}
-                    placeholder="内容"
-                    rows={4}
-                    className="w-full p-3 rounded-lg border border-gray-200 bg-white/50 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <Button
-                    onClick={async () => {
-                      await api.adminSaveAnnouncement(password, { ...announcement, enabled: true });
-                      alert('已保存');
-                    }}
-                    className="gradient-primary text-white"
-                  >
-                    保存公告
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+          {/* Announcement */}
+          <div className="bg-surface rounded-xl border-2 border-outline-variant shadow-[4px_4px_0px_0px_#dbbfc7] p-md">
+            <h3 className="font-headline-md text-headline-md text-on-surface flex items-center gap-sm mb-md">
+              <span className="material-symbols-outlined text-primary">campaign</span>
+              Publish Announcement
+            </h3>
+            <div className="space-y-4">
+              <input
+                value={announcement.title}
+                onChange={e => setAnnouncement({ ...announcement, title: e.target.value })}
+                placeholder="Title"
+                className="w-full px-4 py-3 rounded-full bg-primary-fixed border-2 border-primary-fixed-dim focus:border-secondary focus:ring-0 focus:outline-none font-body-md"
+              />
+              <textarea
+                value={announcement.content}
+                onChange={e => setAnnouncement({ ...announcement, content: e.target.value })}
+                placeholder="Content"
+                rows={4}
+                className="w-full px-4 py-3 rounded-xl bg-primary-fixed border-2 border-primary-fixed-dim focus:border-secondary focus:ring-0 focus:outline-none font-body-md resize-none"
+              />
+              <button
+                onClick={async () => {
+                  await api.adminSaveAnnouncement(password, { ...announcement, enabled: true });
+                  alert('Saved!');
+                }}
+                className="bg-primary text-on-primary font-button-text text-button-text px-8 py-3 rounded-full border-2 border-on-primary-container shadow-[4px_4px_0px_0px_#770143] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all"
+              >
+                Publish
+              </button>
+            </div>
+          </div>
+        </div>
       </main>
+    </div>
+  );
+}
+
+function MetricCard({ icon, label, value, trend, subtitle, color }) {
+  return (
+    <div className={`bg-surface rounded-xl border-2 border-outline-variant p-md shadow-[4px_4px_0px_0px_#dbbfc7] relative overflow-hidden flex flex-col justify-between h-40`}>
+      <div className="flex justify-between items-start">
+        <div className={`flex items-center gap-xs text-on-surface-variant font-label-bold text-label-bold uppercase tracking-widest`}>
+          <span className={`material-symbols-outlined text-${color} text-sm`}>{icon}</span>
+          {label}
+        </div>
+        {trend && (
+          <div className={`bg-${color}-container text-on-${color}-container px-xs py-[2px] rounded font-label-bold text-[10px] border border-${color} flex items-center gap-[2px]`}>
+            <span className="material-symbols-outlined text-[12px]">trending_up</span> {trend}
+          </div>
+        )}
+      </div>
+      <div className="font-display-lg text-[40px] font-extrabold text-on-surface leading-none mt-auto">
+        {value}
+      </div>
+      {subtitle && (
+        <p className="font-body-md text-sm text-on-surface-variant">{subtitle}</p>
+      )}
     </div>
   );
 }

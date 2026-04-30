@@ -1,8 +1,7 @@
 import { useLoaderData, useSearchParams } from '@remix-run/react';
 import Header from '~/components/Header';
-import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
-import { Button } from '~/components/ui/button';
-import { Badge } from '~/components/ui/badge';
+import BottomNav from '~/components/BottomNav';
+import GachaCard from '~/components/GachaCard';
 
 export async function loader({ request, context }) {
   const env = context?.cloudflare?.env;
@@ -41,101 +40,86 @@ export async function loader({ request, context }) {
   };
 }
 
-const RARITY_FILTERS = [
-  { value: '', label: '全部' },
-  { value: 'N', label: 'N' },
-  { value: 'R', label: 'R' },
-  { value: 'SR', label: 'SR' },
-  { value: 'SSR', label: 'SSR' },
-  { value: 'UR', label: 'UR' },
-];
-
 export default function Library() {
   const { items, page, totalPages, rarity } = useLoaderData();
   const [, setSearchParams] = useSearchParams();
 
   return (
-    <div className="min-h-screen gradient-bg">
-      <Header />
+    <div className="min-h-screen bg-surface-bright bg-halftone relative">
+      {/* FX Layer */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <span className="material-symbols-outlined absolute top-20 left-10 text-primary-container/20 symbol-filled" style={{ fontSize: 64 }}>stars</span>
+        <span className="material-symbols-outlined absolute bottom-40 right-20 text-tertiary-fixed/30 symbol-filled" style={{ fontSize: 96 }}>stars</span>
+      </div>
 
-      <main className="max-w-6xl mx-auto px-4 pt-20 pb-24">
-        <Card className="glass border-indigo-200/50 overflow-hidden">
-          <div className="h-1 gradient-primary" />
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <span>🖼️</span> 图库
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2 mb-6">
-              {RARITY_FILTERS.map(f => (
-                <Button
-                  key={f.value}
-                  variant={rarity === f.value ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSearchParams(f.value ? { rarity: f.value, page: '1' } : { page: '1' })}
-                  className={rarity === f.value ? 'gradient-primary text-white' : 'bg-white/50'}
+      <Header activeTab="Gallery" />
+
+      <main className="relative z-10 max-w-7xl mx-auto px-gutter md:px-margin pt-[88px] pb-[120px]">
+        {/* Header */}
+        <section className="flex flex-col md:flex-row justify-between items-start md:items-end mb-lg gap-sm pt-md">
+          <div>
+            <h1 className="font-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#dbbfc7] mb-xs">
+              My Collection
+            </h1>
+            <div className="inline-flex items-center gap-xs bg-primary-container text-on-primary-container font-label-bold text-label-bold px-sm py-xs rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_#770143]">
+              <span className="material-symbols-outlined text-[18px] symbol-filled">style</span>
+              {items.length} Cards Acquired
+            </div>
+          </div>
+        </section>
+
+        {/* Filters */}
+        <section className="flex flex-col gap-sm mb-lg">
+          <h2 className="font-label-bold text-label-bold text-outline uppercase tracking-widest pl-xs">Filter By</h2>
+          <div className="flex flex-wrap gap-md items-center">
+            <div className="flex gap-xs bg-surface-container p-xs rounded-full border-2 border-surface-variant shadow-[2px_2px_0px_0px_#dad9de]">
+              {['', 'SSR', 'SR', 'R', 'N'].map(r => (
+                <button
+                  key={r || 'all'}
+                  onClick={() => setSearchParams(r ? { rarity: r, page: '1' } : { page: '1' })}
+                  className={`font-label-bold text-label-bold px-md py-xs rounded-full border-2 transition-transform hover:-translate-y-1 ${
+                    rarity === r
+                      ? 'bg-tertiary text-on-tertiary border-on-tertiary-container shadow-[2px_2px_0px_0px_#473a00]'
+                      : 'bg-surface-bright text-on-surface border-outline-variant hover:bg-surface-variant'
+                  }`}
                 >
-                  {f.label}
-                </Button>
+                  {r || 'All'}
+                </button>
               ))}
             </div>
+          </div>
+        </section>
 
-            {items.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <p className="text-5xl mb-4">🖼️</p>
-                <p>暂无图片</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {items.map(item => (
-                  <div
-                    key={item.id}
-                    className="group relative aspect-[3/4] rounded-xl overflow-hidden bg-white/50 border border-white/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg"
-                  >
-                    <img
-                      src={item.url}
-                      alt=""
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform">
-                      <p className="text-white text-sm font-medium truncate">{item.username || '匿名'}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Character Grid */}
+        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-md">
+          {items.map(item => (
+            <GachaCard
+              key={item.id}
+              card={{
+                rarity: 'N',
+                imageUrl: item.url,
+                name: item.username || 'Anonymous',
+              }}
+            />
+          ))}
+        </section>
 
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-3 mt-6">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSearchParams({ page: String(page - 1), ...(rarity && { rarity }) })}
-                  disabled={page <= 1}
-                  className="bg-white/50"
-                >
-                  上一页
-                </Button>
-                <span className="text-sm text-gray-600">
-                  {page} / {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSearchParams({ page: String(page + 1), ...(rarity && { rarity }) })}
-                  disabled={page >= totalPages}
-                  className="bg-white/50"
-                >
-                  下一页
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Load More */}
+        {totalPages > 1 && (
+          <div className="mt-xl flex justify-center pb-xl">
+            <button
+              onClick={() => setSearchParams({ page: String(page + 1), ...(rarity && { rarity }) })}
+              disabled={page >= totalPages}
+              className="bg-tertiary-fixed text-on-tertiary-fixed-variant font-button-text text-button-text px-xl py-sm rounded-full border-[3px] border-on-tertiary-fixed-variant shadow-[6px_6px_0px_0px_#a63067] hover:shadow-none hover:translate-x-[6px] hover:translate-y-[6px] transition-all duration-150 flex items-center gap-sm group"
+            >
+              <span className="material-symbols-outlined group-hover:animate-spin symbol-filled">autorenew</span>
+              Load More Characters
+            </button>
+          </div>
+        )}
       </main>
+
+      <BottomNav activeTab="Gallery" />
     </div>
   );
 }

@@ -1,35 +1,191 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
 
+/* Material Symbols */
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+
+/* Google Fonts: Plus Jakarta Sans + Be Vietnam Pro */
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700&family=Plus+Jakarta+Sans:ital,wght@0,500;0,700;0,800;1,800&display=swap');
+
+/* =========================================
+   Vivid Pulse Design System
+   ========================================= */
+
 @theme {
-  --color-primary: #6366f1;
-  --color-primary-hover: #4f46e5;
-  --color-primary-light: rgba(99, 102, 241, 0.1);
-  --color-bg: #f1f5f9;
-  --color-card: #ffffff;
-  --color-text: #1e293b;
-  --color-text-light: #64748b;
-  --color-text-muted: #94a3b8;
-  --color-border: #e2e8f0;
-  --color-danger: #ef4444;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
+  /* Surface Colors */
+  --color-surface: #faf9fe;
+  --color-surface-dim: #dad9de;
+  --color-surface-bright: #faf9fe;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f4f3f8;
+  --color-surface-container: #eeedf2;
+  --color-surface-container-high: #e9e7ed;
+  --color-surface-container-highest: #e3e2e7;
+  --color-surface-variant: #e3e2e7;
+  --color-surface-tint: #a63067;
+
+  /* Text Colors */
+  --color-on-surface: #1a1b1f;
+  --color-on-surface-variant: #554148;
+  --color-inverse-surface: #2f3034;
+  --color-inverse-on-surface: #f1f0f5;
+
+  /* Primary (Electric Sakura) */
+  --color-primary: #a63067;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #ff77af;
+  --color-on-primary-container: #770143;
+  --color-inverse-primary: #ffb0cb;
+  --color-primary-fixed: #ffd9e4;
+  --color-primary-fixed-dim: #ffb0cb;
+  --color-on-primary-fixed: #3e0020;
+  --color-on-primary-fixed-variant: #87154f;
+
+  /* Secondary (Cyan Sky) */
+  --color-secondary: #006783;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #5dd1fd;
+  --color-on-secondary-container: #005870;
+  --color-secondary-fixed: #bce9ff;
+  --color-secondary-fixed-dim: #63d3ff;
+  --color-on-secondary-fixed: #001f29;
+  --color-on-secondary-fixed-variant: #004d63;
+
+  /* Tertiary (Impact Yellow) */
+  --color-tertiary: #705d00;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #c3a200;
+  --color-on-tertiary-container: #473a00;
+  --color-tertiary-fixed: #ffe173;
+  --color-tertiary-fixed-dim: #e8c426;
+  --color-on-tertiary-fixed: #221b00;
+  --color-on-tertiary-fixed-variant: #554500;
+
+  /* Error */
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  /* Outline */
+  --color-outline: #887178;
+  --color-outline-variant: #dbbfc7;
+
+  /* Background */
+  --color-background: #faf9fe;
+  --color-on-background: #1a1b1f;
+
+  /* Gacha Rarity Colors */
   --color-n: #64748b;
   --color-r: #3b82f6;
   --color-sr: #8b5cf6;
   --color-ssr: #f59e0b;
   --color-ur: #ef4444;
-  --radius-lg: 12px;
-  --radius-md: 8px;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+
+  /* Typography */
+  --font-display-lg: 'Plus Jakarta Sans', sans-serif;
+  --font-headline-lg: 'Plus Jakarta Sans', sans-serif;
+  --font-headline-md: 'Plus Jakarta Sans', sans-serif;
+  --font-body-lg: 'Be Vietnam Pro', sans-serif;
+  --font-body-md: 'Be Vietnam Pro', sans-serif;
+  --font-label-bold: 'Plus Jakarta Sans', sans-serif;
+  --font-button-text: 'Plus Jakarta Sans', sans-serif;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-base: 8px;
+  --spacing-sm: 12px;
+  --spacing-gutter: 16px;
+  --spacing-md: 24px;
+  --spacing-lg: 40px;
+  --spacing-xl: 64px;
+  --spacing-margin: 24px;
+
+  /* Border Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
 }
 
-/* Gacha card flip animation */
+/* =========================================
+   Material Symbols
+   ========================================= */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.symbol-filled {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* =========================================
+   Halftone Pattern
+   ========================================= */
+.bg-halftone {
+  background-image: radial-gradient(circle, #dbbfc7 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.bg-grid-pattern {
+  background-image: radial-gradient(#dbbfc7 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* =========================================
+   Hard Drop Shadows (Sticker Effect)
+   ========================================= */
+.hard-shadow-primary { box-shadow: 6px 6px 0px 0px #a63067; }
+.hard-shadow-secondary { box-shadow: 6px 6px 0px 0px #006783; }
+.hard-shadow-tertiary { box-shadow: 6px 6px 0px 0px #705d00; }
+.hard-shadow-surface { box-shadow: 4px 4px 0px 0px #1a1b1f; }
+.hard-shadow-outline { box-shadow: 4px 4px 0px 0px #dbbfc7; }
+
+/* =========================================
+   Button Effects
+   ========================================= */
+.btn-press {
+  transition: all 0.15s ease;
+}
+.btn-press:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px 0px #1a1b1f;
+}
+
+/* 3D Press Effect */
+.btn-3d {
+  box-shadow: 0px 6px 0px 0px var(--color-on-tertiary-fixed);
+  transition: all 0.15s ease;
+}
+.btn-3d:hover {
+  transform: translateY(4px);
+  box-shadow: 0px 2px 0px 0px var(--color-on-tertiary-fixed);
+}
+.btn-3d:active {
+  transform: translateY(6px);
+  box-shadow: none;
+}
+
+/* =========================================
+   Hover Effects
+   ========================================= */
+.hover-lift:hover {
+  transform: translate(-2px, -2px) rotate(-1deg);
+}
+
+.hover-tilt:hover {
+  transform: rotate(5deg) scale(1.02);
+}
+
+/* =========================================
+   Animations
+   ========================================= */
 @keyframes card-flip {
   0% { transform: rotateY(0deg); }
   100% { transform: rotateY(180deg); }
@@ -42,23 +198,28 @@
 }
 
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.4); }
-  50% { box-shadow: 0 0 40px rgba(245, 158, 11, 0.8); }
-}
-
-@keyframes ur-glow {
-  0%, 100% { box-shadow: 0 0 30px rgba(239, 68, 68, 0.5); }
-  50% { box-shadow: 0 0 60px rgba(239, 68, 68, 0.9), 0 0 100px rgba(239, 68, 68, 0.4); }
-}
-
-@keyframes particle-float {
-  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 119, 175, 0.4); }
+  50% { box-shadow: 0 0 40px rgba(255, 119, 175, 0.8); }
 }
 
 @keyframes shimmer {
   0% { background-position: -200% center; }
   100% { background-position: 200% center; }
+}
+
+@keyframes sheen {
+  0% { transform: skewX(-12deg) translateX(-150%); }
+  100% { transform: skewX(-12deg) translateX(250%); }
+}
+
+@keyframes sparkle {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
 }
 
 .animate-card-flip {
@@ -70,12 +231,8 @@
   animation: card-reveal 0.8s ease-out forwards;
 }
 
-.animate-glow-ssr {
+.animate-glow-pulse {
   animation: glow-pulse 2s ease-in-out infinite;
-}
-
-.animate-glow-ur {
-  animation: ur-glow 1.5s ease-in-out infinite;
 }
 
 .animate-shimmer {
@@ -84,20 +241,46 @@
   animation: shimmer 2s infinite;
 }
 
-/* Glass morphism */
+.animate-sheen:hover .sheen-layer {
+  animation: sheen 1s ease-in-out forwards;
+}
+
+.animate-sparkle {
+  animation: sparkle 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* =========================================
+   Glass Morphism
+   ========================================= */
 .glass {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-/* Gradient backgrounds */
-.gradient-bg {
-  background: linear-gradient(135deg, #eef2ff, #fae8ff, #fce7f3);
+.glass-heavy {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(24px);
+  border: 2px solid rgba(255, 255, 255, 0.5);
 }
 
+/* =========================================
+   Gradient Backgrounds
+   ========================================= */
 .gradient-primary {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(135deg, #a63067, #ff77af);
+}
+
+.gradient-secondary {
+  background: linear-gradient(135deg, #006783, #5dd1fd);
+}
+
+.gradient-tertiary {
+  background: linear-gradient(135deg, #705d00, #ffe173);
 }
 
 .gradient-ssr {
@@ -108,9 +291,12 @@
   background: linear-gradient(135deg, #ef4444, #dc2626);
 }
 
+/* =========================================
+   Shadcn/ui Overrides (Vivid Pulse)
+   ========================================= */
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-heading: var(--font-display-lg);
+  --font-sans: var(--font-body-md);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -152,72 +338,38 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #faf9fe;
+  --foreground: #1a1b1f;
+  --card: #ffffff;
+  --card-foreground: #1a1b1f;
+  --popover: #ffffff;
+  --popover-foreground: #1a1b1f;
+  --primary: #a63067;
+  --primary-foreground: #ffffff;
+  --secondary: #006783;
+  --secondary-foreground: #ffffff;
+  --muted: #eeedf2;
+  --muted-foreground: #554148;
+  --accent: #ff77af;
+  --accent-foreground: #770143;
+  --destructive: #ba1a1a;
+  --border: #dbbfc7;
+  --input: #dbbfc7;
+  --ring: #a63067;
+  --chart-1: #a63067;
+  --chart-2: #006783;
+  --chart-3: #705d00;
+  --chart-4: #ff77af;
+  --chart-5: #5dd1fd;
+  --radius: 0.75rem;
+  --sidebar: #faf9fe;
+  --sidebar-foreground: #1a1b1f;
+  --sidebar-primary: #a63067;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ffd9e4;
+  --sidebar-accent-foreground: #770143;
+  --sidebar-border: #dbbfc7;
+  --sidebar-ring: #a63067;
 }
 
 @layer base {
@@ -225,7 +377,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-body-md;
   }
   html {
     @apply font-sans;
