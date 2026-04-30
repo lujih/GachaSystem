@@ -5,6 +5,8 @@ import "~/styles/global.css";
 export const links = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+  { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" },
+  { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700&family=Plus+Jakarta+Sans:ital,wght@0,500;0,700;0,800;1,800&display=swap" },
 ];
 
 export default function App() {
@@ -16,7 +18,7 @@ export default function App() {
         <Meta />
         <Links />
       </head>
-      <body suppressHydrationWarning className="bg-surface text-on-surface font-body-md min-h-screen overflow-x-hidden">
+      <body suppressHydrationWarning>
         <AuthProvider>
           <Outlet />
         </AuthProvider>
