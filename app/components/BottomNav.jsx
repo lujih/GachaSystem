@@ -1,14 +1,14 @@
 import { Link } from '@remix-run/react';
 
 const NAV_ITEMS = [
-  { to: '/synthesis', icon: 'science', label: 'Synth' },
-  { to: '/games', icon: 'videogame_asset', label: 'Games' },
-  { to: '/', icon: 'home', label: 'Lobby' },
-  { to: '/library', icon: 'style', label: 'Gallery' },
-  { to: '/shop', icon: 'storefront', label: 'Shop' },
+  { to: '/synthesis', icon: 'science', label: '合成' },
+  { to: '/games', icon: 'videogame_asset', label: '游戏' },
+  { to: '/', icon: 'home', label: '大厅' },
+  { to: '/library', icon: 'style', label: '图鉴' },
+  { to: '/shop', icon: 'storefront', label: '商店' },
 ];
 
-export default function BottomNav({ activeTab = 'Lobby' }) {
+export default function BottomNav({ activeTab = '大厅' }) {
   return (
     <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-end pb-6 pt-2 px-4 bg-white rounded-t-[32px] border-t-4 border-primary-fixed shadow-[0_-8px_20px_rgba(255,119,175,0.15)]">
       {NAV_ITEMS.map(item => {

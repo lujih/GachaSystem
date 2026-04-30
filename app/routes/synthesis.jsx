@@ -33,7 +33,7 @@ export default function Synthesis() {
         <span className="material-symbols-outlined text-[60px]">colors_spark</span>
       </div>
 
-      <Header activeTab="Synthesis" />
+      <Header activeTab="合成" />
 
       <main className="min-h-screen pt-[80px] pb-xl px-gutter relative flex flex-col items-center">
         {/* Task Header */}
@@ -126,7 +126,7 @@ export default function Synthesis() {
         </div>
       </main>
 
-      <BottomNav activeTab="Synth" />
+      <BottomNav activeTab="合成" />
     </div>
   );
 }

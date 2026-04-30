@@ -43,12 +43,12 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background bg-halftone relative">
-      <Header activeTab="Lobby" />
+      <Header activeTab="大厅" />
 
       {/* Main Canvas */}
       <main className="max-w-[1440px] mx-auto w-full px-4 md:px-8 py-8 md:py-12 pt-[88px] pb-[120px] md:pb-8">
         {/* Banner Tabs */}
-        <div className="flex justify-center md:justify-start gap-4 mb-8">
+        <div className="flex justify-center md:justify-start gap-4 mb-8 relative z-10">
           <button
             onClick={() => setPoolType('limited')}
             className={`font-label-bold text-label-bold px-8 py-3 rounded-full border-2 transition-transform hover:-translate-y-1 ${
@@ -57,7 +57,7 @@ export default function Index() {
                 : 'bg-surface-container text-on-surface border-outline-variant hover:bg-surface-variant'
             }`}
           >
-            Limited Event
+            限定池
           </button>
           <button
             onClick={() => setPoolType('permanent')}
@@ -67,12 +67,12 @@ export default function Index() {
                 : 'bg-surface-container text-on-surface border-outline-variant hover:bg-surface-variant'
             }`}
           >
-            Permanent Pool
+            常驻池
           </button>
         </div>
 
         {/* Banner Container */}
-        <div className="relative w-full rounded-[32px] border-4 border-primary-fixed overflow-hidden shadow-[8px_8px_0px_0px_rgba(255,119,175,0.2)] bg-surface-bright min-h-[600px] flex flex-col md:flex-row">
+        <div className="relative w-full rounded-[32px] border-4 border-primary-fixed overflow-hidden shadow-[8px_8px_0px_0px_rgba(255,119,175,0.2)] bg-surface-bright flex flex-col md:flex-row">
           {/* Halftone Background */}
           <div className="absolute inset-0 opacity-10 bg-halftone" />
 
@@ -185,7 +185,7 @@ export default function Index() {
         )}
       </main>
 
-      <BottomNav activeTab="Lobby" />
+      <BottomNav activeTab="大厅" />
     </div>
   );
 }

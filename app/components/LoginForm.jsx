@@ -48,10 +48,10 @@ export default function LoginForm() {
               <span className="material-symbols-outlined text-4xl text-on-primary symbol-filled">auto_awesome</span>
             </div>
             <h1 className="font-display-lg text-display-lg text-primary drop-shadow-[2px_2px_0px_#ff77af]">
-              KiraKira Gacha
+              KiraKira 抽卡
             </h1>
             <p className="font-body-md text-body-md text-on-surface-variant mt-2">
-              {mode === 'login' ? 'Welcome back, Collector!' : 'Join the adventure!'}
+              {mode === 'login' ? '欢迎回来，收藏家！' : '加入冒险吧！'}
             </p>
           </div>
 
@@ -65,7 +65,7 @@ export default function LoginForm() {
                 <input
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="3-20 characters"
+                  placeholder="3-20位字母数字下划线"
                   required
                   minLength={3}
                   className="w-full px-4 py-3 rounded-full bg-primary-fixed border-2 border-primary-fixed-dim focus:border-secondary focus:ring-0 focus:outline-none font-body-md text-on-primary-fixed placeholder-primary transition-all shadow-[2px_2px_0px_0px_#ffb0cb] focus:shadow-[4px_4px_0px_0px_#006783] focus:-translate-y-1"
@@ -75,12 +75,12 @@ export default function LoginForm() {
               {mode === 'register' && (
                 <div>
                   <label className="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-widest mb-2 block">
-                    Nickname
-                  </label>
-                  <input
-                    value={nickname}
-                    onChange={e => setNickname(e.target.value)}
-                    placeholder="Optional"
+                  Nickname
+                </label>
+                <input
+                  value={nickname}
+                  onChange={e => setNickname(e.target.value)}
+                  placeholder="可选"
                     className="w-full px-4 py-3 rounded-full bg-primary-fixed border-2 border-primary-fixed-dim focus:border-secondary focus:ring-0 focus:outline-none font-body-md text-on-primary-fixed placeholder-primary transition-all shadow-[2px_2px_0px_0px_#ffb0cb] focus:shadow-[4px_4px_0px_0px_#006783] focus:-translate-y-1"
                   />
                 </div>
@@ -94,7 +94,7 @@ export default function LoginForm() {
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="At least 6 characters"
+                  placeholder="至少6位"
                   required
                   minLength={6}
                   className="w-full px-4 py-3 rounded-full bg-primary-fixed border-2 border-primary-fixed-dim focus:border-secondary focus:ring-0 focus:outline-none font-body-md text-on-primary-fixed placeholder-primary transition-all shadow-[2px_2px_0px_0px_#ffb0cb] focus:shadow-[4px_4px_0px_0px_#006783] focus:-translate-y-1"
@@ -120,18 +120,18 @@ export default function LoginForm() {
                       {mode === 'login' ? 'login' : 'person_add'}
                     </span>
                   )}
-                  {submitting ? 'Processing...' : mode === 'login' ? 'Login' : 'Register'}
+                    {submitting ? '处理中...' : mode === 'login' ? '登录' : '注册'}
                 </span>
               </button>
 
               <p className="text-center text-sm text-on-surface-variant">
-                {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}
+                {mode === 'login' ? '没有账号？' : '已有账号？'}
                 <button
                   type="button"
                   onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}
                   className="text-primary hover:text-primary-container font-bold ml-1 transition-colors"
                 >
-                  {mode === 'login' ? 'Register' : 'Login'}
+                  {mode === 'login' ? '去注册' : '去登录'}
                 </button>
               </p>
             </form>

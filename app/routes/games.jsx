@@ -29,7 +29,7 @@ export default function Games() {
       {/* Background */}
       <div className="fixed inset-0 bg-background bg-grid-pattern pointer-events-none" />
 
-      <Header activeTab="Games" />
+      <Header activeTab="游戏" />
 
       <main className="max-w-7xl mx-auto px-gutter md:px-lg relative z-10">
         {/* Header */}
@@ -195,7 +195,7 @@ export default function Games() {
         </div>
       </main>
 
-      <BottomNav activeTab="Games" />
+      <BottomNav activeTab="游戏" />
     </div>
   );
 }

@@ -41,7 +41,7 @@ export default function Shop() {
         <div className="absolute bottom-[20%] left-[-10%] w-[30vw] h-[30vw] rounded-full bg-secondary-fixed-dim/20 blur-3xl" />
       </div>
 
-      <Header activeTab="Shop" />
+      <Header activeTab="商店" />
 
       <main className="relative z-10 max-w-7xl mx-auto px-gutter md:px-margin pt-[80px] pb-[100px] md:pb-lg flex flex-col gap-md">
         {/* Header */}
@@ -129,7 +129,7 @@ export default function Shop() {
         </section>
       </main>
 
-      <BottomNav activeTab="Shop" />
+      <BottomNav activeTab="商店" />
     </div>
   );
 }

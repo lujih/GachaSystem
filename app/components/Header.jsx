@@ -2,14 +2,14 @@ import { Link, useNavigate } from '@remix-run/react';
 import { useAuth } from '~/hooks/useAuth';
 
 const NAV_ITEMS = [
-  { to: '/synthesis', icon: 'science', label: 'Synthesis' },
-  { to: '/games', icon: 'videogame_asset', label: 'Games' },
-  { to: '/library', icon: 'style', label: 'Gallery' },
-  { to: '/', icon: 'home', label: 'Lobby' },
-  { to: '/shop', icon: 'storefront', label: 'Shop' },
+  { to: '/synthesis', icon: 'science', label: '合成' },
+  { to: '/games', icon: 'videogame_asset', label: '游戏' },
+  { to: '/library', icon: 'style', label: '图鉴' },
+  { to: '/', icon: 'home', label: '大厅' },
+  { to: '/shop', icon: 'storefront', label: '商店' },
 ];
 
-export default function Header({ activeTab = 'Lobby' }) {
+export default function Header({ activeTab = '大厅' }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -70,7 +70,7 @@ export default function Header({ activeTab = 'Lobby' }) {
             onClick={() => navigate('/login')}
             className="bg-primary text-on-primary font-label-bold text-label-bold px-6 py-2 rounded-full border-2 border-on-primary-container shadow-[4px_4px_0px_0px_rgba(119,1,67,0.4)] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all"
           >
-            Login
+            登录
           </button>
         )}
       </div>

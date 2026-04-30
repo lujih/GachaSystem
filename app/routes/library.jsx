@@ -52,25 +52,25 @@ export default function Library() {
         <span className="material-symbols-outlined absolute bottom-40 right-20 text-tertiary-fixed/30 symbol-filled" style={{ fontSize: 96 }}>stars</span>
       </div>
 
-      <Header activeTab="Gallery" />
+      <Header activeTab="图鉴" />
 
       <main className="relative z-10 max-w-7xl mx-auto px-gutter md:px-margin pt-[88px] pb-[120px]">
         {/* Header */}
         <section className="flex flex-col md:flex-row justify-between items-start md:items-end mb-lg gap-sm pt-md">
           <div>
             <h1 className="font-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#dbbfc7] mb-xs">
-              My Collection
+              我的收藏
             </h1>
             <div className="inline-flex items-center gap-xs bg-primary-container text-on-primary-container font-label-bold text-label-bold px-sm py-xs rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_#770143]">
               <span className="material-symbols-outlined text-[18px] symbol-filled">style</span>
-              {items.length} Cards Acquired
+              {items.length} 张已收集
             </div>
           </div>
         </section>
 
         {/* Filters */}
         <section className="flex flex-col gap-sm mb-lg">
-          <h2 className="font-label-bold text-label-bold text-outline uppercase tracking-widest pl-xs">Filter By</h2>
+          <h2 className="font-label-bold text-label-bold text-outline uppercase tracking-widest pl-xs">按稀有度筛选</h2>
           <div className="flex flex-wrap gap-md items-center">
             <div className="flex gap-xs bg-surface-container p-xs rounded-full border-2 border-surface-variant shadow-[2px_2px_0px_0px_#dad9de]">
               {['', 'SSR', 'SR', 'R', 'N'].map(r => (
@@ -83,7 +83,7 @@ export default function Library() {
                       : 'bg-surface-bright text-on-surface border-outline-variant hover:bg-surface-variant'
                   }`}
                 >
-                  {r || 'All'}
+                  {r || '全部'}
                 </button>
               ))}
             </div>
@@ -113,13 +113,13 @@ export default function Library() {
               className="bg-tertiary-fixed text-on-tertiary-fixed-variant font-button-text text-button-text px-xl py-sm rounded-full border-[3px] border-on-tertiary-fixed-variant shadow-[6px_6px_0px_0px_#a63067] hover:shadow-none hover:translate-x-[6px] hover:translate-y-[6px] transition-all duration-150 flex items-center gap-sm group"
             >
               <span className="material-symbols-outlined group-hover:animate-spin symbol-filled">autorenew</span>
-              Load More Characters
+                加载更多
             </button>
           </div>
         )}
       </main>
 
-      <BottomNav activeTab="Gallery" />
+      <BottomNav activeTab="图鉴" />
     </div>
   );
 }
