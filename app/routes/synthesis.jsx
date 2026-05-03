@@ -7,6 +7,7 @@ import { useState } from 'react';
 export default function Synthesis() {
   const { user, refreshUser } = useAuth();
   const [targetRarity, setTargetRarity] = useState('SR');
+  const [lastResult, setLastResult] = useState(null);
 
   const craftOptions = [
     { target: 'R', source: 'N', cost: 5 },
@@ -17,7 +18,8 @@ export default function Synthesis() {
 
   async function handleSynthesize() {
     try {
-      await api.craft(targetRarity);
+      const res = await api.craft(targetRarity);
+      if (res.card) setLastResult(res.card);
       await refreshUser();
     } catch (e) {}
   }
@@ -48,9 +50,13 @@ export default function Synthesis() {
               <div className="absolute bottom-0 right-0 w-6 h-6 md:w-8 md:h-8 border-b-4 border-r-4 border-secondary rounded-br-lg z-20 m-1 md:m-xs pointer-events-none" />
 
               <div className="flex-1 rounded-lg overflow-hidden relative bg-surface-container-high border-2 border-outline-variant flex items-center justify-center">
-                <div className="text-6xl md:text-8xl font-black text-primary-container/50">
-                  {targetRarity}
-                </div>
+                {lastResult?.imageUrl ? (
+                  <img src={lastResult.imageUrl} alt={targetRarity} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="text-6xl md:text-8xl font-black text-primary-container/50">
+                    {targetRarity}
+                  </div>
+                )}
                 <div className="absolute bottom-1 md:bottom-sm left-1 md:left-sm bg-inverse-surface text-inverse-on-surface px-2 md:px-sm py-1 md:py-xs rounded-full border-2 border-on-surface shadow-[3px_3px_0px_0px_#a63067] md:shadow-[4px_4px_0px_0px_#a63067] flex items-center gap-1 md:gap-xs">
                   <span className="font-label-bold text-[10px] md:text-label-bold">Lv. 80</span>
                   <span className="material-symbols-outlined text-sm md:text-[16px] text-tertiary-fixed">arrow_forward</span>
@@ -85,7 +91,7 @@ export default function Synthesis() {
                 {craftOptions.map(opt => (
                   <button
                     key={opt.target}
-                    onClick={() => setTargetRarity(opt.target)}
+                    onClick={() => { setTargetRarity(opt.target); setLastResult(null); }}
                     className={`w-14 h-14 md:w-20 md:h-20 rounded-lg border-2 flex items-center justify-center relative shadow-[2px_2px_0px_0px_#ff77af] hover:translate-y-[-2px] transition-transform cursor-pointer ${
                       targetRarity === opt.target
                         ? 'border-primary bg-primary-fixed/20'
