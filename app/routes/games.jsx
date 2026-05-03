@@ -111,23 +111,86 @@ export default function Games() {
               </button>
 
               {result && !result.error && (
-                <div className="mt-3 md:mt-4 p-3 md:p-4 rounded-xl bg-surface-container-low border-2 border-outline-variant text-center">
+                <div className="mt-3 md:mt-4 p-3 md:p-4 rounded-xl border-2 text-center transition-all duration-300 animate-card-reveal"
+                  style={{
+                    background: result.reward > result.cost
+                      ? 'linear-gradient(135deg, #d1fae5, #a7f3d0)'
+                      : 'linear-gradient(135deg, #fee2e2, #fecaca)',
+                    borderColor: result.reward > result.cost ? '#059669' : '#dc2626',
+                  }}
+                >
+                  <div className="flex items-center justify-center gap-1 mb-2">
+                    <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                      预测: {prediction === 'big' ? '大' : '小'}
+                    </span>
+                    <span className="text-on-surface-variant">·</span>
+                    <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                      下注: {result.cost}
+                    </span>
+                  </div>
+
                   <div className="flex items-center justify-center gap-2 md:gap-3 mb-2">
-                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-gradient-to-br from-primary-container to-secondary-container flex items-center justify-center">
-                      <span className="text-lg md:text-2xl font-black">{result.roll1}</span>
+                    <div className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center shadow-md animate-bounce`}
+                      style={{
+                        background: result.roll1 >= 5 ? 'linear-gradient(135deg, #f59e0b, #ef4444)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                      }}
+                    >
+                      <span className="text-xl md:text-2xl font-black text-white">{result.roll1}</span>
                     </div>
-                    <span className="text-xl md:text-2xl">+</span>
-                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-gradient-to-br from-primary-container to-secondary-container flex items-center justify-center">
-                      <span className="text-lg md:text-2xl font-black">{result.roll2}</span>
+                    <span className="text-2xl md:text-3xl font-bold text-on-surface-variant">+</span>
+                    <div className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center shadow-md animate-bounce`}
+                      style={{
+                        background: result.roll2 >= 5 ? 'linear-gradient(135deg, #f59e0b, #ef4444)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                        animationDelay: '0.15s',
+                      }}
+                    >
+                      <span className="text-xl md:text-2xl font-black text-white">{result.roll2}</span>
                     </div>
-                    <span className="text-xl md:text-2xl">=</span>
-                    <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg bg-gradient-to-br from-tertiary-fixed to-tertiary flex items-center justify-center shadow-lg">
-                      <span className="text-lg md:text-2xl font-black text-on-tertiary">{result.sum}</span>
+                    <span className="text-2xl md:text-3xl font-bold text-on-surface-variant">=</span>
+                    <div className="w-14 h-14 md:w-16 md:h-16 rounded-xl flex items-center justify-center shadow-lg"
+                      style={{
+                        background: result.sum >= 10
+                          ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+                          : result.sum <= 5
+                          ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
+                          : 'linear-gradient(135deg, #10b981, #059669)',
+                      }}
+                    >
+                      <span className="text-2xl md:text-3xl font-black text-white">{result.sum}</span>
                     </div>
                   </div>
-                  <p className={`font-headline-md text-sm md:text-headline-md ${result.reward > result.cost ? 'text-secondary' : 'text-on-surface-variant'}`}>
-                    {result.reward > result.cost ? `+${result.reward - result.cost}!` : '下次好运！'}
-                  </p>
+
+                  <div className="flex items-center justify-center gap-2">
+                    {result.reward > result.cost ? (
+                      <>
+                        <span className="material-symbols-outlined symbol-filled text-emerald-600 text-lg">celebration</span>
+                        <p className="font-headline-md text-sm md:text-headline-md text-emerald-700 font-bold">
+                          大赢家! +{result.reward - result.cost}
+                        </p>
+                      </>
+                    ) : result.sum === 7 && result.reward > 0 ? (
+                      <>
+                        <span className="material-symbols-outlined symbol-filled text-amber-600 text-lg">auto_awesome</span>
+                        <p className="font-headline-md text-sm md:text-headline-md text-amber-700 font-bold">
+                          大奖! +{result.reward - result.cost}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-red-500 text-lg">sentiment_dissatisfied</span>
+                        <p className="font-headline-md text-sm md:text-headline-md text-red-600 font-bold">
+                          下次好运!
+                          {result.roll1 === result.roll2 && <span className="block text-xs text-on-surface-variant font-normal">({result.roll1}+{result.roll2} 对子)</span>}
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {result.userCoins !== undefined && (
+                    <div className="mt-2 text-xs text-on-surface-variant">
+                      余额: 🪙 {result.userCoins.toLocaleString()}
+                    </div>
+                  )}
                 </div>
               )}
               {result?.error && (
