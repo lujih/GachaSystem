@@ -5,19 +5,19 @@ import { useAuth } from '~/hooks/useAuth';
 import { api } from '~/lib/api';
 
 const CATEGORIES = [
-  { id: 'featured', label: 'Featured Limited' },
-  { id: 'materials', label: 'Upgrade Materials' },
-  { id: 'shards', label: 'Character Shards' },
-  { id: 'consumables', label: 'Consumables' },
+  { id: 'featured', label: '限定特卖' },
+  { id: 'materials', label: '升级材料' },
+  { id: 'shards', label: '角色碎片' },
+  { id: 'consumables', label: '消耗品' },
 ];
 
 const SHOP_ITEMS = [
-  { id: 1, category: 'featured', rarity: 'SSR', name: 'Radiant Sunblade', limit: '1/1 per account', price: 5000, badge: 'SSR Relic', badgeColor: 'bg-error text-on-error border-on-error-container' },
-  { id: 2, category: 'materials', rarity: 'SR', name: 'Azure Core Gem', limit: '10/10 weekly', price: 450, badge: 'Material', badgeColor: 'bg-secondary text-on-secondary border-on-secondary-fixed' },
-  { id: 3, category: 'shards', rarity: 'SR', name: "Kael's Memory x5", limit: '20/20 monthly', price: 1200, badge: 'SR Shard', badgeColor: 'bg-tertiary text-on-tertiary border-on-tertiary-fixed' },
-  { id: 4, category: 'consumables', rarity: 'R', name: 'Stamina Elixir', limit: 'Unlimited', price: 150, badge: null },
-  { id: 5, category: 'featured', rarity: 'UR', name: 'Celestial Wing', limit: '1/1 per account', price: 10000, badge: 'UR Relic', badgeColor: 'bg-error text-on-error border-on-error-container' },
-  { id: 6, category: 'materials', rarity: 'R', name: 'Crystal Shard', limit: '50/50 weekly', price: 200, badge: 'Material', badgeColor: 'bg-secondary text-on-secondary border-on-secondary-fixed' },
+  { id: 1, category: 'featured', rarity: 'SSR', name: '光辉圣剑', limit: '每个账号限1个', price: 5000, badge: 'SSR 遗物', badgeColor: 'bg-error text-on-error border-on-error-container' },
+  { id: 2, category: 'materials', rarity: 'SR', name: '蔚蓝核心晶石', limit: '每周10/10', price: 450, badge: '材料', badgeColor: 'bg-secondary text-on-secondary border-on-secondary-fixed' },
+  { id: 3, category: 'shards', rarity: 'SR', name: '凯尔的记忆 x5', limit: '每月20/20', price: 1200, badge: 'SR 碎片', badgeColor: 'bg-tertiary text-on-tertiary border-on-tertiary-fixed' },
+  { id: 4, category: 'consumables', rarity: 'R', name: '体力药剂', limit: '不限量', price: 150, badge: null },
+  { id: 5, category: 'featured', rarity: 'UR', name: '天界之翼', limit: '每个账号限1个', price: 10000, badge: 'UR 遗物', badgeColor: 'bg-error text-on-error border-on-error-container' },
+  { id: 6, category: 'materials', rarity: 'R', name: '水晶碎片', limit: '每周50/50', price: 200, badge: '材料', badgeColor: 'bg-secondary text-on-secondary border-on-secondary-fixed' },
 ];
 
 export default function Shop() {
@@ -46,10 +46,10 @@ export default function Shop() {
         <section className="flex flex-col md:flex-row md:items-end justify-between gap-2 md:gap-md mt-2 md:mt-md">
           <div>
             <h1 className="font-headline-lg md:text-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#e3e2e7]">
-              Exchange Shop
+              兑换商店
             </h1>
             <p className="font-body-md text-xs md:text-body-lg text-on-surface-variant mt-1 md:mt-xs">
-              Trade your Astral Dust for exclusive items!
+              用星尘兑换专属物品！
             </p>
           </div>
 
@@ -58,7 +58,7 @@ export default function Shop() {
               <span className="material-symbols-outlined text-tertiary symbol-filled text-sm md:text-base">stars</span>
             </div>
             <div className="flex flex-col">
-              <span className="font-label-bold text-[8px] md:text-label-bold text-on-tertiary-fixed-variant uppercase tracking-wider">Balance</span>
+              <span className="font-label-bold text-[8px] md:text-label-bold text-on-tertiary-fixed-variant uppercase tracking-wider">余额</span>
               <span className="font-headline-md text-sm md:text-headline-lg text-on-tertiary-fixed leading-none">
                 {user?.coins?.toLocaleString() || '0'}
               </span>
@@ -102,7 +102,7 @@ export default function Shop() {
 
               <div className="flex flex-col flex-grow px-0.5 md:px-1">
                 <h3 className="font-headline-md text-xs md:text-headline-md text-on-surface line-clamp-1">{item.name}</h3>
-                <p className="font-body-md text-[10px] md:text-body-md text-on-surface-variant mt-0.5 md:mt-xs">Limit: {item.limit}</p>
+                <p className="font-body-md text-[10px] md:text-body-md text-on-surface-variant mt-0.5 md:mt-xs">限制: {item.limit}</p>
               </div>
 
               <div className="flex justify-between items-center mt-auto pt-1 md:pt-2 border-t-2 border-surface-variant border-dashed">
@@ -114,7 +114,7 @@ export default function Shop() {
                   onClick={() => handlePurchase(item.id)}
                   className="bg-tertiary-fixed text-on-tertiary-fixed font-button-text text-[10px] md:text-button-text px-2 md:px-4 py-1 md:py-2 rounded-full border-2 border-on-tertiary-fixed shadow-[2px_2px_0px_0px_#221b00] md:shadow-[3px_3px_0px_0px_#221b00] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all active:scale-95"
                 >
-                  Buy
+                  购买
                 </button>
               </div>
             </article>

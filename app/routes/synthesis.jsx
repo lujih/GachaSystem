@@ -57,11 +57,6 @@ export default function Synthesis() {
                     {targetRarity}
                   </div>
                 )}
-                <div className="absolute bottom-1 md:bottom-sm left-1 md:left-sm bg-inverse-surface text-inverse-on-surface px-2 md:px-sm py-1 md:py-xs rounded-full border-2 border-on-surface shadow-[3px_3px_0px_0px_#a63067] md:shadow-[4px_4px_0px_0px_#a63067] flex items-center gap-1 md:gap-xs">
-                  <span className="font-label-bold text-[10px] md:text-label-bold">Lv. 80</span>
-                  <span className="material-symbols-outlined text-sm md:text-[16px] text-tertiary-fixed">arrow_forward</span>
-                  <span className="font-label-bold text-[10px] md:text-label-bold text-secondary-container">Lv. 90</span>
-                </div>
               </div>
             </div>
           </div>
