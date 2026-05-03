@@ -35,7 +35,6 @@ export default function Shop() {
 
   return (
     <div className="min-h-screen relative overflow-x-hidden font-body-md text-body-md">
-      {/* FX Background */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <div className="absolute top-[-10%] right-[-5%] w-[40vw] h-[40vw] rounded-full bg-primary-fixed-dim/30 blur-3xl" />
         <div className="absolute bottom-[20%] left-[-10%] w-[30vw] h-[30vw] rounded-full bg-secondary-fixed-dim/20 blur-3xl" />
@@ -43,44 +42,39 @@ export default function Shop() {
 
       <Header activeTab="商店" />
 
-      <main className="relative z-10 max-w-7xl mx-auto px-gutter md:px-margin pt-[80px] pb-[100px] md:pb-lg flex flex-col gap-md">
-        {/* Header */}
-        <section className="flex flex-col md:flex-row md:items-end justify-between gap-md mt-md">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 md:px-margin pt-[72px] md:pt-[80px] pb-[100px] md:pb-md flex flex-col gap-4 md:gap-md">
+        <section className="flex flex-col md:flex-row md:items-end justify-between gap-2 md:gap-md mt-2 md:mt-md">
           <div>
-            <h1 className="font-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#e3e2e7]">
+            <h1 className="font-headline-lg md:text-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#e3e2e7]">
               Exchange Shop
             </h1>
-            <p className="font-body-lg text-body-lg text-on-surface-variant mt-xs">
+            <p className="font-body-md text-xs md:text-body-lg text-on-surface-variant mt-1 md:mt-xs">
               Trade your Astral Dust for exclusive items!
             </p>
           </div>
 
-          {/* Points Balance */}
-          <div className="bg-tertiary-fixed border-2 border-on-tertiary-fixed rounded-xl px-6 py-3 flex items-center gap-sm shadow-[4px_4px_0px_0px_#221b00] transform hover:-translate-y-1 transition-transform">
-            <div className="bg-surface-container-lowest rounded-full p-1 flex items-center justify-center border-2 border-on-tertiary-fixed">
-              <span className="material-symbols-outlined text-tertiary symbol-filled">stars</span>
+          <div className="bg-tertiary-fixed border-2 border-on-tertiary-fixed rounded-xl px-4 md:px-6 py-2 md:py-3 flex items-center gap-1 md:gap-sm shadow-[3px_3px_0px_0px_#221b00] md:shadow-[4px_4px_0px_0px_#221b00] transform hover:-translate-y-1 transition-transform self-start">
+            <div className="bg-surface-container-lowest rounded-full p-1 border-2 border-on-tertiary-fixed">
+              <span className="material-symbols-outlined text-tertiary symbol-filled text-sm md:text-base">stars</span>
             </div>
             <div className="flex flex-col">
-              <span className="font-label-bold text-label-bold text-on-tertiary-fixed-variant uppercase tracking-wider text-[10px]">
-                Astral Dust Balance
-              </span>
-              <span className="font-headline-lg text-headline-lg text-on-tertiary-fixed leading-none">
+              <span className="font-label-bold text-[8px] md:text-label-bold text-on-tertiary-fixed-variant uppercase tracking-wider">Balance</span>
+              <span className="font-headline-md text-sm md:text-headline-lg text-on-tertiary-fixed leading-none">
                 {user?.coins?.toLocaleString() || '0'}
               </span>
             </div>
           </div>
         </section>
 
-        {/* Categories */}
-        <nav className="flex gap-sm overflow-x-auto no-scrollbar py-2">
+        <nav className="flex gap-1 md:gap-sm overflow-x-auto no-scrollbar py-1 md:py-2">
           {CATEGORIES.map(cat => (
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
-              className={`shrink-0 font-label-bold text-label-bold px-6 py-3 rounded-full border-[3px] transition-all ${
+              className={`shrink-0 font-label-bold text-[10px] md:text-label-bold px-3 md:px-6 py-2 md:py-3 rounded-full border-[2px] md:border-[3px] transition-all ${
                 activeCategory === cat.id
-                  ? 'bg-primary text-on-primary border-on-primary-fixed shadow-[3px_3px_0px_0px_#3e0020] -translate-y-1'
-                  : 'bg-surface-container-lowest text-primary border-primary-fixed-dim hover:border-primary hover:bg-primary-fixed hover:-translate-y-1 hover:shadow-[3px_3px_0px_0px_#ffb0cb]'
+                  ? 'bg-primary text-on-primary border-on-primary-fixed shadow-[2px_2px_0px_0px_#3e0020] md:shadow-[3px_3px_0px_0px_#3e0020] -translate-y-1'
+                  : 'bg-surface-container-lowest text-primary border-primary-fixed-dim hover:border-primary hover:bg-primary-fixed hover:-translate-y-1 hover:shadow-[2px_2px_0px_0px_#ffb0cb] md:hover:shadow-[3px_3px_0px_0px_#ffb0cb]'
               }`}
             >
               {cat.label}
@@ -88,40 +82,39 @@ export default function Shop() {
           ))}
         </nav>
 
-        {/* Marketplace Grid */}
-        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-md md:gap-lg mt-sm">
+        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-md md:gap-lg mt-1 md:mt-sm">
           {filteredItems.map(item => (
             <article
               key={item.id}
-              className="bg-surface-container-lowest border-[3px] border-outline-variant rounded-xl p-3 flex flex-col gap-sm relative transition-all duration-200 hover:-translate-y-2 hover:translate-x-1 hover:shadow-[6px_6px_0px_0px_#ff77af] group"
+              className="bg-surface-container-lowest border-[2px] md:border-[3px] border-outline-variant rounded-xl p-2 md:p-3 flex flex-col gap-1 md:gap-sm relative transition-all duration-200 hover:-translate-y-2 hover:translate-x-1 hover:shadow-[4px_4px_0px_0px_#ff77af] md:hover:shadow-[6px_6px_0px_0px_#ff77af] group"
             >
               {item.badge && (
-                <div className={`absolute top-1 left-1 z-10 font-label-bold text-[10px] px-3 py-1 rounded-full border-2 uppercase tracking-widest shadow-[2px_2px_0px_0px_#3e0020] ${item.badgeColor}`}>
+                <div className={`absolute top-1 left-1 z-10 font-label-bold text-[8px] md:text-[10px] px-1.5 md:px-3 py-0.5 md:py-1 rounded-full border-2 uppercase tracking-widest shadow-[2px_2px_0px_0px_#3e0020] ${item.badgeColor}`}>
                   {item.badge}
                 </div>
               )}
 
-              <div className="w-full aspect-square bg-gradient-to-br from-primary-fixed to-secondary-fixed rounded-lg relative overflow-hidden border-2 border-surface-variant flex items-center justify-center p-4">
-                <div className="w-16 h-16 rounded-full bg-surface-container border-4 border-outline-variant flex items-center justify-center">
-                  <span className="material-symbols-outlined text-4xl text-primary symbol-filled">diamond</span>
+              <div className="w-full aspect-square bg-gradient-to-br from-primary-fixed to-secondary-fixed rounded-lg relative overflow-hidden border-2 border-surface-variant flex items-center justify-center p-3 md:p-4">
+                <div className="w-10 h-10 md:w-16 md:h-16 rounded-full bg-surface-container border-2 md:border-4 border-outline-variant flex items-center justify-center">
+                  <span className="material-symbols-outlined text-xl md:text-4xl text-primary symbol-filled">diamond</span>
                 </div>
               </div>
 
-              <div className="flex flex-col flex-grow px-1">
-                <h3 className="font-headline-md text-headline-md text-on-surface line-clamp-1">{item.name}</h3>
-                <p className="font-body-md text-body-md text-on-surface-variant text-[12px] mt-xs">Limit: {item.limit}</p>
+              <div className="flex flex-col flex-grow px-0.5 md:px-1">
+                <h3 className="font-headline-md text-xs md:text-headline-md text-on-surface line-clamp-1">{item.name}</h3>
+                <p className="font-body-md text-[10px] md:text-body-md text-on-surface-variant mt-0.5 md:mt-xs">Limit: {item.limit}</p>
               </div>
 
-              <div className="flex justify-between items-center mt-auto pt-2 border-t-2 border-surface-variant border-dashed">
-                <div className="flex items-center gap-1 text-primary font-label-bold text-label-bold text-lg">
-                  <span className="material-symbols-outlined text-[20px] symbol-filled">stars</span>
+              <div className="flex justify-between items-center mt-auto pt-1 md:pt-2 border-t-2 border-surface-variant border-dashed">
+                <div className="flex items-center gap-0.5 md:gap-1 text-primary font-label-bold text-xs md:text-label-bold text-lg">
+                  <span className="material-symbols-outlined text-sm md:text-[20px] symbol-filled">stars</span>
                   {item.price.toLocaleString()}
                 </div>
                 <button
                   onClick={() => handlePurchase(item.id)}
-                  className="bg-tertiary-fixed text-on-tertiary-fixed font-button-text text-button-text px-4 py-2 rounded-full border-2 border-on-tertiary-fixed shadow-[3px_3px_0px_0px_#221b00] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] transition-all active:scale-95"
+                  className="bg-tertiary-fixed text-on-tertiary-fixed font-button-text text-[10px] md:text-button-text px-2 md:px-4 py-1 md:py-2 rounded-full border-2 border-on-tertiary-fixed shadow-[2px_2px_0px_0px_#221b00] md:shadow-[3px_3px_0px_0px_#221b00] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all active:scale-95"
                 >
-                  Purchase
+                  Buy
                 </button>
               </div>
             </article>

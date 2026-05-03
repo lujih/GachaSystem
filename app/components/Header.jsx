@@ -14,10 +14,10 @@ export default function Header({ activeTab = '大厅' }) {
   const navigate = useNavigate();
 
   return (
-    <header className="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-3 bg-white/90 backdrop-blur-xl border-b-4 border-primary-fixed shadow-[0px_4px_0px_0px_rgba(255,119,175,0.2)]">
-      <div className="flex items-center gap-4">
+    <header className="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-4 md:px-6 py-3 bg-white/90 backdrop-blur-xl border-b-4 border-primary-fixed shadow-[0px_4px_0px_0px_rgba(255,119,175,0.2)]">
+      <div className="flex items-center gap-2 md:gap-4">
         <Link to="/" className="no-underline">
-          <h1 className="font-headline-lg text-display-lg italic text-primary-container drop-shadow-[2px_2px_0px_rgba(255,119,175,0.4)]">
+          <h1 className="font-headline-lg text-lg md:text-display-lg italic text-primary-container drop-shadow-[2px_2px_0px_rgba(255,119,175,0.4)] truncate max-w-[130px] md:max-w-none">
             KiraKira Gacha
           </h1>
         </Link>
@@ -43,32 +43,26 @@ export default function Header({ activeTab = '大厅' }) {
         ))}
       </nav>
 
-      <div className="flex items-center gap-4">
-        {/* Currency Display */}
+      <div className="flex items-center gap-2 md:gap-4">
+        {/* Currency Display - always visible on mobile */}
         {user && (
-          <div className="hidden md:flex bg-surface-container py-2 px-4 rounded-full border-2 border-outline-variant items-center gap-4 shadow-[2px_2px_0px_0px_rgba(136,113,120,0.2)]">
-            <div className="flex items-center gap-1 font-label-bold text-label-bold text-on-surface">
-              <span className="material-symbols-outlined text-tertiary-container symbol-filled">monetization_on</span>
-              {user.coins?.toLocaleString() || '0'}
-            </div>
+          <div className="flex bg-surface-container py-1.5 md:py-2 px-2 md:px-4 rounded-full border border-outline-variant items-center gap-1 md:gap-2 shadow-[2px_2px_0px_0px_rgba(136,113,120,0.2)]">
+            <span className="material-symbols-outlined text-tertiary-container symbol-filled text-sm md:text-base">monetization_on</span>
+            <span className="font-label-bold text-xs md:text-label-bold text-on-surface">{user.coins?.toLocaleString() || '0'}</span>
           </div>
         )}
-
-        <button className="text-on-surface-variant hover:scale-105 transition-transform hover:text-primary p-2">
-          <span className="material-symbols-outlined">settings</span>
-        </button>
 
         {user ? (
           <button
             onClick={logout}
-            className="text-on-surface-variant hover:scale-105 transition-transform hover:text-primary p-2"
+            className="text-on-surface-variant hover:scale-105 transition-transform hover:text-primary p-1.5 md:p-2"
           >
             <span className="material-symbols-outlined">logout</span>
           </button>
         ) : (
           <button
             onClick={() => navigate('/login')}
-            className="bg-primary text-on-primary font-label-bold text-label-bold px-6 py-2 rounded-full border-2 border-on-primary-container shadow-[4px_4px_0px_0px_rgba(119,1,67,0.4)] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all"
+            className="bg-primary text-on-primary font-label-bold text-xs md:text-label-bold px-4 md:px-6 py-1.5 md:py-2 rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_rgba(119,1,67,0.4)] md:shadow-[4px_4px_0px_0px_rgba(119,1,67,0.4)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] md:hover:translate-x-[4px] md:hover:translate-y-[4px] transition-all whitespace-nowrap"
           >
             登录
           </button>

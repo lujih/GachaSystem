@@ -10,7 +10,7 @@ const NAV_ITEMS = [
 
 export default function BottomNav({ activeTab = '大厅' }) {
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-end pb-6 pt-2 px-4 bg-white rounded-t-[32px] border-t-4 border-primary-fixed shadow-[0_-8px_20px_rgba(255,119,175,0.15)]">
+    <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-end pb-4 pt-2 px-2 bg-white rounded-t-2xl border-t-4 border-primary-fixed shadow-[0_-4px_16px_rgba(255,119,175,0.15)]">
       {NAV_ITEMS.map(item => {
         const isActive = activeTab === item.label;
         return (
