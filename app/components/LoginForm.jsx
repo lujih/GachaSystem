@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '~/hooks/useAuth';
-import { useNavigate } from '@remix-run/react';
 
 export default function LoginForm() {
   const { login, register } = useAuth();
-  const navigate = useNavigate();
   const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
   const [nickname, setNickname] = useState('');
@@ -22,7 +20,6 @@ export default function LoginForm() {
       } else {
         await register(username, password, nickname || username);
       }
-      navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {
