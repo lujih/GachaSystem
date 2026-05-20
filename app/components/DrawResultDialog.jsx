@@ -40,7 +40,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 md:p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-[95vw] max-w-sm md:max-w-xl max-h-[90vh] overflow-y-auto bg-surface-bright border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.3)] p-3 md:p-6 rounded-2xl md:rounded-[32px]">
         <div className="text-center mb-3 md:mb-4">
