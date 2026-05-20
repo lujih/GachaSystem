@@ -5,6 +5,7 @@ import BottomNav from '~/components/BottomNav';
 import { useAuth } from '~/hooks/useAuth';
 import { useGacha } from '~/hooks/useGacha';
 import DrawResultDialog from '~/components/DrawResultDialog';
+import { api } from '~/lib/api';
 
 const POOL_CONFIG = {
   limited: { name: '限定池', cost: 500, multiCost: 5000, desc: '概率 UP! · 当期角色精选', tag: '概率 UP!' },
@@ -112,7 +113,6 @@ export default function Index() {
 
   async function handleCheckIn() {
     try {
-      const { api } = await import('~/lib/api');
       await api.checkIn();
       await refreshUser();
     } catch (e) {}

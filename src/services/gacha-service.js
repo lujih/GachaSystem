@@ -490,6 +490,7 @@ export class GachaService {
       count,
       totalCost: cost,
       userCoins: currentUser.coins,
+      expGained: totalExp,
       levelUp: levelUpResult ? { newLevel: levelUpResult.toLevel, reward: levelUpResult.coinsReward } : null,
       pityInfo: await this.getPityCounters(currentUser.id)
     });
@@ -531,7 +532,7 @@ export class GachaService {
     });
   }
 
-  // ==================== 保底计数器 ====================
+  // ==================== 限定池抽卡 ====================
   async drawLimited(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     const { poolId } = await request.json();
@@ -542,16 +543,45 @@ export class GachaService {
     if (currentUser.coins < cost) return jsonResponse({ error: '积分不足' }, 400);
     const sources = poolConfig.sources;
     if (!sources?.length) return jsonResponse({ error: '卡池配置错误' }, 500);
+    const rarity = poolConfig.rarity || 'UR';
     const asset = await this.fetchAndUploadWithFallback(sources[Math.floor(Math.random() * sources.length)]);
+    const expGain = (CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10);
+
     currentUser.coins -= cost;
     currentUser.draw_count = (currentUser.draw_count || 0) + 1;
-    await this.env.DB.batch([
-      this.env.DB.prepare('UPDATE users SET coins = coins - ?, draw_count = draw_count + 1 WHERE id = ?').bind(cost, currentUser.id),
-      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, poolConfig.rarity || 'UR')
-    ]);
+    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
+    const levelUpInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
+    let levelUpResult = null;
+    if (levelUpInfo.level > currentUser.level) {
+      levelUpResult = {
+        newLevel: levelUpInfo.level,
+        newExp: levelUpInfo.currentExp,
+        coinsReward: (levelUpInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL
+      };
+      currentUser.level = levelUpResult.newLevel;
+      currentUser.exp = levelUpResult.newExp;
+    }
+
+    const batch = [
+      this.env.DB.prepare('UPDATE users SET coins = coins - ?, draw_count = draw_count + 1, total_exp = total_exp + ? WHERE id = ?').bind(cost, expGain, currentUser.id),
+      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity),
+      this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, 0, asset.sourceName || poolConfig.name || '限定池', Date.now())
+    ];
+    if (levelUpResult) {
+      batch.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, levelUpResult.newExp, currentUser.id));
+    }
+    await this.env.DB.batch(batch);
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     if (asset.success) this.safeWaitUntil(updateGalleryIndex(env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
-    return jsonResponse({ success: true, card: asset, pool: poolConfig.name || pool, userCoins: currentUser.coins });
+
+    return jsonResponse({
+      success: true,
+      card: asset,
+      pool: poolConfig.name || pool,
+      userCoins: currentUser.coins,
+      expGained: expGain,
+      levelUp: levelUpResult ? { newLevel: levelUpResult.newLevel, reward: levelUpResult.coinsReward } : null,
+    });
   }
 
   // ==================== 获取限定池列表 ====================

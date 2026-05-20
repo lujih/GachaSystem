@@ -56,8 +56,8 @@ export default function DrawResultDialog({ open, onClose, result }) {
                 style={{ animationDelay: `${i * 0.1}s` }}
               >
                 <div className={`absolute inset-0 bg-gradient-to-br ${RARITY_GRADIENT[c.rarity || 'N']}`} />
-                {c.imageUrl || c.url ? (
-                  <img src={c.imageUrl || c.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                {c.imageUrl || c.url || c.asset?.url ? (
+                  <img src={c.imageUrl || c.url || c.asset?.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span className="text-white text-xl md:text-3xl font-black">{c.rarity || 'N'}</span>
@@ -80,8 +80,8 @@ export default function DrawResultDialog({ open, onClose, result }) {
           <div className="flex justify-center">
             <div className="relative w-48 md:w-64 aspect-[3/4] rounded-xl overflow-hidden border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] animate-card-reveal">
               <div className={`absolute inset-0 bg-gradient-to-br ${RARITY_GRADIENT[cards[0]?.rarity || 'N']}`} />
-              {cards[0]?.imageUrl || cards[0]?.url ? (
-                <img src={cards[0].imageUrl || cards[0].url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              {cards[0]?.imageUrl || cards[0]?.url || cards[0]?.asset?.url ? (
+                <img src={cards[0].imageUrl || cards[0].url || cards[0].asset?.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-white text-6xl font-black">{cards[0]?.rarity || 'N'}</span>
