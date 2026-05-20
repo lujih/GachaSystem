@@ -32,17 +32,28 @@ export async function loader({ request, context }) {
   if (!env?.DB) {
     return { showcase: [], announcement: null, drawHistory: [] };
   }
-  try {
-    const [showcaseResult, announcement] = await Promise.all([
-      env.DB.prepare(
-        'SELECT g.*, u.username FROM gallery g LEFT JOIN users u ON g.user_id = u.id ORDER BY g.created_at DESC LIMIT 6'
-      ).all(),
-      env.KV_CACHE?.get('system:announcement', { type: 'json' }),
-    ]);
 
-    let drawHistory = [];
+  let showcase = [];
+  let announcement = null;
+  let drawHistory = [];
+
+  // 最新掉落 — gallery 查询（必须成功，否则首页无内容）
+  try {
+    const result = await env.DB.prepare(
+      'SELECT g.*, u.username FROM gallery g LEFT JOIN users u ON g.user_id = u.id ORDER BY g.created_at DESC LIMIT 6'
+    ).all();
+    showcase = result.results || [];
+  } catch (e) { console.error('[loader] showcase failed:', e); }
+
+  // 公告
+  try {
+    announcement = (await env.KV_CACHE?.get('system:announcement', { type: 'json' })) || null;
+  } catch (e) { console.error('[loader] announcement failed:', e); }
+
+  // 抽卡历史 — 仅登录用户（独立 try/catch，失败不影响首页）
+  try {
     const token = request.headers.get('X-Session-Token') || '';
-    if (token) {
+    if (token && env.KV_CACHE) {
       const sessionData = await env.KV_CACHE.get(`session:${token}`, { type: 'json' });
       if (sessionData?.id) {
         const historyResult = await env.DB.prepare(
@@ -51,15 +62,9 @@ export async function loader({ request, context }) {
         drawHistory = historyResult.results || [];
       }
     }
+  } catch (e) { console.error('[loader] drawHistory failed:', e); }
 
-    return {
-      showcase: showcaseResult.results || [],
-      announcement: announcement || null,
-      drawHistory,
-    };
-  } catch (e) {
-    return { showcase: [], announcement: null, drawHistory: [] };
-  }
+  return { showcase, announcement, drawHistory };
 }
 
 export default function Index() {
@@ -375,6 +380,29 @@ export default function Index() {
         onClose={handleDialogClose}
         result={drawResult}
       />
+    </div>
+  );
+}
+
+export function ErrorBoundary({ error }) {
+  return (
+    <div className="min-h-screen bg-background bg-halftone relative">
+      <Header activeTab="大厅" />
+      <main className="max-w-[1440px] mx-auto w-full px-3 md:px-8 py-4 pt-[72px] md:pt-[88px] pb-[100px]">
+        <div className="bg-surface rounded-2xl md:rounded-[32px] border-4 border-error p-6 md:p-8">
+          <h2 className="font-headline-lg text-error mb-4">页面加载失败</h2>
+          <p className="text-sm text-on-surface-variant mb-2 font-mono bg-surface-variant p-3 rounded-lg break-all">
+            {error?.message || '未知错误'}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-primary text-on-primary font-button-text text-sm px-6 py-2 rounded-full border-2 mt-4"
+          >
+            刷新页面
+          </button>
+        </div>
+      </main>
+      <BottomNav activeTab="大厅" />
     </div>
   );
 }
