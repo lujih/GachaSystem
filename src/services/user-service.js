@@ -401,6 +401,7 @@ export class UserService {
       title: currentTitle,
       claimedRewards,
       loginStreak: userRes.login_streak || 0,
+      lastLoginDate: userRes.last_login_date,
       ssrPity,
       urPity,
       ssrPityAt: CONFIG.PITY.SSR.at,
