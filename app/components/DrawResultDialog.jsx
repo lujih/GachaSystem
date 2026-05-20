@@ -42,8 +42,8 @@ export default function DrawResultDialog({ open, onClose, result }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 md:p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-[95vw] max-w-md sm:max-w-lg md:max-w-xl max-h-[90vh] overflow-y-auto bg-surface-bright border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.3)] p-2 md:p-6 rounded-2xl md:rounded-[32px]">
-        <div className="text-center mb-3 md:mb-4">
+      <div className="relative w-[95vw] max-w-lg md:max-w-xl max-h-[90vh] overflow-y-auto bg-surface-bright border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.3)] p-2 md:p-6 rounded-2xl md:rounded-[32px]">
+        <div className="text-center mb-2 md:mb-4">
           <h2 className="font-headline-md text-lg md:text-display-lg text-primary flex items-center justify-center gap-1.5 md:gap-2">
             <span className="material-symbols-outlined symbol-filled text-tertiary-fixed-dim text-lg md:text-2xl">auto_awesome</span>
             抽卡结果
@@ -83,7 +83,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
           </div>
         ) : (
           <div className="flex justify-center">
-            <div className="relative w-44 md:w-60 aspect-[3/4] rounded-xl overflow-hidden border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] animate-card-reveal">
+            <div className="relative w-52 sm:w-60 md:w-64 aspect-[3/4] rounded-xl overflow-hidden border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] animate-card-reveal">
               <div className={`absolute inset-0 bg-gradient-to-br ${RARITY_GRADIENT[cards[0]?.rarity || 'N']}`} />
               {getSrc(cards[0]) ? (
                 <img src={getSrc(cards[0])} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -107,7 +107,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
         )}
 
         {result && (
-          <div className="mt-3 md:mt-4 text-center space-y-0.5 md:space-y-1">
+          <div className="mt-2 md:mt-4 text-center space-y-0.5 md:space-y-1">
             {result.expGained != null && (
               <p className="text-xs md:text-sm text-on-surface-variant">+{result.expGained} 经验</p>
             )}
@@ -119,7 +119,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
           </div>
         )}
 
-        <div className="mt-3 md:mt-4 flex justify-center">
+        <div className="mt-2 md:mt-4 flex justify-center">
           <button
             onClick={onClose}
             className="bg-primary text-on-primary font-button-text text-xs md:text-sm px-6 md:px-8 py-2 md:py-2.5 rounded-full border-2 border-on-primary-container shadow-[3px_3px_0px_0px_rgba(119,1,67,0.4)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] transition-all"
