@@ -1,3 +1,22 @@
+# 抽卡结果弹窗重构 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 将 DrawResultDialog 从简单网格弹窗重写为全屏卡牌轮播
+
+**Architecture:** 单组件 `DrawResultDialog.jsx`，接口不变，纯 div overlay 无 shadcn 依赖。逐张翻转动画 + 圆点指示器 + "下一张/跳过" 交互。移动端 75vw 大卡，桌面 max-w-xs。
+
+**Tech Stack:** React 18, Tailwind CSS v4, CSS 3D transforms, Material Symbols Icons
+
+---
+
+### Task 1: 重写 DrawResultDialog.jsx
+
+**Files:** 重写 `app/components/DrawResultDialog.jsx`
+
+用以下完整代码覆盖整个文件：
+
+```jsx
 import { useState, useEffect, useCallback } from 'react';
 
 const RARITY_GRADIENT = {
@@ -220,3 +239,29 @@ export default function DrawResultDialog({ open, onClose, result }) {
     </div>
   );
 }
+```
+
+- [ ] **Step 2: 构建验证**
+
+```bash
+npm run build
+```
+
+预期：构建成功，无新增错误。
+
+---
+
+### Task 2: 提交推送
+
+- [ ] **Step 1: 提交**
+
+```bash
+git add app/components/DrawResultDialog.jsx
+git commit -m "refactor: DrawResultDialog全屏卡牌轮播 — 逐张翻转/圆点指示器/跳过全部"
+```
+
+- [ ] **Step 2: 推送**
+
+```bash
+git push
+```
