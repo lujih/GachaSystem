@@ -1,4 +1,4 @@
-import { useLoaderData, useRevalidator } from '@remix-run/react';
+import { useLoaderData, useRevalidator, useRouteError } from '@remix-run/react';
 import { useState, useCallback } from 'react';
 import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
@@ -384,16 +384,26 @@ export default function Index() {
   );
 }
 
-export function ErrorBoundary({ error }) {
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const msg = error?.message || error?.data || (typeof error === 'string' ? error : JSON.stringify(error, null, 2));
+  const status = error?.status || error?.statusCode || error?.statusText || '';
+  const stack = error?.stack || '';
   return (
     <div className="min-h-screen bg-background bg-halftone relative">
       <Header activeTab="大厅" />
       <main className="max-w-[1440px] mx-auto w-full px-3 md:px-8 py-4 pt-[72px] md:pt-[88px] pb-[100px]">
         <div className="bg-surface rounded-2xl md:rounded-[32px] border-4 border-error p-6 md:p-8">
-          <h2 className="font-headline-lg text-error mb-4">页面加载失败</h2>
-          <p className="text-sm text-on-surface-variant mb-2 font-mono bg-surface-variant p-3 rounded-lg break-all">
-            {error?.message || '未知错误'}
-          </p>
+          <h2 className="font-headline-lg text-error mb-4">页面加载失败 {status ? `(${status})` : ''}</h2>
+          <pre className="text-xs text-on-surface-variant mb-2 bg-surface-variant p-3 rounded-lg break-all whitespace-pre-wrap max-h-60 overflow-auto font-mono">
+            {msg || '未知错误'}
+          </pre>
+          {stack && (
+            <details className="mt-2">
+              <summary className="text-xs text-on-surface-variant cursor-pointer">堆栈</summary>
+              <pre className="text-[10px] text-on-surface-variant/60 mt-1 bg-surface-variant p-2 rounded break-all whitespace-pre-wrap max-h-40 overflow-auto font-mono">{stack}</pre>
+            </details>
+          )}
           <button
             onClick={() => window.location.reload()}
             className="bg-primary text-on-primary font-button-text text-sm px-6 py-2 rounded-full border-2 mt-4"
