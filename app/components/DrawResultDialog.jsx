@@ -37,7 +37,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-lg md:max-w-2xl bg-surface-bright border-4 border-primary-fixed shadow-[6px_6px_0px_0px_rgba(255,119,175,0.3)] p-4 md:p-8">
+      <DialogContent className="w-[95vw] max-w-lg md:max-w-2xl max-h-[90vh] overflow-y-auto bg-surface-bright border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.3)] p-3 md:p-8">
         <div className="text-center mb-4 md:mb-6">
           <h2 className="font-headline-md md:text-headline-lg text-headline-lg text-primary flex items-center justify-center gap-2">
             <span className="material-symbols-outlined symbol-filled text-tertiary-fixed-dim">auto_awesome</span>
@@ -46,7 +46,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
         </div>
 
         {cards.length > 1 ? (
-          <div className="grid grid-cols-5 gap-2 md:gap-3">
+          <div className="grid grid-cols-5 gap-1.5 md:gap-3">
             {cards.map((c, i) => (
               <div
                 key={i}

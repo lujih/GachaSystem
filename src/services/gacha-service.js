@@ -572,7 +572,7 @@ export class GachaService {
     }
     await this.env.DB.batch(batch);
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-    if (asset.success) this.safeWaitUntil(updateGalleryIndex(env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
+    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
 
     return jsonResponse({
       success: true,

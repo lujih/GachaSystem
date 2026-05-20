@@ -120,9 +120,10 @@ export default function Index() {
 
   const todayChecked = useCallback(() => {
     if (!user?.last_login_date) return false;
-    const last = new Date(user.last_login_date);
-    const now = new Date();
-    return last.toDateString() === now.toDateString();
+    const lastDate = user.last_login_date.split('T')[0];
+    const beijingNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
+    const todayStr = beijingNow.toISOString().split('T')[0];
+    return lastDate === todayStr;
   }, [user?.last_login_date]);
 
   const showAnnouncement = announcement?.title && dismissedAnnId !== announcement.refreshId;
