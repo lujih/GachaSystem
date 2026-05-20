@@ -374,12 +374,14 @@ export default function Index() {
 
       <BottomNav activeTab="大厅" />
 
-      {/* ⑥ 抽卡结果弹窗 */}
-      <DrawResultDialog
-        open={dialogOpen}
-        onClose={handleDialogClose}
-        result={drawResult}
-      />
+      {/* ⑥ 抽卡结果弹窗 — 仅在客户端 open 时渲染，避免 SSR Portal 崩溃 */}
+      {dialogOpen && (
+        <DrawResultDialog
+          open={dialogOpen}
+          onClose={handleDialogClose}
+          result={drawResult}
+        />
+      )}
     </div>
   );
 }

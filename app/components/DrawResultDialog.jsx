@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent } from '~/components/ui/dialog';
-import { Badge } from '~/components/ui/badge';
 
 const RARITY_GRADIENT = {
   N: 'from-gray-400 to-gray-500',
@@ -39,9 +37,12 @@ export default function DrawResultDialog({ open, onClose, result }) {
     return card.imageUrl || card.url || card?.asset?.url;
   }
 
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-sm md:max-w-xl max-h-[90vh] overflow-y-auto bg-surface-bright border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.3)] p-3 md:p-6 rounded-2xl md:rounded-[32px]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-[95vw] max-w-sm md:max-w-xl max-h-[90vh] overflow-y-auto bg-surface-bright border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.3)] p-3 md:p-6 rounded-2xl md:rounded-[32px]">
         <div className="text-center mb-3 md:mb-4">
           <h2 className="font-headline-md text-lg md:text-display-lg text-primary flex items-center justify-center gap-1.5 md:gap-2">
             <span className="material-symbols-outlined symbol-filled text-tertiary-fixed-dim text-lg md:text-2xl">auto_awesome</span>
@@ -92,13 +93,13 @@ export default function DrawResultDialog({ open, onClose, result }) {
                 </div>
               )}
               <div className="absolute bottom-0 left-0 right-0 p-2 md:p-3 bg-gradient-to-t from-black/60 to-transparent">
-                <Badge className={`${RARITY_BADGE[cards[0]?.rarity || 'N']} text-white`}>
+                <span className={`inline-block text-sm font-bold text-white px-2 py-1 rounded ${RARITY_BADGE[cards[0]?.rarity || 'N']}`}>
                   {cards[0]?.rarity || 'N'}
-                </Badge>
+                </span>
               </div>
               {cards[0]?.isPity && (
                 <div className="absolute top-2 right-2">
-                  <Badge className="bg-amber-500 text-white animate-pulse">保底</Badge>
+                  <span className="inline-block bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded animate-pulse">保底</span>
                 </div>
               )}
             </div>
@@ -126,7 +127,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
             确定
           </button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }
