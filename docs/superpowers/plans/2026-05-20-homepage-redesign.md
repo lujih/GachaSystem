@@ -1,31 +1,241 @@
-import { useLoaderData, useRevalidator } from '@remix-run/react';
-import { useState, useCallback } from 'react';
-import Header from '~/components/Header';
-import BottomNav from '~/components/BottomNav';
-import { useAuth } from '~/hooks/useAuth';
-import { useGacha } from '~/hooks/useGacha';
-import DrawResultDialog from '~/components/DrawResultDialog';
+# 首页重设计 Implementation Plan
 
-const POOL_CONFIG = {
-  limited: { name: '限定池', cost: 500, multiCost: 5000, desc: '概率 UP! · 当期角色精选', tag: '概率 UP!' },
-  permanent: { name: '常驻池', cost: 160, multiCost: 1600, desc: '标准卡池 · 概率均等', tag: null },
-};
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-function formatRelativeTime(ts) {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins}分钟前`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}小时前`;
-  const days = Math.floor(hours / 24);
-  return `${days}天前`;
+**Goal:** 将 `app/routes/_index.jsx` 从硬编码静态占位页改为功能完整的可交互首页（公告、用户概览、真实保底、最新掉落、抽卡记录、结果弹窗）
+
+**Architecture:** Remix loader 获取公告/showcase/抽卡历史并 SSR 预填；客户端通过 `useAuth()` + `useGacha()` + `useRevalidator()` 驱动抽卡交互；保底计数扩展 `/api/user/info` 返回；抽卡结果用 Dialog 弹窗呈现；CSS 沿用现有 Vivid Pulse 设计 token
+
+**Tech Stack:** Remix v2, React 18, Tailwind CSS v4, shadcn/ui Dialog, Cloudflare D1/KV, Material Symbols Icons
+
+---
+
+### Task 1: 扩展 UserService.getInfo() 返回保底计数器
+
+**Files:**
+- Modify: `src/services/user-service.js:336-397`
+
+- [ ] **Step 1: 在 getInfo() 中添加 pity 读取逻辑**
+
+在 `user-service.js` 的 `getInfo` 方法中，`claimedRewards` 查询之后、`responseData` 组装之前，添加：
+
+```js
+// 读取保底计数器
+let ssrPity = 0, urPity = 0;
+if (this.env.KV_CACHE) {
+  try {
+    const [ssr, ur] = await Promise.all([
+      this.env.KV_CACHE.get(`pity:ssr:${currentUser.id}`),
+      this.env.KV_CACHE.get(`pity:ur:${currentUser.id}`)
+    ]);
+    ssrPity = parseInt(ssr || '0', 10);
+    urPity = parseInt(ur || '0', 10);
+  } catch (e) { /* ignore */ }
 }
+```
 
-const RARITY_DOT = {
-  N: 'bg-n', R: 'bg-r', SR: 'bg-sr', SSR: 'bg-ssr', UR: 'bg-ur',
+在 `responseData` 对象中追加：
+```js
+ssrPity,
+urPity,
+ssrPityAt: CONFIG.PITY.SSR.at,
+urPityAt: CONFIG.PITY.UR.at,
+```
+
+确保 `CONFIG` 已在文件顶部导入（检查现有 import）。
+
+- [ ] **Step 2: 同步更新缓存键中的字段**
+
+缓存写入时 KV key `uinfo:{id}` 已包含新字段（因为 `responseData` 直接序列化），无需额外改动。但 `login_streak` 字段当前未在 `getInfo` 的 DB 查询中 SELECT——在 SQL 中添加 `u.login_streak`：
+
+在已有 SQL 的 SELECT 列表中追加 `u.login_streak`（在 `u.last_login_date` 之后）：
+
+```js
+const sql = `
+  SELECT 
+    u.username, u.nickname, u.coins, u.draw_count, u.wins, 
+    u.level, u.exp, u.total_exp, u.last_login_date, u.login_streak,
+    (
+      SELECT title_id 
+      FROM user_titles 
+      WHERE user_id = u.id AND is_equipped = 1
+    ) as active_title
+  FROM users u
+  WHERE u.id = ?
+`;
+```
+
+在 `responseData` 中追加：
+```js
+loginStreak: userRes.login_streak || 0,
+```
+
+- [ ] **Step 3: 运行 typecheck 确认**
+
+```bash
+npm run typecheck
+```
+预期：无新增错误（仅有现有的 `serverBuildPath` 类型警告，忽略）
+
+---
+
+### Task 2: 创建 DrawResultDialog 组件
+
+**Files:**
+- Create: `app/components/DrawResultDialog.jsx`
+
+- [ ] **Step 1: 创建 DrawResultDialog.jsx**
+
+```jsx
+import { useState, useEffect } from 'react';
+import { Dialog, DialogContent } from '~/components/ui/dialog';
+import { Badge } from '~/components/ui/badge';
+
+const RARITY_GRADIENT = {
+  N: 'from-gray-400 to-gray-500',
+  R: 'from-blue-400 to-blue-600',
+  SR: 'from-purple-400 to-purple-600',
+  SSR: 'from-amber-400 to-yellow-500',
+  UR: 'from-red-500 to-rose-600',
 };
 
+const RARITY_BADGE = {
+  N: 'bg-gray-500',
+  R: 'bg-blue-500',
+  SR: 'bg-purple-500',
+  SSR: 'bg-amber-500',
+  UR: 'bg-red-500',
+};
+
+export default function DrawResultDialog({ open, onClose, result }) {
+  const [revealed, setRevealed] = useState([]);
+  const cards = result?.cards || (result?.card ? [result.card] : []);
+
+  useEffect(() => {
+    if (!open) { setRevealed([]); return; }
+    setRevealed([]);
+    if (cards.length === 0) return;
+    let i = 0;
+    const timer = setInterval(() => {
+      setRevealed(prev => [...prev, cards[i]]);
+      i++;
+      if (i >= cards.length) clearInterval(timer);
+    }, 200);
+    return () => clearInterval(timer);
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-lg md:max-w-2xl bg-surface-bright border-4 border-primary-fixed shadow-[6px_6px_0px_0px_rgba(255,119,175,0.3)] p-4 md:p-8">
+        <div className="text-center mb-4 md:mb-6">
+          <h2 className="font-headline-md md:text-headline-lg text-headline-lg text-primary flex items-center justify-center gap-2">
+            <span className="material-symbols-outlined symbol-filled text-tertiary-fixed-dim">auto_awesome</span>
+            抽卡结果
+          </h2>
+        </div>
+
+        {cards.length > 1 ? (
+          <div className="grid grid-cols-5 gap-2 md:gap-3">
+            {cards.map((c, i) => (
+              <div
+                key={i}
+                className={`relative aspect-[3/4] rounded-lg md:rounded-xl border-2 border-outline-variant overflow-hidden ${
+                  revealed.includes(c) ? 'animate-card-reveal' : 'opacity-0'
+                }`}
+                style={{ animationDelay: `${i * 0.1}s` }}
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br ${RARITY_GRADIENT[c.rarity || 'N']}`} />
+                {c.imageUrl || c.url ? (
+                  <img src={c.imageUrl || c.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-white text-xl md:text-3xl font-black">{c.rarity || 'N'}</span>
+                  </div>
+                )}
+                <div className="absolute bottom-0 left-0 right-0 p-1 md:p-2 bg-gradient-to-t from-black/60 to-transparent">
+                  <Badge className={`${RARITY_BADGE[c.rarity || 'N']} text-white text-[10px]`}>
+                    {c.rarity || 'N'}
+                  </Badge>
+                </div>
+                {c.isPity && (
+                  <div className="absolute top-1 right-1">
+                    <span className="material-symbols-outlined text-amber-400 symbol-filled text-sm">stars</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex justify-center">
+            <div className="relative w-48 md:w-64 aspect-[3/4] rounded-xl overflow-hidden border-4 border-primary-fixed shadow-[4px_4px_0px_0px_rgba(255,119,175,0.3)] animate-card-reveal">
+              <div className={`absolute inset-0 bg-gradient-to-br ${RARITY_GRADIENT[cards[0]?.rarity || 'N']}`} />
+              {cards[0]?.imageUrl || cards[0]?.url ? (
+                <img src={cards[0].imageUrl || cards[0].url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-white text-6xl font-black">{cards[0]?.rarity || 'N'}</span>
+                </div>
+              )}
+              <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent">
+                <Badge className={`${RARITY_BADGE[cards[0]?.rarity || 'N']} text-white`}>
+                  {cards[0]?.rarity || 'N'}
+                </Badge>
+              </div>
+              {cards[0]?.isPity && (
+                <div className="absolute top-2 right-2">
+                  <Badge className="bg-amber-500 text-white animate-pulse">保底</Badge>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {result && (
+          <div className="mt-4 md:mt-6 text-center space-y-1">
+            {result.expGained != null && (
+              <p className="text-sm text-on-surface-variant">+{result.expGained} 经验</p>
+            )}
+            {result.levelUp && (
+              <p className="text-sm font-bold text-emerald-600">
+                🎉 升级! Lv.{result.levelUp.newLevel} (+{result.levelUp.reward} 金币)
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-center">
+          <button
+            onClick={onClose}
+            className="bg-primary text-on-primary font-button-text text-sm px-8 py-2 rounded-full border-2 border-on-primary-container shadow-[3px_3px_0px_0px_rgba(119,1,67,0.4)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] transition-all"
+          >
+            确定
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+- [ ] **Step 2: 运行 typecheck**
+
+```bash
+npm run typecheck
+```
+预期：无新增错误
+
+---
+
+### Task 3: 重写 _index.jsx loader
+
+**Files:**
+- Modify: `app/routes/_index.jsx:8-25`
+
+- [ ] **Step 1: 扩展 loader 增加抽卡历史查询**
+
+替换现有 loader（8-25 行）为：
+
+```jsx
 export async function loader({ request, context }) {
   const env = context?.cloudflare?.env;
   if (!env?.DB) {
@@ -60,11 +270,61 @@ export async function loader({ request, context }) {
     return { showcase: [], announcement: null, drawHistory: [] };
   }
 }
+```
+
+- [ ] **Step 2: 运行 typecheck**
+
+```bash
+npm run typecheck
+```
+预期：无新增错误
+
+---
+
+### Task 4: 重写 _index.jsx 组件 — 导入 + 状态 + 公告/用户概览
+
+**Files:**
+- Modify: `app/routes/_index.jsx:27-185`（替换整个组件）
+
+- [ ] **Step 1: 替换导入语句（1-6 行）**
+
+```jsx
+import { useLoaderData, useRevalidator } from '@remix-run/react';
+import { useState, useCallback } from 'react';
+import Header from '~/components/Header';
+import BottomNav from '~/components/BottomNav';
+import { useAuth } from '~/hooks/useAuth';
+import { useGacha } from '~/hooks/useGacha';
+import DrawResultDialog from '~/components/DrawResultDialog';
+```
+
+- [ ] **Step 2: 组件声明 + 状态初始化（替换 27-42 行）**
+
+```jsx
+const POOL_CONFIG = {
+  limited: { name: '限定池', cost: 500, multiCost: 5000, desc: '概率 UP! · 当期角色精选', tag: '概率 UP!' },
+  permanent: { name: '常驻池', cost: 160, multiCost: 1600, desc: '标准卡池 · 概率均等', tag: null },
+};
+
+function formatRelativeTime(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins}分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}小时前`;
+  const days = Math.floor(hours / 24);
+  return `${days}天前`;
+}
+
+const RARITY_DOT = {
+  N: 'bg-n', R: 'bg-r', SR: 'bg-sr', SSR: 'bg-ssr', UR: 'bg-ur',
+};
 
 export default function Index() {
-  const { showcase, announcement, drawHistory } = useLoaderData();
+  const { showcase, announcement, drawHistory: initialDrawHistory } = useLoaderData();
   const { user, refreshUser } = useAuth();
-  const { drawing, draw, multiDraw, drawLimited, clearDraw } = useGacha();
+  const { drawing, lastDraw, draw, multiDraw, clearDraw } = useGacha();
   const revalidator = useRevalidator();
   const [poolType, setPoolType] = useState('limited');
   const [drawResult, setDrawResult] = useState(null);
@@ -72,6 +332,7 @@ export default function Index() {
   const [dismissedAnnId, setDismissedAnnId] = useState(
     () => typeof window !== 'undefined' ? localStorage.getItem('dismissedAnnouncement') : null
   );
+  const [drawHistory, setDrawHistory] = useState(initialDrawHistory);
 
   const pool = POOL_CONFIG[poolType];
   const ssrPity = user?.ssrPity ?? 0;
@@ -85,17 +346,9 @@ export default function Index() {
     try {
       let result;
       if (type === 'multi') {
-        if (poolType === 'limited') {
-          result = await drawLimited(poolType);
-        } else {
-          result = await multiDraw(10);
-        }
+        result = await multiDraw(10);
       } else {
-        if (poolType === 'limited') {
-          result = await drawLimited(poolType);
-        } else {
-          result = await draw();
-        }
+        result = await draw();
       }
       setDrawResult(result);
       setDialogOpen(true);
@@ -126,7 +379,25 @@ export default function Index() {
   }, [user?.last_login_date]);
 
   const showAnnouncement = announcement?.title && dismissedAnnId !== announcement.refreshId;
+```
 
+- [ ] **Step 3: 运行 typecheck 确认**
+
+```bash
+npm run typecheck
+```
+预期：无新增错误
+
+---
+
+### Task 5: 重写 _index.jsx 组件 — JSX 渲染
+
+**Files:**
+- Modify: `app/routes/_index.jsx`（追加 JSX 部分）
+
+- [ ] **Step 1: 替换整个 return 语句（原 44-184 行）**
+
+```jsx
   return (
     <div className="min-h-screen bg-background bg-halftone relative">
       <Header activeTab="大厅" />
@@ -377,3 +648,64 @@ export default function Index() {
     </div>
   );
 }
+```
+
+- [ ] **Step 2: 运行 typecheck**
+
+```bash
+npm run typecheck
+```
+预期：无新增错误
+
+---
+
+### Task 6: 验证集成 — 本地启动测试
+
+**Files:** 无代码改动，纯验证
+
+- [ ] **Step 1: 启动开发服务器**
+
+```bash
+npm run dev
+```
+
+- [ ] **Step 2: 浏览器验证清单**
+
+在浏览器打开 `http://localhost:5173`，逐项检查：
+- [ ] 无 JavaScript console 报错
+- [ ] ① 公告横条如 KV 有数据则显示，点 ✕ 可关闭
+- [ ] ② 登录后显示金币/等级/签到天数/抽卡次数 chip，签到按钮可点击
+- [ ] ② 未登录显示登录引导
+- [ ] ③ 限定池/常驻池切换时立绘区渐变、消耗钻石数联动变化
+- [ ] ③ 登录后保底进度条显示真实数据（来自 `/api/user/info`）
+- [ ] ③ 十连抽/单抽按钮可点击，钻石消耗显示正确
+- [ ] ③ 未登录显示引导卡片
+- [ ] ④ 最新掉落 6 宫格显示最近 gallery 数据
+- [ ] ⑤ 登录后显示最近 5 条抽卡记录
+- [ ] ⑤ 未登录不显示此区域
+- [ ] ⑥ 抽卡成功弹出 Dialog，卡片逐张翻转，十连显示 5x2 网格
+- [ ] ⑥ Dialog 关闭后用户数据刷新
+
+- [ ] **Step 3: 确认无 console 报错后停止**
+
+```bash
+# Ctrl+C 停止 dev server
+```
+
+---
+
+### Task 7: 最终提交
+
+- [ ] **Step 1: 查看改动**
+
+```bash
+git status
+git diff --stat
+```
+
+- [ ] **Step 2: 提交**
+
+```bash
+git add src/services/user-service.js app/routes/_index.jsx app/components/DrawResultDialog.jsx
+git commit -m "feat: 首页重设计 — 公告/用户概览/真实保底/最新掉落/抽卡记录/结果弹窗"
+```

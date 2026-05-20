@@ -345,7 +345,7 @@ export class UserService {
     const sql = `
       SELECT 
         u.username, u.nickname, u.coins, u.draw_count, u.wins, 
-        u.level, u.exp, u.total_exp, u.last_login_date,
+        u.level, u.exp, u.total_exp, u.last_login_date, u.login_streak,
         (
           SELECT title_id 
           FROM user_titles 
@@ -374,6 +374,19 @@ export class UserService {
     ).bind(currentUser.id).all();
     const claimedRewards = claimedRewardsResult.results ? claimedRewardsResult.results.map(r => r.level) : [];
 
+    // 读取保底计数器
+    let ssrPity = 0, urPity = 0;
+    if (this.env.KV_CACHE) {
+      try {
+        const [ssr, ur] = await Promise.all([
+          this.env.KV_CACHE.get(`pity:ssr:${currentUser.id}`),
+          this.env.KV_CACHE.get(`pity:ur:${currentUser.id}`)
+        ]);
+        ssrPity = parseInt(ssr || '0', 10);
+        urPity = parseInt(ur || '0', 10);
+      } catch (e) { /* ignore */ }
+    }
+
     const responseData = {
       username: userRes.username,
       nickname: userRes.nickname,
@@ -386,7 +399,12 @@ export class UserService {
       level_progress: levelProgress,
       required_exp_next: requiredExpForNextLevel, 
       title: currentTitle,
-      claimedRewards
+      claimedRewards,
+      loginStreak: userRes.login_streak || 0,
+      ssrPity,
+      urPity,
+      ssrPityAt: CONFIG.PITY.SSR.at,
+      urPityAt: CONFIG.PITY.UR.at,
     };
 
     this.safeWaitUntil(
