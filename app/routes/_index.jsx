@@ -1,5 +1,5 @@
 import { useLoaderData, useRevalidator, useRouteError } from '@remix-run/react';
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
 import { useAuth } from '~/hooks/useAuth';
@@ -27,6 +27,22 @@ const RARITY_DOT = {
   N: 'bg-n', R: 'bg-r', SR: 'bg-sr', SSR: 'bg-ssr', UR: 'bg-ur',
 };
 
+const RARITY_BADGE = {
+  N: 'bg-gray-500 text-white',
+  R: 'bg-blue-500 text-white',
+  SR: 'bg-purple-500 text-white',
+  SSR: 'bg-amber-500 text-white',
+  UR: 'bg-red-500 text-white',
+};
+
+const RARITY_BORDER = {
+  N: 'border-gray-400',
+  R: 'border-blue-400',
+  SR: 'border-purple-400',
+  SSR: 'border-amber-400',
+  UR: 'border-red-400',
+};
+
 export async function loader({ request, context }) {
   const env = context?.cloudflare?.env;
   if (!env?.DB) {
@@ -37,10 +53,14 @@ export async function loader({ request, context }) {
   let announcement = null;
   let drawHistory = [];
 
-  // 最新掉落 — gallery 查询（必须成功，否则首页无内容）
+  // 最新掉落 — gallery 查询，关联 draw_history 获取稀有度
   try {
     const result = await env.DB.prepare(
-      'SELECT g.*, u.username FROM gallery g LEFT JOIN users u ON g.user_id = u.id ORDER BY g.created_at DESC LIMIT 6'
+      `SELECT g.*, u.username,
+        (SELECT dh.rarity FROM draw_history dh
+         WHERE dh.user_id = g.user_id ORDER BY dh.created_at DESC LIMIT 1) as rarity
+       FROM gallery g LEFT JOIN users u ON g.user_id = u.id
+       ORDER BY g.created_at DESC LIMIT 6`
     ).all();
     showcase = result.results || [];
   } catch (e) { console.error('[loader] showcase failed:', e); }
@@ -57,7 +77,7 @@ export async function loader({ request, context }) {
       const sessionData = await env.KV_CACHE.get(`session:${token}`, { type: 'json' });
       if (sessionData?.id) {
         const historyResult = await env.DB.prepare(
-          'SELECT rarity, is_pity, source_name, created_at FROM draw_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 5'
+          'SELECT rarity, is_pity, source_name, created_at FROM draw_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 10'
         ).bind(sessionData.id).all();
         drawHistory = historyResult.results || [];
       }
@@ -65,6 +85,34 @@ export async function loader({ request, context }) {
   } catch (e) { console.error('[loader] drawHistory failed:', e); }
 
   return { showcase, announcement, drawHistory };
+}
+
+const TOAST_COLORS = {
+  success: 'bg-emerald-500 border-emerald-600',
+  error: 'bg-red-500 border-red-600',
+  info: 'bg-blue-500 border-blue-600',
+};
+
+const TOAST_ANIM = `@keyframes slideDown{from{opacity:0;transform:translate(-50%,-20px)}to{opacity:1;transform:translate(-50%,0)}}`;
+let toastStyleInjected = false;
+
+function Toast({ message, type, onClose }) {
+  useEffect(() => {
+    if (!toastStyleInjected && typeof document !== 'undefined') {
+      const el = document.createElement('style');
+      el.textContent = TOAST_ANIM;
+      document.head.appendChild(el);
+      toastStyleInjected = true;
+    }
+    const t = setTimeout(onClose, 3000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  return (
+    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl border-2 text-white text-sm font-medium shadow-lg animate-[slideDown_0.3s_ease-out] ${TOAST_COLORS[type] || TOAST_COLORS.info}`}>
+      {message}
+    </div>
+  );
 }
 
 export default function Index() {
@@ -78,6 +126,16 @@ export default function Index() {
   const [dismissedAnnId, setDismissedAnnId] = useState(
     () => typeof window !== 'undefined' ? localStorage.getItem('dismissedAnnouncement') : null
   );
+  const [defaultPoolId, setDefaultPoolId] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  // 获取限定池列表
+  useEffect(() => {
+    if (!user) return;
+    api.getLimitedPools()
+      .then(res => { if (res.defaultPool) setDefaultPoolId(res.defaultPool); })
+      .catch(() => {});
+  }, [user]);
 
   const pool = POOL_CONFIG[poolType];
   const ssrPity = user?.ssrPity ?? 0;
@@ -85,27 +143,28 @@ export default function Index() {
   const ssrAt = user?.ssrPityAt ?? 10;
   const urAt = user?.urPityAt ?? 50;
 
+  function showToast(message, type = 'info') {
+    setToast({ message, type, key: Date.now() });
+  }
+
   async function handleDraw(type) {
     if (drawing) return;
     clearDraw();
     try {
       let result;
-      if (type === 'multi') {
-        if (poolType === 'limited') {
-          result = await drawLimited(poolType);
-        } else {
-          result = await multiDraw(10);
-        }
+      if (poolType === 'limited') {
+        result = await drawLimited(defaultPoolId || 'genshin');
+      } else if (type === 'multi') {
+        result = await multiDraw(10);
       } else {
-        if (poolType === 'limited') {
-          result = await drawLimited(poolType);
-        } else {
-          result = await draw();
-        }
+        result = await draw();
       }
       setDrawResult(result);
       setDialogOpen(true);
-    } catch (e) {}
+    } catch (e) {
+      const msg = e?.message || '抽卡失败';
+      showToast(msg, 'error');
+    }
   }
 
   async function handleDialogClose() {
@@ -118,9 +177,13 @@ export default function Index() {
 
   async function handleCheckIn() {
     try {
-      await api.checkIn();
+      const res = await api.checkIn();
       await refreshUser();
-    } catch (e) {}
+      const bonus = res?.bonus || '';
+      showToast(`签到成功！+${res?.checkIn?.coins ?? 150} 金币 +${res?.checkIn?.exp ?? 50} 经验${bonus}`, 'success');
+    } catch (e) {
+      showToast(e?.message || '签到失败', 'error');
+    }
   }
 
   const todayChecked = useCallback(() => {
@@ -141,7 +204,7 @@ export default function Index() {
 
         {/* ① 公告横条 */}
         {showAnnouncement && (
-          <div className="bg-primary-fixed border-b-2 border-primary-container rounded-2xl px-4 md:px-6 py-3 md:py-4 mb-4 md:mb-6 flex items-center justify-between shadow-[2px_2px_0px_0px_rgba(255,119,175,0.2)]">
+          <div className="rise-in rise-in-1 bg-primary-fixed border-b-2 border-primary-container rounded-2xl px-4 md:px-6 py-3 md:py-4 mb-4 md:mb-6 flex items-center justify-between shadow-[2px_2px_0px_0px_rgba(255,119,175,0.2)]">
             <div className="flex items-center gap-2 md:gap-3">
               <span className="material-symbols-outlined symbol-filled text-primary">campaign</span>
               <span className="font-label-bold text-sm md:text-label-bold text-on-primary-fixed-variant">{announcement.title}</span>
@@ -160,40 +223,44 @@ export default function Index() {
 
         {/* ② 用户概览卡片 */}
         {user ? (
-          <div className="bg-surface-container-low rounded-2xl border-2 border-outline-variant p-3 md:p-4 mb-4 md:mb-6 flex items-center gap-2 md:gap-4 overflow-x-auto shadow-[2px_2px_0px_0px_rgba(136,113,120,0.1)]">
-            <div className="flex items-center gap-1.5 shrink-0 bg-surface-bright rounded-full px-3 py-1.5 border border-outline-variant">
-              <span className="material-symbols-outlined symbol-filled text-tertiary-container text-sm md:text-base">monetization_on</span>
-              <span className="font-label-bold text-xs md:text-label-bold text-on-surface">{(user.coins ?? 0).toLocaleString()}</span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0 bg-surface-bright rounded-full px-3 py-1.5 border border-outline-variant">
-              <span className="material-symbols-outlined symbol-filled text-primary text-sm md:text-base">stars</span>
-              <span className="font-label-bold text-xs md:text-label-bold text-on-surface">Lv.{user.level ?? 1}</span>
-              <div className="w-12 md:w-16 h-1.5 bg-surface-variant rounded-full overflow-hidden ml-1">
-                <div className="h-full bg-primary rounded-full" style={{ width: `${user.level_progress ?? 0}%` }} />
+          <div className="rise-in rise-in-2 bg-surface-container-low rounded-2xl border-2 border-outline-variant p-3 md:p-4 mb-4 md:mb-6 shadow-[2px_2px_0px_0px_rgba(136,113,120,0.1)]">
+            <div className="grid grid-cols-2 md:flex md:items-center gap-2 md:gap-4">
+              <div className="flex items-center gap-1.5 bg-surface-bright rounded-full px-3 py-1.5 border border-outline-variant">
+                <span className="material-symbols-outlined symbol-filled text-tertiary-container text-sm md:text-base">monetization_on</span>
+                <span className="font-label-bold text-xs md:text-label-bold text-on-surface">{(user.coins ?? 0).toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-surface-bright rounded-full px-3 py-1.5 border border-outline-variant">
+                <span className="material-symbols-outlined symbol-filled text-primary text-sm md:text-base">stars</span>
+                <span className="font-label-bold text-xs md:text-label-bold text-on-surface">Lv.{user.level ?? 1}</span>
+                <div className="w-14 md:w-20 h-2 bg-surface-variant rounded-full overflow-hidden ml-1">
+                  <div className="h-full bg-gradient-to-r from-primary to-primary-container rounded-full transition-all duration-500" style={{ width: `${user.level_progress ?? 0}%` }} />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 bg-surface-bright rounded-full px-3 py-1.5 border border-outline-variant">
+                <span className="material-symbols-outlined symbol-filled text-secondary text-sm md:text-base">local_fire_department</span>
+                <span className="font-label-bold text-xs md:text-label-bold text-on-surface">{user.loginStreak ?? 0}天</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-surface-bright rounded-full px-3 py-1.5 border border-outline-variant">
+                <span className="material-symbols-outlined symbol-filled text-primary-container text-sm md:text-base">style</span>
+                <span className="font-label-bold text-xs md:text-label-bold text-on-surface">{user.drawCount ?? 0}抽</span>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0 bg-surface-bright rounded-full px-3 py-1.5 border border-outline-variant">
-              <span className="material-symbols-outlined symbol-filled text-secondary text-sm md:text-base">local_fire_department</span>
-              <span className="font-label-bold text-xs md:text-label-bold text-on-surface">{user.loginStreak ?? 0}天</span>
+            <div className="mt-2 md:mt-0 md:inline-flex md:ml-auto">
+              <button
+                onClick={handleCheckIn}
+                disabled={todayChecked()}
+                className={`w-full md:w-auto font-button-text text-xs md:text-button-text px-5 py-2 rounded-full border-2 transition-all ${
+                  todayChecked()
+                    ? 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-default'
+                    : 'bg-primary text-on-primary border-on-primary-container shadow-[2px_2px_0px_0px_rgba(119,1,67,0.4)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] animate-pulse'
+                }`}
+              >
+                {todayChecked() ? '已签到' : '签到'}
+              </button>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0 bg-surface-bright rounded-full px-3 py-1.5 border border-outline-variant">
-              <span className="material-symbols-outlined symbol-filled text-primary-container text-sm md:text-base">style</span>
-              <span className="font-label-bold text-xs md:text-label-bold text-on-surface">{user.drawCount ?? 0}抽</span>
-            </div>
-            <button
-              onClick={handleCheckIn}
-              disabled={todayChecked()}
-              className={`shrink-0 ml-auto font-button-text text-xs md:text-button-text px-4 py-2 rounded-full border-2 transition-all ${
-                todayChecked()
-                  ? 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-default'
-                  : 'bg-primary text-on-primary border-on-primary-container shadow-[2px_2px_0px_0px_rgba(119,1,67,0.4)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] animate-pulse'
-              }`}
-            >
-              {todayChecked() ? '已签到' : '签到'}
-            </button>
           </div>
         ) : (
-          <div className="bg-surface-container-low rounded-2xl border-2 border-outline-variant p-4 md:p-6 mb-4 md:mb-6 text-center">
+          <div className="rise-in rise-in-2 bg-surface-container-low rounded-2xl border-2 border-outline-variant p-4 md:p-6 mb-4 md:mb-6 text-center">
             <p className="text-on-surface-variant text-sm mb-3">登录后查看个人数据</p>
             <a href="/login" className="inline-block bg-primary text-on-primary font-button-text text-sm px-6 py-2 rounded-full border-2 border-on-primary-container shadow-[3px_3px_0px_0px_rgba(119,1,67,0.4)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] transition-all no-underline">
               登录
@@ -202,16 +269,20 @@ export default function Index() {
         )}
 
         {/* ③ 池切换 + 抽卡主区域 */}
-        <div className="relative w-full rounded-2xl md:rounded-[32px] border-4 border-primary-fixed overflow-hidden shadow-[4px_4px_0px_0px_rgba(255,119,175,0.2)] md:shadow-[8px_8px_0px_0px_rgba(255,119,175,0.2)] bg-surface-bright flex flex-col md:flex-row mb-4 md:mb-8">
+        <div className="rise-in rise-in-3 relative w-full rounded-2xl md:rounded-[32px] border-4 border-primary-fixed overflow-hidden shadow-[4px_4px_0px_0px_rgba(255,119,175,0.2)] md:shadow-[8px_8px_0px_0px_rgba(255,119,175,0.2)] bg-surface-bright flex flex-col md:flex-row mb-4 md:mb-8">
           <div className="absolute inset-0 opacity-10 bg-halftone" />
 
           {/* 左侧立绘展示区 */}
-          <div className="relative w-full md:w-2/3 min-h-[160px] md:min-h-[280px] overflow-hidden">
+          <div className="relative w-full md:w-2/3 min-h-[180px] md:min-h-[300px] overflow-hidden">
             <div className={`absolute inset-0 transition-colors duration-500 ${
               poolType === 'limited'
                 ? 'bg-gradient-to-br from-primary-container/30 to-secondary-container/30'
                 : 'bg-gradient-to-br from-surface-container/50 to-surface-variant/30'
             }`} />
+            {/* 浮动光球 */}
+            <div className="orb orb-1" />
+            <div className="orb orb-2" />
+            <div className="orb orb-3" />
             <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-surface-bright via-surface-bright/50 to-transparent md:w-3/4" />
 
             <div className="absolute bottom-0 left-0 p-4 md:p-8 w-full md:w-auto">
@@ -249,17 +320,30 @@ export default function Index() {
             </div>
 
             {/* 保底进度 */}
-            <div className="bg-surface-container-low rounded-2xl p-3 md:p-4 border-2 border-outline-variant mb-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-label-bold text-[10px] md:text-label-bold text-on-surface-variant uppercase tracking-widest">SSR 保底</span>
-                <span className="font-button-text text-xs text-primary">{ssrPity}/{ssrAt}</span>
-              </div>
-              <div className="h-3 md:h-4 w-full bg-surface-variant rounded-full overflow-hidden border border-outline-variant mb-3">
-                <div className="h-full bg-gradient-to-r from-primary-container to-secondary-container rounded-full transition-all duration-500" style={{ width: `${Math.min((ssrPity / ssrAt) * 100, 100)}%` }} />
-              </div>
-              <p className="font-body-md text-[10px] md:text-body-md text-on-surface-variant text-center">
-                {ssrPity >= ssrAt ? '下次必出 SSR!' : `再抽 ${ssrAt - ssrPity} 次必出 SSR`}
-              </p>
+            <div className="bg-surface-container-low rounded-2xl p-3 md:p-4 border-2 border-outline-variant mb-4 space-y-3">
+              {[
+                { label: 'SSR', cur: ssrPity, at: ssrAt, gradient: 'from-amber-400 to-yellow-500', color: 'text-amber-500' },
+                { label: 'UR', cur: urPity, at: urAt, gradient: 'from-red-400 to-rose-500', color: 'text-red-500' },
+              ].map(({ label, cur, at, gradient, color }) => {
+                const pct = Math.min((cur / at) * 100, 100);
+                const isNear = pct >= 80;
+                return (
+                  <div key={label}>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="font-label-bold text-[10px] md:text-label-bold text-on-surface-variant uppercase tracking-widest">{label} 保底</span>
+                      <span className={`font-button-text text-xs ${isNear ? color : 'text-primary'}`}>{cur}/{at}</span>
+                    </div>
+                    <div className={`h-3 md:h-4 w-full bg-surface-variant rounded-full overflow-hidden border border-outline-variant ${isNear ? 'pity-near' : ''}`}>
+                      <div className={`h-full bg-gradient-to-r ${gradient} rounded-full transition-all duration-500 relative overflow-hidden`} style={{ width: `${pct}%` }}>
+                        {isNear && <div className="absolute inset-0 animate-shimmer" />}
+                      </div>
+                    </div>
+                    <p className={`font-body-md text-[10px] mt-0.5 ${isNear ? `font-bold ${color}` : 'text-on-surface-variant'}`}>
+                      {cur >= at ? `✦ 下次必出 ${label}!` : `再抽 ${at - cur} 次必出 ${label}`}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
 
             {/* 抽卡按钮 */}
@@ -306,7 +390,7 @@ export default function Index() {
         </div>
 
         {/* ④ 最新掉落 */}
-        <div className="bg-surface rounded-2xl md:rounded-[32px] border-4 border-primary-fixed p-4 md:p-6 mb-4 md:mb-8 shadow-[4px_4px_0px_0px_rgba(255,119,175,0.2)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.2)]">
+        <div className="rise-in rise-in-4 bg-surface rounded-2xl md:rounded-[32px] border-4 border-primary-fixed p-4 md:p-6 mb-4 md:mb-8 shadow-[4px_4px_0px_0px_rgba(255,119,175,0.2)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.2)]">
           <h2 className="font-headline-md md:text-headline-lg text-headline-lg text-primary mb-3 md:mb-4 flex items-center gap-2">
             <span className="material-symbols-outlined symbol-filled text-tertiary-fixed-dim">trophy</span>
             最新掉落
@@ -319,7 +403,7 @@ export default function Index() {
           ) : (
             <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
               {showcase.map((item, i) => (
-                <div key={i} className="group relative aspect-[3/4] rounded-lg overflow-hidden border-2 border-outline-variant shadow-[2px_2px_0px_0px_rgba(136,113,120,0.2)] hover:scale-105 hover:shadow-lg transition-all">
+                <div key={i} className={`group relative aspect-[3/4] rounded-lg overflow-hidden border-2 ${RARITY_BORDER[item.rarity] || 'border-outline-variant'} shadow-[2px_2px_0px_0px_rgba(136,113,120,0.2)] hover:scale-105 hover:shadow-lg transition-all`}>
                   {item.url ? (
                     <img src={item.url} alt="" className="w-full h-full object-cover" loading="lazy" />
                   ) : (
@@ -327,9 +411,14 @@ export default function Index() {
                       <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">image</span>
                     </div>
                   )}
+                  {item.rarity && (
+                    <span className={`absolute top-1.5 left-1.5 text-[10px] font-black px-2 py-0.5 rounded-md shadow-sm ${RARITY_BADGE[item.rarity] || ''}`}>
+                      {item.rarity}
+                    </span>
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div className="absolute bottom-0 left-0 right-0 p-1.5 translate-y-full group-hover:translate-y-0 transition-transform">
-                    <p className="text-white text-xs font-medium truncate">{item.username || '匿名'}</p>
+                  <div className="absolute bottom-0 left-0 right-0 p-2 translate-y-full group-hover:translate-y-0 transition-transform">
+                    <p className="text-white text-xs font-bold truncate drop-shadow-md">{item.username || '匿名'}</p>
                   </div>
                 </div>
               ))}
@@ -339,7 +428,7 @@ export default function Index() {
 
         {/* ⑤ 最近抽卡记录 */}
         {user && (
-          <div className="bg-surface rounded-2xl md:rounded-[32px] border-4 border-primary-fixed p-4 md:p-6 shadow-[4px_4px_0px_0px_rgba(255,119,175,0.2)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.2)]">
+          <div className="rise-in rise-in-5 bg-surface rounded-2xl md:rounded-[32px] border-4 border-primary-fixed p-4 md:p-6 shadow-[4px_4px_0px_0px_rgba(255,119,175,0.2)] md:shadow-[6px_6px_0px_0px_rgba(255,119,175,0.2)]">
             <div className="flex items-center justify-between mb-3 md:mb-4">
               <h2 className="font-headline-md md:text-headline-lg text-headline-lg text-primary flex items-center gap-2">
                 <span className="material-symbols-outlined symbol-filled text-tertiary-fixed-dim">history</span>
@@ -353,16 +442,17 @@ export default function Index() {
                 <p className="text-sm">还没有抽卡记录，快去试试手气吧！</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {drawHistory.map((record, i) => (
-                  <div key={i} className="flex items-center gap-3 py-2 px-3 rounded-xl bg-surface-container-low border border-outline-variant">
-                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${RARITY_DOT[record.rarity] || 'bg-n'}`} />
-                    <span className="font-button-text text-xs text-on-surface shrink-0 min-w-[48px]">{formatRelativeTime(record.created_at)}</span>
-                    <span className="font-label-bold text-xs text-on-surface-variant">{record.rarity}</span>
+                  <div key={i} className="flex items-center gap-2.5 py-2.5 px-3 rounded-xl bg-surface-container-low border border-outline-variant hover:bg-surface-container transition-colors">
+                    <span className={`inline-flex items-center justify-center text-[10px] font-black px-2.5 py-0.5 rounded-full shrink-0 shadow-sm ${RARITY_BADGE[record.rarity] || RARITY_BADGE.N}`}>
+                      {record.rarity}
+                    </span>
+                    <span className="font-button-text text-xs text-on-surface shrink-0">{formatRelativeTime(record.created_at)}</span>
                     {record.is_pity ? (
-                      <span className="material-symbols-outlined symbol-filled text-amber-400 text-sm">stars</span>
+                      <span className="material-symbols-outlined symbol-filled text-amber-400 text-sm shrink-0" title="保底">stars</span>
                     ) : null}
-                    <span className="font-body-md text-xs text-on-surface-variant/60 ml-auto truncate">{record.source_name || ''}</span>
+                    <span className="font-body-md text-[11px] text-on-surface-variant/70 ml-auto truncate">{record.source_name || ''}</span>
                   </div>
                 ))}
               </div>
@@ -380,6 +470,16 @@ export default function Index() {
           open={dialogOpen}
           onClose={handleDialogClose}
           result={drawResult}
+        />
+      )}
+
+      {/* Toast 通知 */}
+      {toast && (
+        <Toast
+          key={toast.key}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
         />
       )}
     </div>

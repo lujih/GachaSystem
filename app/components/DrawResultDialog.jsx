@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const RARITY_GRADIENT = {
   N: 'from-gray-400 to-gray-500',
@@ -36,12 +36,31 @@ function getSrc(card) {
   return card?.imageUrl || card?.url || card?.asset?.url || null;
 }
 
+const ANIMATIONS = `
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes cardFlip {
+    0% { transform: rotateY(180deg) scale(0.85); opacity: 0; }
+    60% { transform: rotateY(-20deg) scale(1.02); opacity: 1; }
+    100% { transform: rotateY(0deg) scale(1); opacity: 1; }
+  }
+`;
+
 export default function DrawResultDialog({ open, onClose, result }) {
   const [current, setCurrent] = useState(0);
   const [showAll, setShowAll] = useState(false);
   const [animKey, setAnimKey] = useState(0);
+  const styleInjected = useRef(false);
+  if (!styleInjected.current && typeof document !== 'undefined') {
+    const el = document.createElement('style');
+    el.textContent = ANIMATIONS;
+    document.head.appendChild(el);
+    styleInjected.current = true;
+  }
 
-  const cards = result?.cards || (result?.card ? [result.card] : []);
+  const cards = result?.cards || (result?.card ? [{ ...result.card, rarity: result.rarity, isPity: result.isPity }] : []);
   const total = cards.length;
   const card = cards[current];
   const isLast = current >= total - 1;
@@ -204,19 +223,6 @@ export default function DrawResultDialog({ open, onClose, result }) {
           </div>
         </div>
       )}
-
-      {/* 全局 CSS 动画注入 */}
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes cardFlip {
-          0% { transform: rotateY(180deg) scale(0.85); opacity: 0; }
-          60% { transform: rotateY(-20deg) scale(1.02); opacity: 1; }
-          100% { transform: rotateY(0deg) scale(1); opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 }

@@ -247,6 +247,61 @@
   animation: float 3s ease-in-out infinite;
 }
 
+/* Page entrance stagger */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise-in {
+  animation: riseIn 0.5s ease-out both;
+}
+.rise-in-1 { animation-delay: 0.05s; }
+.rise-in-2 { animation-delay: 0.12s; }
+.rise-in-3 { animation-delay: 0.2s; }
+.rise-in-4 { animation-delay: 0.3s; }
+.rise-in-5 { animation-delay: 0.4s; }
+
+/* Gacha hero floating orbs */
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(12px, -18px) scale(1.08); }
+  66% { transform: translate(-8px, 10px) scale(0.95); }
+}
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.35;
+  animation: orbFloat 8s ease-in-out infinite;
+}
+.orb-1 {
+  width: 180px; height: 180px;
+  background: var(--color-primary-container);
+  top: 10%; left: 15%;
+  animation-delay: 0s;
+}
+.orb-2 {
+  width: 120px; height: 120px;
+  background: var(--color-secondary-container);
+  top: 50%; left: 55%;
+  animation-delay: -3s;
+}
+.orb-3 {
+  width: 90px; height: 90px;
+  background: var(--color-tertiary-container);
+  top: 20%; right: 10%;
+  animation-delay: -5s;
+}
+
+/* Pity bar glow when near threshold */
+@keyframes pityGlow {
+  0%, 100% { box-shadow: 0 0 6px rgba(245,158,11,0.3); }
+  50% { box-shadow: 0 0 16px rgba(245,158,11,0.6); }
+}
+.pity-near {
+  animation: pityGlow 2s ease-in-out infinite;
+}
+
 /* =========================================
    Glass Morphism
    ========================================= */
