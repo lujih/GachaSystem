@@ -127,8 +127,14 @@ export default function Games() {
                   type="number"
                   value={betAmount}
                   onChange={e => {
-                    const v = Number(e.target.value);
+                    const raw = e.target.value;
+                    if (raw === '') { setBetAmount(''); return; }
+                    const v = Number(raw);
                     if (v >= 10 && v <= 1000) setBetAmount(v);
+                  }}
+                  onBlur={() => {
+                    if (betAmount === '' || Number(betAmount) < 10) setBetAmount(10);
+                    else if (Number(betAmount) > 1000) setBetAmount(1000);
                   }}
                   min={10}
                   max={1000}

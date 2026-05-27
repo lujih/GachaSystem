@@ -4,20 +4,19 @@ import { api } from '~/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
-import { Badge } from '~/components/ui/badge';
 
 export default function DiceGame() {
   const { user, refreshUser } = useAuth();
-  const [betAmount, setBetAmount] = useState(10);
-  const [prediction, setPrediction] = useState('big');
+  const [betAmount, setBetAmount] = useState(100);
   const [result, setResult] = useState(null);
   const [playing, setPlaying] = useState(false);
 
   async function handlePlay() {
+    const bet = Math.min(Math.max(Number(betAmount) || 10, 10), 1000);
     setPlaying(true);
     setResult(null);
     try {
-      const res = await api.playDice(betAmount, prediction);
+      const res = await api.playDice(bet);
       setResult(res);
       await refreshUser();
     } catch (e) {
@@ -31,41 +30,23 @@ export default function DiceGame() {
       <div className="h-1 gradient-primary" />
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <span>🎲</span> 骰子猜大小
+          <span>🎲</span> 骰子挑战
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-1 block">投注金额</label>
-            <Input
-              type="number"
-              value={betAmount}
-              onChange={e => setBetAmount(Number(e.target.value))}
-              min={10}
-              max={1000}
-              className="bg-white/50"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-1 block">预测</label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant={prediction === 'big' ? 'default' : 'outline'}
-                onClick={() => setPrediction('big')}
-                className={prediction === 'big' ? 'gradient-primary text-white' : 'bg-white/50'}
-              >
-                大 (6-12)
-              </Button>
-              <Button
-                variant={prediction === 'small' ? 'default' : 'outline'}
-                onClick={() => setPrediction('small')}
-                className={prediction === 'small' ? 'gradient-primary text-white' : 'bg-white/50'}
-              >
-                小 (2-5)
-              </Button>
-            </div>
-          </div>
+        <div>
+          <label className="text-sm font-medium text-gray-700 mb-1 block">投注金额</label>
+          <Input
+            type="number"
+            value={betAmount}
+            onChange={e => {
+              const v = Number(e.target.value);
+              if (v >= 10 && v <= 1000) setBetAmount(v);
+            }}
+            min={10}
+            max={1000}
+            className="bg-white/50"
+          />
         </div>
 
         <Button
