@@ -32,7 +32,7 @@ export default function Synthesis() {
   useEffect(() => {
     if (!user) return;
     api.getInventory()
-      .then(res => setInventory(res || { N: 0, R: 0, SR: 0, SSR: 0, UR: 0 }))
+      .then(res => setInventory(res.data || res || { N: 0, R: 0, SR: 0, SSR: 0, UR: 0 }))
       .catch(() => {});
   }, [user]);
 
@@ -56,7 +56,7 @@ export default function Synthesis() {
         showToast(`合成成功！消耗 ${res.consumed}，+${res.expGained} 经验`, 'success');
         // 刷新库存和用户数据
         const [inv] = await Promise.all([api.getInventory(), refreshUser()]);
-        setInventory(inv || { N: 0, R: 0, SR: 0, SSR: 0, UR: 0 });
+        setInventory(inv.data || inv || { N: 0, R: 0, SR: 0, SSR: 0, UR: 0 });
         if (res.levelUp) {
           setTimeout(() => showToast(`🎉 升级！Lv.${res.levelUp.newLevel}，+${res.levelUp.reward} 金币`, 'success'), 1500);
         }
