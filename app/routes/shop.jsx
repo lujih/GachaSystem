@@ -53,8 +53,9 @@ export default function Shop() {
       }
     } catch (e) {
       showToast(e?.message || '购买失败', 'error');
+    } finally {
+      setBuying(null);
     }
-    setBuying(null);
   }
 
   return (
