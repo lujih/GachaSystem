@@ -26,8 +26,9 @@ CREATE TABLE IF NOT EXISTS gallery (
     url TEXT NOT NULL,
     user_id INTEGER,
     username TEXT, -- 保留作为快照，或者仅使用 user_id 并在查询时 JOIN
+    rarity TEXT DEFAULT 'N',
     created_at INTEGER NOT NULL,
-    CONSTRAINT fk_gallery_user FOREIGN KEY (user_id) 
+    CONSTRAINT fk_gallery_user FOREIGN KEY (user_id)
         REFERENCES users(id) ON DELETE CASCADE
 ) STRICT;
 
@@ -143,3 +144,6 @@ CREATE INDEX IF NOT EXISTS idx_uploads_status_created ON user_uploads(status, cr
 
 -- gallery: 游标分页优化 (使用 id 作为游标)
 CREATE INDEX IF NOT EXISTS idx_gallery_id ON gallery(id DESC);
+
+-- Migration: add rarity column to gallery (existing databases)
+ALTER TABLE gallery ADD COLUMN rarity TEXT DEFAULT 'N';

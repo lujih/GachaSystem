@@ -48,8 +48,8 @@ async function updateGalleryIndex(env, newItem) {
   try {
     const ts = typeof newItem.ts === 'string' ? Date.parse(newItem.ts) : newItem.ts;
     await env.DB.prepare(
-      'INSERT INTO gallery (url, user_id, username, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET user_id = excluded.user_id, username = excluded.username, created_at = excluded.created_at'
-    ).bind(newItem.url, newItem.userId, newItem.username, ts).run();
+      'INSERT INTO gallery (url, user_id, username, rarity, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET user_id = excluded.user_id, username = excluded.username, rarity = excluded.rarity, created_at = excluded.created_at'
+    ).bind(newItem.url, newItem.userId, newItem.username, newItem.rarity || 'N', ts).run();
   } catch (e) {
     console.error('Gallery D1 error:', e);
   }
@@ -387,7 +387,7 @@ export class GachaService {
 
       // 图库 & 排行榜
       if (asset.success) {
-        this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
+        this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, ts: getBeijingISOString() }));
         if (rarity === 'UR') {
           this.safeWaitUntil(updateLeaderboard(this.env, { username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() }));
         }
@@ -465,7 +465,7 @@ export class GachaService {
         await this.updatePityCounters(currentUser.id, rarity);
 
         if (asset.success) {
-          this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
+          this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, ts: getBeijingISOString() }));
           if (rarity === 'UR') {
             this.safeWaitUntil(updateLeaderboard(this.env, { username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() + i }));
           }
@@ -572,7 +572,7 @@ export class GachaService {
     }
     await this.env.DB.batch(batch);
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
+    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, ts: getBeijingISOString() }));
 
     return jsonResponse({
       success: true,
@@ -646,7 +646,7 @@ export class GachaService {
       currentUser.level = levelUpResult.newLevel;
       currentUser.exp = levelUpInfo.currentExp;
     }
-    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
+    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, ts: getBeijingISOString() }));
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     return jsonResponse({
       success: true,
@@ -687,7 +687,7 @@ export class GachaService {
     if (levelUpResult) {
       await this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, currentUser.exp, currentUser.id).run();
     }
-    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, ts: getBeijingISOString() }));
+    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, ts: getBeijingISOString() }));
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     return jsonResponse({
       success: true,

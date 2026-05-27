@@ -5,6 +5,7 @@ import BottomNav from '~/components/BottomNav';
 import { useAuth } from '~/hooks/useAuth';
 import { useGacha } from '~/hooks/useGacha';
 import DrawResultDialog from '~/components/DrawResultDialog';
+import Toast from '~/components/Toast';
 import { api } from '~/lib/api';
 
 const POOL_CONFIG = {
@@ -52,14 +53,10 @@ export async function loader({ request, context }) {
   let showcase = [];
   let announcement = null;
 
-  // 最新掉落 — gallery 查询，关联 draw_history 获取稀有度
+  // 最新掉落 — gallery 查询
   try {
     const result = await env.DB.prepare(
-      `SELECT g.*, u.username,
-        (SELECT dh.rarity FROM draw_history dh
-         WHERE dh.user_id = g.user_id ORDER BY dh.created_at DESC LIMIT 1) as rarity
-       FROM gallery g LEFT JOIN users u ON g.user_id = u.id
-       ORDER BY g.created_at DESC LIMIT 6`
+      'SELECT g.*, u.username FROM gallery g LEFT JOIN users u ON g.user_id = u.id ORDER BY g.created_at DESC LIMIT 6'
     ).all();
     showcase = result.results || [];
   } catch (e) { console.error('[loader] showcase failed:', e); }
@@ -70,34 +67,6 @@ export async function loader({ request, context }) {
   } catch (e) { console.error('[loader] announcement failed:', e); }
 
   return { showcase, announcement };
-}
-
-const TOAST_COLORS = {
-  success: 'bg-emerald-500 border-emerald-600',
-  error: 'bg-red-500 border-red-600',
-  info: 'bg-blue-500 border-blue-600',
-};
-
-const TOAST_ANIM = `@keyframes slideDown{from{opacity:0;transform:translate(-50%,-20px)}to{opacity:1;transform:translate(-50%,0)}}`;
-let toastStyleInjected = false;
-
-function Toast({ message, type, onClose }) {
-  useEffect(() => {
-    if (!toastStyleInjected && typeof document !== 'undefined') {
-      const el = document.createElement('style');
-      el.textContent = TOAST_ANIM;
-      document.head.appendChild(el);
-      toastStyleInjected = true;
-    }
-    const t = setTimeout(onClose, 3000);
-    return () => clearTimeout(t);
-  }, [onClose]);
-
-  return (
-    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl border-2 text-white text-sm font-medium shadow-lg animate-[slideDown_0.3s_ease-out] ${TOAST_COLORS[type] || TOAST_COLORS.info}`}>
-      {message}
-    </div>
-  );
 }
 
 export default function Index() {
@@ -345,15 +314,19 @@ export default function Index() {
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => handleDraw('multi')}
-                  disabled={drawing}
-                  className="relative group bg-tertiary-fixed-dim text-on-tertiary-fixed font-button-text text-sm md:text-button-text py-3 md:py-4 px-4 rounded-full border-4 border-tertiary-container shadow-[4px_4px_0px_0px_#705d00] md:shadow-[6px_6px_0px_0px_#705d00] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all flex justify-between items-center overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={drawing || poolType === 'limited'}
+                  className={`relative group font-button-text text-sm md:text-button-text py-3 md:py-4 px-4 rounded-full border-4 transition-all flex justify-between items-center overflow-hidden ${
+                    poolType === 'limited'
+                      ? 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-50'
+                      : 'bg-tertiary-fixed-dim text-on-tertiary-fixed border-tertiary-container shadow-[4px_4px_0px_0px_#705d00] md:shadow-[6px_6px_0px_0px_#705d00] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed'
+                  }`}
                 >
-                  <div className="absolute inset-0 w-1/4 h-full bg-white/40 -skew-x-12 -translate-x-full group-hover:animate-[sheen_1s_ease-in-out]" />
+                  {poolType !== 'limited' && <div className="absolute inset-0 w-1/4 h-full bg-white/40 -skew-x-12 -translate-x-full group-hover:animate-[sheen_1s_ease-in-out]" />}
                   <span className="flex items-center gap-2">
                     <span className="material-symbols-outlined symbol-filled">diamond</span>
                     {pool.multiCost}
                   </span>
-                  <span className="uppercase tracking-wider">十连抽</span>
+                  <span className="uppercase tracking-wider">{poolType === 'limited' ? '暂不支持' : '十连抽'}</span>
                 </button>
                 <button
                   onClick={() => handleDraw('single')}
