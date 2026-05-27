@@ -3,10 +3,14 @@ import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
 import GachaCard from '~/components/GachaCard';
 
+const RARITY_COLORS = {
+  N: 'bg-gray-500', R: 'bg-blue-500', SR: 'bg-purple-500', SSR: 'bg-amber-500', UR: 'bg-red-500',
+};
+
 export async function loader({ request, context }) {
   const env = context?.cloudflare?.env;
   if (!env?.DB) {
-    return { items: [], total: 0, page: 1, totalPages: 0, rarity: '' };
+    return { items: [], total: 0, page: 1, totalPages: 0, rarity: '', rarityCounts: {} };
   }
   const url = new URL(request.url);
   const page = parseInt(url.searchParams.get('page') || '1');
@@ -14,7 +18,7 @@ export async function loader({ request, context }) {
   const rarity = url.searchParams.get('rarity');
   const offset = (page - 1) * limit;
 
-  let query = 'SELECT id, url, user_id, username, created_at FROM gallery';
+  let query = 'SELECT id, url, user_id, username, rarity, created_at FROM gallery';
   let countQuery = 'SELECT COUNT(*) as total FROM gallery';
   const params = [];
   const countParams = [];
@@ -26,10 +30,16 @@ export async function loader({ request, context }) {
     countParams.push(rarity.toUpperCase());
   }
 
-  const [itemsResult, countResult] = await Promise.all([
+  const [itemsResult, countResult, rarityCountsResult] = await Promise.all([
     env.DB.prepare(`${query} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
     env.DB.prepare(countQuery).bind(...countParams).first(),
+    env.DB.prepare('SELECT rarity, COUNT(*) as count FROM gallery GROUP BY rarity').all(),
   ]);
+
+  const rarityCounts = {};
+  if (rarityCountsResult.results) {
+    rarityCountsResult.results.forEach(r => { rarityCounts[r.rarity] = r.count; });
+  }
 
   return {
     items: itemsResult.results || [],
@@ -37,12 +47,15 @@ export async function loader({ request, context }) {
     page,
     totalPages: Math.ceil((countResult?.total || 0) / limit),
     rarity: rarity || '',
+    rarityCounts,
   };
 }
 
 export default function Library() {
-  const { items, page, totalPages, rarity } = useLoaderData();
+  const { items, total, page, totalPages, rarity, rarityCounts } = useLoaderData();
   const [, setSearchParams] = useSearchParams();
+
+  const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
 
   return (
     <div className="min-h-screen bg-surface-bright bg-halftone relative">
@@ -61,16 +74,27 @@ export default function Library() {
             </h1>
             <div className="inline-flex items-center gap-1 md:gap-xs bg-primary-container text-on-primary-container font-label-bold text-[10px] md:text-label-bold px-2 md:px-sm py-1 md:py-xs rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_#770143]">
               <span className="material-symbols-outlined text-sm md:text-[18px] symbol-filled">style</span>
-              {items.length} 张已收集
+              {allCount} 张已收集
             </div>
+          </div>
+
+          {/* 稀有度统计 */}
+          <div className="flex gap-1.5 md:gap-2">
+            {['N', 'R', 'SR', 'SSR', 'UR'].map(r => (
+              <div key={r} className="text-center">
+                <span className={`inline-block text-[9px] md:text-[10px] font-black text-white px-1.5 py-0.5 rounded ${RARITY_COLORS[r]}`}>{r}</span>
+                <p className="text-[10px] md:text-xs font-bold text-on-surface-variant mt-0.5">{rarityCounts[r] || 0}</p>
+              </div>
+            ))}
           </div>
         </section>
 
+        {/* 筛选栏 */}
         <section className="flex flex-col gap-2 md:gap-sm mb-4 md:mb-6">
           <h2 className="font-label-bold text-[10px] md:text-label-bold text-outline uppercase tracking-widest pl-1 md:pl-xs">按稀有度筛选</h2>
           <div className="flex flex-wrap gap-2 md:gap-md items-center">
             <div className="flex gap-1 md:gap-xs bg-surface-container p-1 md:p-xs rounded-full border-2 border-surface-variant shadow-[2px_2px_0px_0px_#dad9de]">
-              {['', 'SSR', 'SR', 'R', 'N'].map(r => (
+              {['', 'UR', 'SSR', 'SR', 'R', 'N'].map(r => (
                 <button
                   key={r || 'all'}
                   onClick={() => setSearchParams(r ? { rarity: r, page: '1' } : { page: '1' })}
@@ -84,31 +108,55 @@ export default function Library() {
                 </button>
               ))}
             </div>
+            {rarity && (
+              <span className="text-xs text-on-surface-variant">
+                筛选 {rarity}：{total} 张
+              </span>
+            )}
           </div>
         </section>
 
-        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-md">
-          {items.map(item => (
-            <GachaCard
-              key={item.id}
-              card={{
-                rarity: 'N',
-                imageUrl: item.url,
-                name: item.username || '匿名',
-              }}
-            />
-          ))}
-        </section>
+        {/* 卡片网格 */}
+        {items.length === 0 ? (
+          <div className="text-center py-16 text-on-surface-variant">
+            <span className="material-symbols-outlined text-5xl mb-3 block">style</span>
+            <p className="text-sm">{rarity ? `暂无 ${rarity} 卡片` : '暂无收藏'}</p>
+            <p className="text-xs mt-1 opacity-60">去抽卡获取你的第一张卡片吧！</p>
+          </div>
+        ) : (
+          <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-md">
+            {items.map(item => (
+              <GachaCard
+                key={item.id}
+                card={{
+                  rarity: item.rarity || 'N',
+                  imageUrl: item.url,
+                  name: item.username || '匿名',
+                }}
+              />
+            ))}
+          </section>
+        )}
 
+        {/* 分页 */}
         {totalPages > 1 && (
-          <div className="mt-6 md:mt-xl flex justify-center pb-6 md:pb-xl">
+          <div className="mt-6 md:mt-xl flex justify-center items-center gap-3 pb-6 md:pb-xl">
+            <button
+              onClick={() => setSearchParams({ page: String(page - 1), ...(rarity && { rarity }) })}
+              disabled={page <= 1}
+              className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
+            >
+              上一页
+            </button>
+            <span className="text-xs text-on-surface-variant font-label-bold">
+              {page} / {totalPages}
+            </span>
             <button
               onClick={() => setSearchParams({ page: String(page + 1), ...(rarity && { rarity }) })}
               disabled={page >= totalPages}
-              className="bg-tertiary-fixed text-on-tertiary-fixed-variant font-button-text text-xs md:text-button-text px-6 md:px-xl py-2 md:py-sm rounded-full border-[3px] border-on-tertiary-fixed-variant shadow-[4px_4px_0px_0px_#a63067] md:shadow-[6px_6px_0px_0px_#a63067] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all duration-150 flex items-center gap-1 md:gap-sm group"
+              className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
             >
-              <span className="material-symbols-outlined group-hover:animate-spin symbol-filled text-base md:text-lg">autorenew</span>
-              加载更多
+              下一页
             </button>
           </div>
         )}
