@@ -185,7 +185,6 @@ export class GachaService {
 
   // ==================== Global Buffer ====================
   async safeRefillGlobalBuffer(rarity, sourceList, slotIndex) {
-    await new Promise(r => setTimeout(r, Math.random() * 300));
     try {
       const asset = await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]);
       if (asset.success) {
@@ -208,10 +207,11 @@ export class GachaService {
     );
     const slots = (await Promise.all(slotReads)).filter(Boolean);
 
-    // 并行检查黑名单
+    // 并行检查黑名单，缓存hash避免重复计算
     const blacklistChecks = slots.map(async (slot) => {
       if (!slot.asset.imageUrl) return null;
       const urlHash = await this.hashString(slot.asset.imageUrl);
+      slot._urlHash = urlHash;
       const blacklisted = await this.env.KV_CACHE.get(`${blacklistPrefix}${rarity}:${urlHash}`);
       return blacklisted ? null : slot;
     });
@@ -229,7 +229,7 @@ export class GachaService {
     }
 
     if (selectedSlot.asset.imageUrl && selectedSlot.index >= 0) {
-      const urlHash = await this.hashString(selectedSlot.asset.imageUrl);
+      const urlHash = selectedSlot._urlHash || await this.hashString(selectedSlot.asset.imageUrl);
       await this.env.KV_CACHE.put(`${blacklistPrefix}${rarity}:${urlHash}`, now.toString(), { expirationTtl: CONFIG.TTL.BLACKLIST_TTL });
       selectedSlot.asset.lastUsed = now;
       await this.env.KV_CACHE.put(`${bufferPrefix}${rarity}:${selectedSlot.index}`, JSON.stringify(selectedSlot.asset), { expirationTtl: CONFIG.TTL.BUFFER });

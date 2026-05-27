@@ -118,31 +118,34 @@ async function onRequest(context) {
       return await gachaService.shopBuy(currentUser, request);
     }
 
-    // ─── Public ───
+    // ─── Public (edge-cached) ───
+    const CACHE_1M = { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' };
+    const CACHE_5M = { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=600' };
+
     if (path === '/showcase' && method === 'GET') {
       try {
         const cards = await env.DB.prepare(
-          'SELECT g.*, u.username FROM gallery g LEFT JOIN users u ON g.user_id = u.id ORDER BY g.created_at DESC LIMIT 6'
+          'SELECT g.*, u.username, g.rarity FROM gallery g LEFT JOIN users u ON g.user_id = u.id ORDER BY g.created_at DESC LIMIT 6'
         ).all();
-        return jsonResponse({ cards: cards.results || [] });
+        return jsonResponse({ cards: cards.results || [] }, 200, CACHE_1M);
       } catch (e) {
-        return jsonResponse({ cards: [] });
+        return jsonResponse({ cards: [] }, 200, CACHE_1M);
       }
     }
     if (path === '/announcement' && method === 'GET') {
       const ann = await env.KV_CACHE.get(CONFIG.KEYS.ANNOUNCEMENT, { type: 'json' });
-      return jsonResponse(ann || { title: '', content: '', enabled: false });
+      return jsonResponse(ann || { title: '', content: '', enabled: false }, 200, CACHE_5M);
     }
     if (path === '/changelog' && method === 'GET') {
       const cl = await env.KV_CACHE.get(CONFIG.KEYS.CHANGELOG);
-      return jsonResponse(cl ? safeJsonParse(cl) : DEFAULT_CHANGELOG);
+      return jsonResponse(cl ? safeJsonParse(cl) : DEFAULT_CHANGELOG, 200, CACHE_5M);
     }
     if (path === '/library/items' && method === 'GET') {
       const page = parseInt(url.searchParams.get('page') || '1');
       const limit = Math.min(parseInt(url.searchParams.get('limit') || '20'), 100);
       const rarity = url.searchParams.get('rarity');
       const offset = (page - 1) * limit;
-      let q = 'SELECT id, url, user_id, username, created_at FROM gallery';
+      let q = 'SELECT id, url, user_id, username, rarity, created_at FROM gallery';
       let cq = 'SELECT COUNT(*) as total FROM gallery';
       const p = [], cp = [];
       if (rarity) { q += ' WHERE rarity = ?'; cq += ' WHERE rarity = ?'; p.push(rarity.toUpperCase()); cp.push(rarity.toUpperCase()); }
@@ -150,7 +153,7 @@ async function onRequest(context) {
         env.DB.prepare(`${q} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...p, limit, offset).all(),
         env.DB.prepare(cq).bind(...cp).first(),
       ]);
-      return jsonResponse({ items: items.results || [], total: count?.total || 0, page, totalPages: Math.ceil((count?.total || 0) / limit) });
+      return jsonResponse({ items: items.results || [], total: count?.total || 0, page, totalPages: Math.ceil((count?.total || 0) / limit) }, 200, CACHE_1M);
     }
 
     // ─── Admin ───

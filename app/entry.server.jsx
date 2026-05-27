@@ -1,14 +1,27 @@
 import { RemixServer } from "@remix-run/react";
-import { renderToString } from "react-dom/server";
+import { renderToReadableStream } from "react-dom/server";
+import { isbot } from "isbot";
 
-export default function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
-  const markup = renderToString(
-    <RemixServer context={remixContext} url={request.url} />
+export default async function handleRequest(request, responseStatusCode, responseHeaders, remixContext) {
+  const userAgent = request.headers.get("user-agent");
+  const stream = await renderToReadableStream(
+    <RemixServer context={remixContext} url={request.url} />,
+    {
+      signal: request.signal,
+      onError(error) {
+        console.error(error);
+        responseStatusCode = 500;
+      },
+    }
   );
 
-  responseHeaders.set("Content-Type", "text/html");
+  // Bots: wait for full stream to ensure complete HTML for crawlers
+  if (isbot(userAgent)) {
+    await stream.allReady;
+  }
 
-  return new Response("<!DOCTYPE html>" + markup, {
+  responseHeaders.set("Content-Type", "text/html");
+  return new Response(stream, {
     status: responseStatusCode,
     headers: responseHeaders,
   });

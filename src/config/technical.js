@@ -20,11 +20,11 @@ export const TECHNICAL_CONFIG = {
     BUFFER: 86400,
     CACHE: 60 * 5,
     LEADERBOARD: 86400 * 30,
-    USER_INFO: 30,
+    USER_INFO: 120,           // 2分钟，减少D1查询频率
     PUBLIC_API: 60,
     STATIC_ASSET: 31536000,
-    BUFFER_SLOTS: 10,
-    BLACKLIST_TTL: 300 // 5分钟黑名单
+    BUFFER_SLOTS: 5,          // 从10减半，每次抽卡KV读取减半
+    BLACKLIST_TTL: 600         // 10分钟黑名单，减少重复图片
   },
 
   INFRASTRUCTURE: {
