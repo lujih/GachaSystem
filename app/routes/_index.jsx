@@ -51,7 +51,6 @@ export async function loader({ request, context }) {
 
   let showcase = [];
   let announcement = null;
-  let drawHistory = [];
 
   // 最新掉落 — gallery 查询，关联 draw_history 获取稀有度
   try {
@@ -70,21 +69,7 @@ export async function loader({ request, context }) {
     announcement = (await env.KV_CACHE?.get('system:announcement', { type: 'json' })) || null;
   } catch (e) { console.error('[loader] announcement failed:', e); }
 
-  // 抽卡历史 — 仅登录用户（独立 try/catch，失败不影响首页）
-  try {
-    const token = request.headers.get('X-Session-Token') || '';
-    if (token && env.KV_CACHE) {
-      const sessionData = await env.KV_CACHE.get(`session:${token}`, { type: 'json' });
-      if (sessionData?.id) {
-        const historyResult = await env.DB.prepare(
-          'SELECT rarity, is_pity, source_name, created_at FROM draw_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 10'
-        ).bind(sessionData.id).all();
-        drawHistory = historyResult.results || [];
-      }
-    }
-  } catch (e) { console.error('[loader] drawHistory failed:', e); }
-
-  return { showcase, announcement, drawHistory };
+  return { showcase, announcement };
 }
 
 const TOAST_COLORS = {
@@ -116,8 +101,17 @@ function Toast({ message, type, onClose }) {
 }
 
 export default function Index() {
-  const { showcase, announcement, drawHistory } = useLoaderData();
+  const { showcase, announcement } = useLoaderData();
   const { user, refreshUser } = useAuth();
+  const [drawHistory, setDrawHistory] = useState([]);
+
+  // 客户端拉取抽卡历史（SSR 时无法获取 token，需客户端独立拉取）
+  useEffect(() => {
+    if (!user) { setDrawHistory([]); return; }
+    api.getDrawHistory(1)
+      .then(res => { if (res?.history) setDrawHistory(res.history.slice(0, 10)); })
+      .catch(() => {});
+  }, [user]);
   const { drawing, draw, multiDraw, drawLimited, clearDraw } = useGacha();
   const revalidator = useRevalidator();
   const [poolType, setPoolType] = useState('limited');
