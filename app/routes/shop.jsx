@@ -1,36 +1,60 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
+import Toast from '~/components/Toast';
 import { useAuth } from '~/hooks/useAuth';
 import { api } from '~/lib/api';
 
-const CATEGORIES = [
-  { id: 'featured', label: '限定特卖' },
-  { id: 'materials', label: '升级材料' },
-  { id: 'shards', label: '角色碎片' },
-  { id: 'consumables', label: '消耗品' },
-];
+const SHOP_CONFIG = {
+  R:   { price: 150,  name: 'R 卡片',   desc: '标准稀有度卡片', gradient: 'from-blue-400 to-blue-600', border: 'border-blue-400', glow: '' },
+  SR:  { price: 600,  name: 'SR 卡片',  desc: '高级稀有度卡片', gradient: 'from-purple-400 to-purple-600', border: 'border-purple-400', glow: 'shadow-[0_0_12px_rgba(139,92,246,0.3)]' },
+  SSR: { price: 2500, name: 'SSR 卡片', desc: '超稀有卡片',     gradient: 'from-amber-400 to-yellow-500', border: 'border-amber-400', glow: 'shadow-[0_0_16px_rgba(245,158,11,0.4)]' },
+  UR:  { price: 10000, name: 'UR 卡片', desc: '终极稀有卡片',   gradient: 'from-red-400 to-rose-600', border: 'border-red-400', glow: 'shadow-[0_0_20px_rgba(239,68,68,0.4)]' },
+};
 
-const SHOP_ITEMS = [
-  { id: 1, category: 'featured', rarity: 'SSR', name: '光辉圣剑', limit: '每个账号限1个', price: 5000, badge: 'SSR 遗物', badgeColor: 'bg-error text-on-error border-on-error-container' },
-  { id: 2, category: 'materials', rarity: 'SR', name: '蔚蓝核心晶石', limit: '每周10/10', price: 450, badge: '材料', badgeColor: 'bg-secondary text-on-secondary border-on-secondary-fixed' },
-  { id: 3, category: 'shards', rarity: 'SR', name: '凯尔的记忆 x5', limit: '每月20/20', price: 1200, badge: 'SR 碎片', badgeColor: 'bg-tertiary text-on-tertiary border-on-tertiary-fixed' },
-  { id: 4, category: 'consumables', rarity: 'R', name: '体力药剂', limit: '不限量', price: 150, badge: null },
-  { id: 5, category: 'featured', rarity: 'UR', name: '天界之翼', limit: '每个账号限1个', price: 10000, badge: 'UR 遗物', badgeColor: 'bg-error text-on-error border-on-error-container' },
-  { id: 6, category: 'materials', rarity: 'R', name: '水晶碎片', limit: '每周50/50', price: 200, badge: '材料', badgeColor: 'bg-secondary text-on-secondary border-on-secondary-fixed' },
-];
+const RARITY_BG = {
+  R: 'bg-blue-500', SR: 'bg-purple-500', SSR: 'bg-amber-500', UR: 'bg-red-500',
+};
 
 export default function Shop() {
   const { user, refreshUser } = useAuth();
-  const [activeCategory, setActiveCategory] = useState('featured');
+  const [buying, setBuying] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [lastResult, setLastResult] = useState(null);
+  const [inventory, setInventory] = useState({ N: 0, R: 0, SR: 0, SSR: 0, UR: 0 });
 
-  const filteredItems = SHOP_ITEMS.filter(item => item.category === activeCategory);
+  useEffect(() => {
+    if (!user) return;
+    api.getInventory()
+      .then(res => setInventory(res?.data || res || { N: 0, R: 0, SR: 0, SSR: 0, UR: 0 }))
+      .catch(() => {});
+  }, [user?.id]);
 
-  async function handlePurchase(itemId) {
+  function showToast(message, type = 'info') {
+    setToast({ message, type, key: Date.now() });
+  }
+
+  async function handleBuy(rarity) {
+    if (buying || !user) return;
+    const config = SHOP_CONFIG[rarity];
+    if (user.coins < config.price) {
+      showToast(`积分不足！需要 ${config.price}，当前 ${user.coins}`, 'error');
+      return;
+    }
+
+    setBuying(rarity);
     try {
-      await api.shopBuy(itemId);
-      await refreshUser();
-    } catch (e) {}
+      const res = await api.shopBuy(rarity);
+      if (res.success) {
+        setLastResult(res.card);
+        showToast(`成功购买 ${rarity} 卡片！${res.levelUp ? ` 升级到 Lv.${res.levelUp.newLevel}！` : ''}`, 'success');
+        const [inv] = await Promise.all([api.getInventory(), refreshUser()]);
+        setInventory(inv?.data || inv || { N: 0, R: 0, SR: 0, SSR: 0, UR: 0 });
+      }
+    } catch (e) {
+      showToast(e?.message || '购买失败', 'error');
+    }
+    setBuying(null);
   }
 
   return (
@@ -42,14 +66,14 @@ export default function Shop() {
 
       <Header activeTab="商店" />
 
-      <main className="relative z-10 max-w-7xl mx-auto px-4 md:px-margin pt-[72px] md:pt-[80px] pb-[100px] md:pb-md flex flex-col gap-4 md:gap-md">
+      <main className="relative z-10 max-w-5xl mx-auto px-4 md:px-margin pt-[72px] md:pt-[80px] pb-[100px] md:pb-md flex flex-col gap-4 md:gap-md">
         <section className="flex flex-col md:flex-row md:items-end justify-between gap-2 md:gap-md mt-2 md:mt-md">
           <div>
             <h1 className="font-headline-lg md:text-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#e3e2e7]">
               兑换商店
             </h1>
             <p className="font-body-md text-xs md:text-body-lg text-on-surface-variant mt-1 md:mt-xs">
-              用星尘兑换专属物品！
+              用积分直接购买卡片！
             </p>
           </div>
 
@@ -66,63 +90,98 @@ export default function Shop() {
           </div>
         </section>
 
-        <nav className="flex gap-1 md:gap-sm overflow-x-auto no-scrollbar py-1 md:py-2">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={`shrink-0 font-label-bold text-[10px] md:text-label-bold px-3 md:px-6 py-2 md:py-3 rounded-full border-[2px] md:border-[3px] transition-all ${
-                activeCategory === cat.id
-                  ? 'bg-primary text-on-primary border-on-primary-fixed shadow-[2px_2px_0px_0px_#3e0020] md:shadow-[3px_3px_0px_0px_#3e0020] -translate-y-1'
-                  : 'bg-surface-container-lowest text-primary border-primary-fixed-dim hover:border-primary hover:bg-primary-fixed hover:-translate-y-1 hover:shadow-[2px_2px_0px_0px_#ffb0cb] md:hover:shadow-[3px_3px_0px_0px_#ffb0cb]'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </nav>
-
-        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-md md:gap-lg mt-1 md:mt-sm">
-          {filteredItems.map(item => (
-            <article
-              key={item.id}
-              className="bg-surface-container-lowest border-[2px] md:border-[3px] border-outline-variant rounded-xl p-2 md:p-3 flex flex-col gap-1 md:gap-sm relative transition-all duration-200 hover:-translate-y-2 hover:translate-x-1 hover:shadow-[4px_4px_0px_0px_#ff77af] md:hover:shadow-[6px_6px_0px_0px_#ff77af] group"
-            >
-              {item.badge && (
-                <div className={`absolute top-1 left-1 z-10 font-label-bold text-[8px] md:text-[10px] px-1.5 md:px-3 py-0.5 md:py-1 rounded-full border-2 uppercase tracking-widest shadow-[2px_2px_0px_0px_#3e0020] ${item.badgeColor}`}>
-                  {item.badge}
-                </div>
-              )}
-
-              <div className="w-full aspect-square bg-gradient-to-br from-primary-fixed to-secondary-fixed rounded-lg relative overflow-hidden border-2 border-surface-variant flex items-center justify-center p-3 md:p-4">
-                <div className="w-10 h-10 md:w-16 md:h-16 rounded-full bg-surface-container border-2 md:border-4 border-outline-variant flex items-center justify-center">
-                  <span className="material-symbols-outlined text-xl md:text-4xl text-primary symbol-filled">diamond</span>
-                </div>
+        {/* 背包库存 */}
+        <div className="bg-surface-container-low rounded-xl border-2 border-outline-variant p-3 md:p-4 shadow-[2px_2px_0px_0px_rgba(136,113,120,0.1)]">
+          <h3 className="font-label-bold text-[10px] md:text-label-bold text-on-surface-variant uppercase tracking-widest mb-2">背包库存</h3>
+          <div className="flex gap-3 md:gap-4">
+            {['N', 'R', 'SR', 'SSR', 'UR'].map(r => (
+              <div key={r} className="text-center">
+                <span className={`inline-block text-[10px] md:text-xs font-black text-white px-2 py-0.5 rounded-full ${RARITY_BG[r] || 'bg-gray-500'} mb-0.5`}>{r}</span>
+                <p className="font-headline-md text-sm md:text-lg text-on-surface">{inventory[r] || 0}</p>
               </div>
+            ))}
+          </div>
+        </div>
 
-              <div className="flex flex-col flex-grow px-0.5 md:px-1">
-                <h3 className="font-headline-md text-xs md:text-headline-md text-on-surface line-clamp-1">{item.name}</h3>
-                <p className="font-body-md text-[10px] md:text-body-md text-on-surface-variant mt-0.5 md:mt-xs">限制: {item.limit}</p>
-              </div>
+        {/* 商品列表 */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          {Object.entries(SHOP_CONFIG).map(([rarity, config]) => {
+            const canAfford = (user?.coins ?? 0) >= config.price;
+            const isBuying = buying === rarity;
+            return (
+              <article
+                key={rarity}
+                className={`bg-surface-container-lowest border-[3px] ${config.border} rounded-2xl p-4 flex flex-col gap-3 relative transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${config.glow}`}
+              >
+                {/* 稀有度角标 */}
+                <span className={`absolute top-3 right-3 text-[10px] font-black text-white px-2.5 py-0.5 rounded-full ${RARITY_BG[rarity]}`}>
+                  {rarity}
+                </span>
 
-              <div className="flex justify-between items-center mt-auto pt-1 md:pt-2 border-t-2 border-surface-variant border-dashed">
-                <div className="flex items-center gap-0.5 md:gap-1 text-primary font-label-bold text-xs md:text-label-bold text-lg">
-                  <span className="material-symbols-outlined text-sm md:text-[20px] symbol-filled">stars</span>
-                  {item.price.toLocaleString()}
+                {/* 卡片预览 */}
+                <div className={`w-full aspect-[3/4] rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center relative overflow-hidden`}>
+                  <span className="text-5xl md:text-6xl font-black text-white/30">{rarity}</span>
+                  <div className="absolute inset-0 border-[3px] border-white/10 rounded-xl pointer-events-none" />
                 </div>
-                <button
-                  onClick={() => handlePurchase(item.id)}
-                  className="bg-tertiary-fixed text-on-tertiary-fixed font-button-text text-[10px] md:text-button-text px-2 md:px-4 py-1 md:py-2 rounded-full border-2 border-on-tertiary-fixed shadow-[2px_2px_0px_0px_#221b00] md:shadow-[3px_3px_0px_0px_#221b00] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all active:scale-95"
-                >
-                  购买
-                </button>
-              </div>
-            </article>
-          ))}
+
+                <div>
+                  <h3 className="font-headline-md text-sm md:text-base text-on-surface">{config.name}</h3>
+                  <p className="font-body-md text-[11px] md:text-xs text-on-surface-variant">{config.desc}</p>
+                </div>
+
+                <div className="flex justify-between items-center mt-auto pt-2 border-t-2 border-outline-variant border-dashed">
+                  <div className="flex items-center gap-1 text-primary font-label-bold text-sm md:text-base">
+                    <span className="material-symbols-outlined text-sm symbol-filled">stars</span>
+                    {config.price.toLocaleString()}
+                  </div>
+                  <button
+                    onClick={() => handleBuy(rarity)}
+                    disabled={!canAfford || isBuying}
+                    className={`font-button-text text-xs md:text-sm px-4 py-1.5 rounded-full border-2 transition-all ${
+                      canAfford && !isBuying
+                        ? 'bg-tertiary-fixed text-on-tertiary-fixed border-on-tertiary-fixed shadow-[2px_2px_0px_0px_#221b00] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]'
+                        : 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-60'
+                    }`}
+                  >
+                    {isBuying ? '购买中...' : canAfford ? '购买' : '积分不足'}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
         </section>
+
+        {/* 最近购买结果 */}
+        {lastResult && (
+          <section className="bg-surface rounded-xl border-4 border-primary-fixed p-4 md:p-6 shadow-[4px_4px_0px_0px_rgba(255,119,175,0.2)]">
+            <h3 className="font-label-bold text-xs text-primary uppercase tracking-widest mb-3">最近购买</h3>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-28 rounded-lg bg-gradient-to-br from-primary-container to-secondary-container flex items-center justify-center overflow-hidden border-2 border-outline-variant">
+                {lastResult?.imageUrl ? (
+                  <img src={lastResult.imageUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">image</span>
+                )}
+              </div>
+              <div>
+                <p className="font-headline-md text-sm text-on-surface">购买成功！</p>
+                <p className="font-body-md text-xs text-on-surface-variant">卡片已添加到背包</p>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
       <BottomNav activeTab="商店" />
+
+      {toast && (
+        <Toast
+          key={toast.key}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }
