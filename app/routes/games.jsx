@@ -178,13 +178,13 @@ export default function Games() {
                     <div className="w-14 h-14 md:w-16 md:h-16 rounded-xl flex items-center justify-center shadow-lg animate-bounce"
                       style={{ background: result.roll1 >= 4 ? 'linear-gradient(135deg, #f59e0b, #ef4444)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
                     >
-                      <span className="text-2xl md:text-3xl font-black text-white">{result.roll1}</span>
+                      <span style={{ color: '#fff', fontSize: '1.75rem', fontWeight: 900 }}>{result.roll1}</span>
                     </div>
                     <span className="text-2xl font-bold text-on-surface-variant">+</span>
                     <div className="w-14 h-14 md:w-16 md:h-16 rounded-xl flex items-center justify-center shadow-lg animate-bounce"
                       style={{ background: result.roll2 >= 4 ? 'linear-gradient(135deg, #f59e0b, #ef4444)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)', animationDelay: '0.15s' }}
                     >
-                      <span className="text-2xl md:text-3xl font-black text-white">{result.roll2}</span>
+                      <span style={{ color: '#fff', fontSize: '1.75rem', fontWeight: 900 }}>{result.roll2}</span>
                     </div>
                     <span className="text-2xl font-bold text-on-surface-variant">=</span>
                     <div className="w-16 h-16 md:w-18 md:h-18 rounded-xl flex items-center justify-center shadow-lg"
@@ -196,7 +196,7 @@ export default function Games() {
                           : 'linear-gradient(135deg, #10b981, #059669)',
                       }}
                     >
-                      <span className="text-3xl md:text-4xl font-black text-white">{result.sum}</span>
+                      <span style={{ color: '#fff', fontSize: '2rem', fontWeight: 900 }}>{result.sum}</span>
                     </div>
                   </div>
 
