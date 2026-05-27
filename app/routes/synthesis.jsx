@@ -34,7 +34,7 @@ export default function Synthesis() {
     api.getInventory()
       .then(res => setInventory(res.data || res || { N: 0, R: 0, SR: 0, SSR: 0, UR: 0 }))
       .catch(() => {});
-  }, [user]);
+  }, [user?.id]);
 
   function showToast(message, type = 'info') {
     setToast({ message, type, key: Date.now() });

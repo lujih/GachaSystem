@@ -50,23 +50,15 @@ export async function loader({ request, context }) {
     return { showcase: [], announcement: null, drawHistory: [] };
   }
 
-  let showcase = [];
-  let announcement = null;
-
-  // 最新掉落 — gallery 查询
-  try {
-    const result = await env.DB.prepare(
+  // 并行查询 gallery 和公告
+  const [showcaseResult, announcement] = await Promise.all([
+    env.DB.prepare(
       'SELECT g.*, u.username FROM gallery g LEFT JOIN users u ON g.user_id = u.id ORDER BY g.created_at DESC LIMIT 6'
-    ).all();
-    showcase = result.results || [];
-  } catch (e) { console.error('[loader] showcase failed:', e); }
+    ).all().catch(e => { console.error('[loader] showcase failed:', e); return { results: [] }; }),
+    env.KV_CACHE?.get('system:announcement', { type: 'json' }).catch(() => null) ?? Promise.resolve(null)
+  ]);
 
-  // 公告
-  try {
-    announcement = (await env.KV_CACHE?.get('system:announcement', { type: 'json' })) || null;
-  } catch (e) { console.error('[loader] announcement failed:', e); }
-
-  return { showcase, announcement };
+  return { showcase: showcaseResult.results || [], announcement: announcement || null };
 }
 
 export default function Index() {
@@ -80,7 +72,7 @@ export default function Index() {
     api.getDrawHistory(1)
       .then(res => { if (res?.history) setDrawHistory(res.history.slice(0, 10)); })
       .catch(() => {});
-  }, [user]);
+  }, [user?.id]);
   const { drawing, draw, multiDraw, drawLimited, clearDraw } = useGacha();
   const revalidator = useRevalidator();
   const [poolType, setPoolType] = useState('limited');
@@ -98,7 +90,7 @@ export default function Index() {
     api.getLimitedPools()
       .then(res => { if (res.defaultPool) setDefaultPoolId(res.defaultPool); })
       .catch(() => {});
-  }, [user]);
+  }, [user?.id]);
 
   const pool = POOL_CONFIG[poolType];
   const ssrPity = user?.ssrPity ?? 0;

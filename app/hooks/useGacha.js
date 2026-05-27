@@ -38,5 +38,7 @@ export function useGacha() {
     }
   }, []);
 
-  return { drawing, lastDraw, draw, multiDraw, drawLimited, clearDraw: () => setLastDraw(null) };
+  const clearDraw = useCallback(() => setLastDraw(null), []);
+
+  return { drawing, lastDraw, draw, multiDraw, drawLimited, clearDraw };
 }

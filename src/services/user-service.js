@@ -369,23 +369,21 @@ export class UserService {
       currentTitle = { name: userRes.active_title };
     }
 
-    const claimedRewardsResult = await this.env.DB.prepare(
+    // 并行读取奖励记录和保底计数器
+    const rewardsQuery = this.env.DB.prepare(
       'SELECT level FROM level_rewards WHERE user_id = ?'
     ).bind(currentUser.id).all();
-    const claimedRewards = claimedRewardsResult.results ? claimedRewardsResult.results.map(r => r.level) : [];
-
-    // 读取保底计数器
-    let ssrPity = 0, urPity = 0;
-    if (this.env.KV_CACHE) {
-      try {
-        const [ssr, ur] = await Promise.all([
+    const pityReads = this.env.KV_CACHE
+      ? Promise.all([
           this.env.KV_CACHE.get(`pity:ssr:${currentUser.id}`),
           this.env.KV_CACHE.get(`pity:ur:${currentUser.id}`)
-        ]);
-        ssrPity = parseInt(ssr || '0', 10);
-        urPity = parseInt(ur || '0', 10);
-      } catch (e) { /* ignore */ }
-    }
+        ]).catch(() => [null, null])
+      : Promise.resolve([null, null]);
+
+    const [claimedRewardsResult, [ssrRaw, urRaw]] = await Promise.all([rewardsQuery, pityReads]);
+    const claimedRewards = claimedRewardsResult.results ? claimedRewardsResult.results.map(r => r.level) : [];
+    const ssrPity = parseInt(ssrRaw || '0', 10);
+    const urPity = parseInt(urRaw || '0', 10);
 
     const responseData = {
       username: userRes.username,

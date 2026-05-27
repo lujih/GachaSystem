@@ -201,19 +201,21 @@ export class GachaService {
     const bufferPrefix = CONFIG.KEYS.BUFFER_PREFIX;
     const blacklistPrefix = CONFIG.KEYS.DRAW_BLACKLIST;
 
-    const slots = [];
-    for (let i = 0; i < slotCount; i++) {
-      const cached = await this.env.KV_CACHE.get(`${bufferPrefix}${rarity}:${i}`, { type: 'json' });
-      if (cached && cached.success) slots.push({ index: i, asset: cached, lastUsed: cached.lastUsed || 0 });
-    }
+    // 并行读取所有 buffer slot
+    const slotReads = Array.from({ length: slotCount }, (_, i) =>
+      this.env.KV_CACHE.get(`${bufferPrefix}${rarity}:${i}`, { type: 'json' })
+        .then(cached => cached?.success ? { index: i, asset: cached, lastUsed: cached.lastUsed || 0 } : null)
+    );
+    const slots = (await Promise.all(slotReads)).filter(Boolean);
 
-    const filteredSlots = [];
-    for (const slot of slots) {
-      if (slot.asset.imageUrl) {
-        const urlHash = await this.hashString(slot.asset.imageUrl);
-        if (!await this.env.KV_CACHE.get(`${blacklistPrefix}${rarity}:${urlHash}`)) filteredSlots.push(slot);
-      }
-    }
+    // 并行检查黑名单
+    const blacklistChecks = slots.map(async (slot) => {
+      if (!slot.asset.imageUrl) return null;
+      const urlHash = await this.hashString(slot.asset.imageUrl);
+      const blacklisted = await this.env.KV_CACHE.get(`${blacklistPrefix}${rarity}:${urlHash}`);
+      return blacklisted ? null : slot;
+    });
+    const filteredSlots = (await Promise.all(blacklistChecks)).filter(Boolean);
 
     let selectedSlot;
     if (filteredSlots.length > 0) {
@@ -515,10 +517,11 @@ export class GachaService {
     query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, (page - 1) * limit);
 
-    const results = await this.env.DB.prepare(query).bind(...params).all();
-
     const countQuery = 'SELECT COUNT(*) as total FROM draw_history WHERE user_id = ?';
-    const countResult = await this.env.DB.prepare(rarityFilter ? countQuery + ' AND rarity = ?' : countQuery).bind(currentUser.id, ...(rarityFilter ? [rarityFilter.toUpperCase()] : [])).first();
+    const [results, countResult] = await Promise.all([
+      this.env.DB.prepare(query).bind(...params).all(),
+      this.env.DB.prepare(rarityFilter ? countQuery + ' AND rarity = ?' : countQuery).bind(currentUser.id, ...(rarityFilter ? [rarityFilter.toUpperCase()] : [])).first()
+    ]);
 
     return jsonResponse({
       success: true,
@@ -719,10 +722,8 @@ export class GachaService {
     if (roll1 === roll2) reward = Math.max(reward, Math.floor(cost * payout));
     if (sum === 7) reward = Math.max(reward, Math.floor(cost * payout * 2));
     currentUser.coins += reward;
-    await this.env.DB.batch([
-      this.env.DB.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').bind(cost, currentUser.id),
-      this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(reward, currentUser.id)
-    ]);
+    const netChange = reward - cost;
+    await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(netChange, currentUser.id).run();
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     return jsonResponse({
       roll1, roll2, sum, reward, cost,

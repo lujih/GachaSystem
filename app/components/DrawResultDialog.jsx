@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const RARITY_GRADIENT = {
   N: 'from-gray-400 to-gray-500',
@@ -36,35 +36,42 @@ function getSrc(card) {
   return card?.imageUrl || card?.url || card?.asset?.url || null;
 }
 
-const ANIMATIONS = `
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes cardFlip {
-    0% { transform: rotateY(180deg) scale(0.85); opacity: 0; }
-    60% { transform: rotateY(-20deg) scale(1.02); opacity: 1; }
-    100% { transform: rotateY(0deg) scale(1); opacity: 1; }
-  }
-`;
+function preloadImage(src) {
+  return new Promise((resolve) => {
+    if (!src) return resolve(null);
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function clampRatio(w, h) {
+  const r = w / h;
+  return Math.max(0.5, Math.min(r, 2));
+}
 
 export default function DrawResultDialog({ open, onClose, result }) {
   const [current, setCurrent] = useState(0);
   const [showAll, setShowAll] = useState(false);
   const [animKey, setAnimKey] = useState(0);
-  const styleInjected = useRef(false);
-  if (!styleInjected.current && typeof document !== 'undefined') {
-    const el = document.createElement('style');
-    el.textContent = ANIMATIONS;
-    document.head.appendChild(el);
-    styleInjected.current = true;
-  }
+  const [dims, setDims] = useState([]);
 
   const cards = result?.cards || (result?.card ? [{ ...result.card, rarity: result.rarity, isPity: result.isPity }] : []);
   const total = cards.length;
   const card = cards[current];
   const isLast = current >= total - 1;
   const rarity = card?.rarity || 'N';
+
+  // 预加载所有图片尺寸
+  useEffect(() => {
+    if (!open || total === 0) { setDims([]); return; }
+    let cancelled = false;
+    Promise.all(cards.map(c => preloadImage(getSrc(c)))).then(results => {
+      if (!cancelled) setDims(results);
+    });
+    return () => { cancelled = true; };
+  }, [open, total]);
 
   useEffect(() => {
     if (!open) { setCurrent(0); setShowAll(false); setAnimKey(0); return; }
@@ -84,10 +91,20 @@ export default function DrawResultDialog({ open, onClose, result }) {
     setShowAll(true);
   }, []);
 
+  // 当前卡片的宽高比
+  const curDim = dims[current];
+  const curRatio = curDim ? clampRatio(curDim.w, curDim.h) : 3 / 4;
+
+  // 全屏展示模式下的自适应高度（基于视口宽度 × 宽高比，限制在视口范围内）
+  const cardMaxH = 'min(70vh, 480px)';
+  const cardStyle = curDim
+    ? { aspectRatio: `${curDim.w} / ${curDim.h}`, maxHeight: cardMaxH }
+    : { aspectRatio: '3 / 4', maxHeight: cardMaxH };
+
   if (!open || total === 0) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
       {/* 关闭按钮 */}
       <button
         onClick={onClose}
@@ -97,42 +114,53 @@ export default function DrawResultDialog({ open, onClose, result }) {
       </button>
 
       {showAll ? (
-        /* 全部展示网格视图 */
-        <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto px-4 py-12">
-          <div className="grid grid-cols-5 gap-1.5">
-            {cards.map((c, i) => (
-              <div key={i} className="relative aspect-[3/4] rounded-md overflow-hidden border-2 border-outline-variant animate-card-reveal" style={{ animationDelay: `${i * 0.05}s` }}>
-                <div className={`absolute inset-0 bg-gradient-to-br ${RARITY_GRADIENT[c.rarity || 'N']}`} />
-                {getSrc(c) ? (
-                  <img src={getSrc(c)} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-white text-lg font-black">{c.rarity || 'N'}</span>
+        /* 全部展示 — 自适应瀑布流 */
+        <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto px-4 py-12">
+          <div className="columns-3 sm:columns-4 md:columns-5 gap-2 space-y-2">
+            {cards.map((c, i) => {
+              const dim = dims[i];
+              const ratio = dim ? clampRatio(dim.w, dim.h) : 3 / 4;
+              return (
+                <div
+                  key={i}
+                  className="relative break-inside-avoid rounded-md overflow-hidden border-2 border-outline-variant animate-card-reveal"
+                  style={{ aspectRatio: `${ratio}`, animationDelay: `${i * 0.05}s` }}
+                >
+                  <div className={`absolute inset-0 bg-gradient-to-br ${RARITY_GRADIENT[c.rarity || 'N']}`} />
+                  {getSrc(c) ? (
+                    <img src={getSrc(c)} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-white text-lg font-black">{c.rarity || 'N'}</span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 p-0.5 bg-gradient-to-t from-black/60 to-transparent">
+                    <span className={`inline-block text-[9px] font-bold text-white px-1 rounded ${RARITY_BG[c.rarity || 'N']}`}>{c.rarity || 'N'}</span>
                   </div>
-                )}
-                <div className="absolute bottom-0 left-0 right-0 p-0.5 bg-gradient-to-t from-black/60 to-transparent">
-                  <span className={`inline-block text-[9px] font-bold text-white px-1 rounded ${RARITY_BG[c.rarity || 'N']}`}>{c.rarity || 'N'}</span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="mt-6 flex justify-center gap-3">
             <button onClick={onClose} className="bg-white/20 text-white font-button-text text-sm px-8 py-2.5 rounded-full hover:bg-white/30 transition-colors">关闭</button>
           </div>
         </div>
       ) : (
-        /* 轮播主视图 */
+        /* 轮播主视图 — 自适应图片比例 */
         <div className="flex flex-col items-center gap-4 md:gap-6 w-full px-4">
-          {/* 卡片 */}
-          <div className="relative w-[75vw] max-w-[280px] md:max-w-xs aspect-[3/4] perspective-[800px]">
+          {/* 卡片容器：宽度固定，高度由图片比例决定 */}
+          <div
+            className="relative w-[80vw] max-w-[320px] md:max-w-sm perspective-[800px]"
+            style={cardStyle}
+          >
             <div
               key={animKey}
-              className={`w-full h-full rounded-xl md:rounded-2xl overflow-hidden border-[3px] ${RARITY_BORDER[rarity]} ${RARITY_GLOW[rarity]} animate-[cardFlip_0.4s_ease-out]`}
+              className={`w-full h-full rounded-xl md:rounded-2xl overflow-hidden border-[3px] ${RARITY_BORDER[rarity]} ${RARITY_GLOW[rarity]} animate-card-flip-3d`}
               style={{ transformStyle: 'preserve-3d' }}
             >
               <div className={`absolute inset-0 bg-gradient-to-br ${RARITY_GRADIENT[rarity]}`} />
               {getSrc(card) ? (
-                <img src={getSrc(card)} alt="" className="absolute inset-0 w-full h-full object-cover" loading="eager" />
+                <img src={getSrc(card)} alt="" className="absolute inset-0 w-full h-full object-contain" loading="eager" />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-white text-6xl md:text-7xl font-black drop-shadow-lg">{rarity}</span>
