@@ -55,7 +55,7 @@ export default function Games() {
     setResult(null);
     try {
       const res = await api.playDice(bet);
-      setResult(res);
+      setResult(res.data || res);
       await refreshUser();
     } catch (e) {
       const msg = e?.message || '游戏失败';
@@ -174,34 +174,30 @@ export default function Games() {
                     borderColor: result.reward > result.cost ? '#059669' : '#dc2626',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                    <div style={{
-                      width: '3.5rem', height: '3.5rem', borderRadius: '0.75rem',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                      background: result.roll1 >= 4 ? 'linear-gradient(135deg, #f59e0b, #ef4444)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                      color: 'white', fontSize: '1.75rem', fontWeight: 900,
-                    }}>{result.roll1}</div>
-                    <span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#554148' }}>+</span>
-                    <div style={{
-                      width: '3.5rem', height: '3.5rem', borderRadius: '0.75rem',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                      background: result.roll2 >= 4 ? 'linear-gradient(135deg, #f59e0b, #ef4444)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                      color: 'white', fontSize: '1.75rem', fontWeight: 900,
-                    }}>{result.roll2}</div>
-                    <span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#554148' }}>=</span>
-                    <div style={{
-                      width: '4rem', height: '4rem', borderRadius: '0.75rem',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 4px 6px rgba(0,0,0,0.15)',
-                      background: result.sum >= 10
-                        ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
-                        : result.sum <= 5
-                        ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
-                        : 'linear-gradient(135deg, #10b981, #059669)',
-                      color: 'white', fontSize: '2rem', fontWeight: 900,
-                    }}>{result.sum}</div>
+                  <div className="flex items-center justify-center gap-2 mb-3">
+                    <div className="w-14 h-14 md:w-16 md:h-16 rounded-xl flex items-center justify-center shadow-lg animate-bounce"
+                      style={{ background: result.roll1 >= 4 ? 'linear-gradient(135deg, #f59e0b, #ef4444)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+                    >
+                      <span className="text-2xl md:text-3xl font-black text-white">{result.roll1}</span>
+                    </div>
+                    <span className="text-2xl font-bold text-on-surface-variant">+</span>
+                    <div className="w-14 h-14 md:w-16 md:h-16 rounded-xl flex items-center justify-center shadow-lg animate-bounce"
+                      style={{ background: result.roll2 >= 4 ? 'linear-gradient(135deg, #f59e0b, #ef4444)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)', animationDelay: '0.15s' }}
+                    >
+                      <span className="text-2xl md:text-3xl font-black text-white">{result.roll2}</span>
+                    </div>
+                    <span className="text-2xl font-bold text-on-surface-variant">=</span>
+                    <div className="w-16 h-16 md:w-18 md:h-18 rounded-xl flex items-center justify-center shadow-lg"
+                      style={{
+                        background: result.sum >= 10
+                          ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+                          : result.sum <= 5
+                          ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
+                          : 'linear-gradient(135deg, #10b981, #059669)',
+                      }}
+                    >
+                      <span className="text-3xl md:text-4xl font-black text-white">{result.sum}</span>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-center gap-2">
