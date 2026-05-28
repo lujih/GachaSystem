@@ -98,7 +98,7 @@ export default function Library() {
                 <button
                   key={r || 'all'}
                   onClick={() => setSearchParams(r ? { rarity: r, page: '1' } : { page: '1' })}
-                  className={`font-label-bold text-[10px] md:text-label-bold px-2 md:px-md py-1 md:py-xs rounded-full border-2 transition-transform hover:-translate-y-1 ${
+                  className={`font-label-bold text-[10px] md:text-label-bold px-2 md:px-md py-1 md:py-xs rounded-full border-2 transition-all duration-200 hover:-translate-y-1 active:translate-y-0 ${
                     rarity === r
                       ? 'bg-tertiary text-on-tertiary border-on-tertiary-container shadow-[2px_2px_0px_0px_#473a00]'
                       : 'bg-surface-bright text-on-surface border-outline-variant hover:bg-surface-variant'
@@ -118,10 +118,15 @@ export default function Library() {
 
         {/* 卡片网格 */}
         {items.length === 0 ? (
-          <div className="text-center py-16 text-on-surface-variant">
-            <span className="material-symbols-outlined text-5xl mb-3 block">style</span>
-            <p className="text-sm">{rarity ? `暂无 ${rarity} 卡片` : '暂无收藏'}</p>
-            <p className="text-xs mt-1 opacity-60">去抽卡获取你的第一张卡片吧！</p>
+          <div className="text-center py-16">
+            <div className="inline-block bg-surface-container-low rounded-2xl border-2 border-outline-variant p-8 shadow-[2px_2px_0px_0px_rgba(136,113,120,0.1)]">
+              <span className="material-symbols-outlined text-5xl text-on-surface-variant/30 mb-3 block">style</span>
+              <p className="text-sm text-on-surface-variant font-medium">{rarity ? `暂无 ${rarity} 卡片` : '暂无收藏'}</p>
+              <p className="text-xs text-on-surface-variant/60 mt-1">去抽卡获取你的第一张卡片吧！</p>
+              <a href="/" className="inline-block mt-4 bg-primary text-on-primary font-button-text text-xs px-5 py-2 rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_#770143] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all no-underline">
+                去抽卡
+              </a>
+            </div>
           </div>
         ) : (
           <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-md">
@@ -144,7 +149,7 @@ export default function Library() {
             <button
               onClick={() => setSearchParams({ page: String(page - 1), ...(rarity && { rarity }) })}
               disabled={page <= 1}
-              className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
+              className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
             >
               上一页
             </button>
@@ -154,7 +159,7 @@ export default function Library() {
             <button
               onClick={() => setSearchParams({ page: String(page + 1), ...(rarity && { rarity }) })}
               disabled={page >= totalPages}
-              className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
+              className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
             >
               下一页
             </button>

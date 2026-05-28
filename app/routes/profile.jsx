@@ -2,7 +2,9 @@ import { useNavigate } from '@remix-run/react';
 import { useAuth } from '~/hooks/useAuth';
 import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
+import Toast from '~/components/Toast';
 import { api } from '~/lib/api';
+import { useState } from 'react';
 
 export function loader() {
   return null;
@@ -11,6 +13,8 @@ export function loader() {
 export default function Profile() {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const [toast, setToast] = useState(null);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   if (!user) {
     return (
@@ -95,8 +99,8 @@ export default function Profile() {
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 mt-2 md:mt-4">
           <StatCard icon="stars" label="总抽卡" value={user.drawCount?.toLocaleString() || '0'} color="secondary" />
-          <StatCard icon="workspace_premium" label="SSR 计数" value="47" color="primary" />
-          <StatCard icon="auto_awesome" label="满级角色" value="15" color="tertiary" />
+          <StatCard icon="workspace_premium" label="连胜" value={user.wins?.toLocaleString() || '0'} color="primary" />
+          <StatCard icon="local_fire_department" label="签到天数" value={user.loginStreak?.toLocaleString() || '0'} color="tertiary" />
         </section>
 
         <section className="mt-4 md:mt-8">
@@ -117,22 +121,46 @@ export default function Profile() {
         <section className="mt-3 md:mt-4">
           <button
             onClick={async () => {
+              if (checkingIn) return;
+              setCheckingIn(true);
               try {
-                await api.checkIn();
+                const res = await api.checkIn();
                 await refreshUser();
-              } catch (e) {}
+                const bonus = res?.bonus || '';
+                setToast({ message: `签到成功！+${res?.checkIn?.coins ?? 150} 金币 +${res?.checkIn?.exp ?? 50} 经验${bonus}`, type: 'success', key: Date.now() });
+              } catch (e) {
+                setToast({ message: e?.message || '签到失败', type: 'error', key: Date.now() });
+              } finally {
+                setCheckingIn(false);
+              }
             }}
-            className="w-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-button-text text-sm md:text-button-text text-[24px] py-3 md:py-md rounded-full border-4 border-on-tertiary-fixed shadow-[0px_6px_0px_0px_#221b00] md:shadow-[0px_8px_0px_0px_#221b00] hover:translate-y-[3px] hover:shadow-[0px_3px_0px_0px_#221b00] active:translate-y-[6px] active:shadow-none transition-all relative overflow-hidden group"
+            disabled={checkingIn}
+            className={`w-full font-button-text text-sm md:text-button-text text-[24px] py-3 md:py-md rounded-full border-4 transition-all relative overflow-hidden group ${
+              checkingIn
+                ? 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-60'
+                : 'bg-tertiary-fixed text-on-tertiary-fixed-variant border-on-tertiary-fixed shadow-[0px_6px_0px_0px_#221b00] md:shadow-[0px_8px_0px_0px_#221b00] hover:translate-y-[3px] hover:shadow-[0px_3px_0px_0px_#221b00] active:translate-y-[6px] active:shadow-none'
+            }`}
           >
             <span className="relative z-10 flex items-center justify-center gap-1 md:gap-xs">
-              <span className="material-symbols-outlined text-xl md:text-[28px] symbol-filled">calendar_today</span>
-              每日签到
+              <span className="material-symbols-outlined text-xl md:text-[28px] symbol-filled">
+                {checkingIn ? 'hourglass_empty' : 'calendar_today'}
+              </span>
+              {checkingIn ? '签到中...' : '每日签到'}
             </span>
           </button>
         </section>
       </main>
 
       <BottomNav activeTab="Profile" />
+
+      {toast && (
+        <Toast
+          key={toast.key}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }

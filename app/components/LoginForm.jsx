@@ -53,10 +53,11 @@ export default function LoginForm() {
                 </label>
                 <input
                   value={username}
-                  onChange={e => setUsername(e.target.value)}
+                  onChange={e => { setUsername(e.target.value); setError(''); }}
                   placeholder="3-20位字母数字下划线"
                   required
                   minLength={3}
+                  disabled={submitting}
                   className={inputClass}
                 />
               </div>
@@ -82,10 +83,11 @@ export default function LoginForm() {
                 <input
                   type="password"
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={e => { setPassword(e.target.value); setError(''); }}
                   placeholder="至少6位"
                   required
                   minLength={6}
+                  disabled={submitting}
                   className={inputClass}
                 />
               </div>

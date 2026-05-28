@@ -144,7 +144,12 @@ export default function Shop() {
                         : 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-60'
                     }`}
                   >
-                    {isBuying ? '购买中...' : canAfford ? '购买' : '积分不足'}
+                    {isBuying ? (
+                      <span className="flex items-center gap-1">
+                        <span className="material-symbols-outlined text-sm animate-spin">refresh</span>
+                        购买中
+                      </span>
+                    ) : canAfford ? '购买' : '积分不足'}
                   </button>
                 </div>
               </article>
