@@ -4,7 +4,7 @@
  */
 
 import { CONFIG } from '../config/index.js';
-import { getBeijingTime, getBeijingISOString, utcToBeijing } from '../utils/time.js';
+import { getBeijingTime, getBeijingISOString, getBeijingDateStr, toDateStr, utcToBeijing } from '../utils/time.js';
 import { jsonResponse } from '../utils/response.js';
 
 export class UserService {
@@ -150,22 +150,17 @@ export class UserService {
     if (!user) return jsonResponse({ error: '用户不存在' }, 404);
 
     const now = new Date();
-    const beijingNow = getBeijingTime(now);
-    const todayStr = beijingNow.toISOString().split('T')[0];
-
-    const lastDateStr = user.last_login_date ? (() => {
-      const lastBeijing = utcToBeijing(user.last_login_date);
-      return lastBeijing.toISOString().split('T')[0];
-    })() : null;
+    const todayStr = getBeijingDateStr(now);
+    const lastDateStr = toDateStr(user.last_login_date);
 
     if (lastDateStr === todayStr) {
       return jsonResponse({ error: '今日已签到' }, 400);
     }
 
     let streak = user.login_streak || 0;
-    const yesterday = new Date(beijingNow);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    // 计算昨天的北京日期
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayStr = getBeijingDateStr(yesterday);
 
     if (lastDateStr === yesterdayStr) {
       streak += 1;
@@ -180,7 +175,7 @@ export class UserService {
     const coinsReward = CONFIG.LEVEL.CHECK_IN.BASE_COINS + streakBonus;
     const expReward = CONFIG.LEVEL.EXP_GAIN.CHECK_IN;
 
-    const beijingISOString = beijingNow.toISOString();
+    const beijingISOString = getBeijingISOString(now);
 
     const result = await this.env.DB.prepare(`
       UPDATE users
