@@ -8,7 +8,6 @@ const PUBLIC_PATHS = new Set([
   '/api/changelog',
   '/api/showcase',
   '/api/library/items',
-  '/api/limited/pools',
 ]);
 
 export async function onRequest(context) {
