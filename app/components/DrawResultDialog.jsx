@@ -60,7 +60,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
   }, []);
 
   const curDim = dims[current];
-  const cardMaxH = 'min(70vh, 480px)';
+  const cardMaxH = 'min(75vh, 600px)';
   const cardStyle = curDim
     ? { aspectRatio: `${curDim.w} / ${curDim.h}`, maxHeight: cardMaxH }
     : { aspectRatio: '3 / 4', maxHeight: cardMaxH };
@@ -77,8 +77,8 @@ export default function DrawResultDialog({ open, onClose, result }) {
       </button>
 
       {showAll ? (
-        <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto px-4 py-12">
-          <div className="columns-3 sm:columns-4 md:columns-5 gap-2 space-y-2">
+        <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto px-4 py-12">
+          <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-2 space-y-2">
             {cards.map((c, i) => {
               const dim = dims[i];
               const ratio = dim ? clampRatio(dim.w, dim.h) : 3 / 4;
@@ -110,7 +110,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
       ) : (
         <div className="flex flex-col items-center gap-4 md:gap-6 w-full px-4">
           <div
-            className="relative w-[80vw] max-w-[320px] md:max-w-sm perspective-[800px]"
+            className="relative w-[90vw] max-w-[420px] md:max-w-lg perspective-[800px]"
             style={cardStyle}
           >
             <div
