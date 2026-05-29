@@ -4,7 +4,22 @@ import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
 import Toast from '~/components/Toast';
 import { api } from '~/lib/api';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { RARITY_COLORS, RARITY_ORDER } from '~/lib/rarity';
+
+const MILESTONES = [
+  { level: 5, coins: 500, title: '新手收藏家' },
+  { level: 10, coins: 1000, title: '初级收藏家' },
+  { level: 20, coins: 2000, title: '高级收藏家' },
+  { level: 30, coins: 3000, title: '资深收藏家' },
+  { level: 50, coins: 5000, title: '传说人物' },
+  { level: 100, coins: 10000, title: '卡片之神' },
+];
+
+const PITY_COLORS = {
+  amber: { bar: 'bg-gradient-to-r from-amber-400 to-yellow-500', text: 'text-amber-600', bg: 'bg-amber-100', border: 'border-amber-300' },
+  red: { bar: 'bg-gradient-to-r from-red-400 to-rose-500', text: 'text-red-600', bg: 'bg-red-100', border: 'border-red-300' },
+};
 
 export function loader() {
   return null;
@@ -15,6 +30,70 @@ export default function Profile() {
   const navigate = useNavigate();
   const [toast, setToast] = useState(null);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [inventory, setInventory] = useState(null);
+  const [titles, setTitles] = useState([]);
+  const [claiming, setClaiming] = useState(null);
+  const [editingNick, setEditingNick] = useState(false);
+  const [newNickname, setNewNickname] = useState('');
+  const [savingNick, setSavingNick] = useState(false);
+  const [equipping, setEquipping] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    api.getInventory().then(res => setInventory(res.data || res)).catch(() => {});
+    api.getTitles().then(res => setTitles(res.titles || [])).catch(() => {});
+  }, [user?.id]);
+
+  const showToast = useCallback((message, type = 'success') => {
+    setToast({ message, type, key: Date.now() });
+  }, []);
+
+  const handleClaim = useCallback(async (level) => {
+    if (claiming) return;
+    setClaiming(level);
+    try {
+      const res = await api.claimReward(level);
+      const [, tRes] = await Promise.all([refreshUser(), api.getTitles()]);
+      setTitles(tRes?.titles || []);
+      const r = res?.reward;
+      showToast(`领取成功！+${r?.coins ?? '?'} 金币${r?.title ? ` +称号「${r.title}」` : ''}`);
+    } catch (e) {
+      showToast(e?.message || '领取失败', 'error');
+    } finally {
+      setClaiming(null);
+    }
+  }, [claiming, refreshUser, showToast]);
+
+  const handleEquip = useCallback(async (titleId) => {
+    if (equipping) return;
+    setEquipping(true);
+    try {
+      await api.equipTitle(titleId);
+      const [tRes] = await Promise.all([api.getTitles(), refreshUser()]);
+      setTitles(tRes?.titles || []);
+      showToast(titleId ? '称号已装备' : '称号已卸下');
+    } catch (e) {
+      showToast(e?.message || '操作失败', 'error');
+    } finally {
+      setEquipping(false);
+    }
+  }, [equipping, refreshUser, showToast]);
+
+  const handleSaveNickname = useCallback(async () => {
+    const nick = newNickname.trim();
+    if (!nick) return;
+    setSavingNick(true);
+    try {
+      await api.updateProfile(nick);
+      await refreshUser();
+      setEditingNick(false);
+      showToast('昵称已更新');
+    } catch (e) {
+      showToast(e?.message || '更新失败', 'error');
+    } finally {
+      setSavingNick(false);
+    }
+  }, [newNickname, refreshUser, showToast]);
 
   if (!user) {
     return (
@@ -46,6 +125,7 @@ export default function Profile() {
       <Header activeTab="Profile" />
 
       <main className="relative z-10 max-w-7xl mx-auto px-4 md:px-margin pt-[72px] md:pt-[100px] pb-[100px] md:pb-12 flex flex-col gap-4 md:gap-8">
+        {/* 头像 + 等级 */}
         <section className="relative w-full mt-2 md:mt-6">
           <div className="absolute inset-0 bg-primary translate-x-1 md:translate-x-2 translate-y-1 md:translate-y-2 rounded-2xl md:rounded-[32px]" />
           <div className="relative bg-surface-container-lowest border-[2px] md:border-[3px] border-primary rounded-2xl md:rounded-[32px] overflow-hidden flex flex-col md:flex-row items-center p-4 md:p-10 gap-4 md:gap-8">
@@ -69,15 +149,57 @@ export default function Profile() {
 
             <div className="flex-grow w-full flex flex-col justify-center gap-2 md:gap-4">
               <div className="text-center md:text-left">
-                <h1 className="font-headline-lg md:text-display-lg text-display-lg text-on-surface mb-1 drop-shadow-sm">
-                  {user.nickname || user.username}
-                </h1>
+                {/* 昵称 + 编辑 */}
+                {editingNick ? (
+                  <div className="flex items-center gap-2 justify-center md:justify-start mb-1">
+                    <input
+                      type="text"
+                      value={newNickname}
+                      onChange={e => setNewNickname(e.target.value)}
+                      maxLength={20}
+                      className="bg-surface-container-highest border-2 border-primary rounded-lg px-3 py-1 text-on-surface font-headline-lg md:text-display-lg text-display-lg outline-none w-48 md:w-64"
+                      autoFocus
+                      onKeyDown={e => e.key === 'Enter' && handleSaveNickname()}
+                    />
+                    <button
+                      onClick={handleSaveNickname}
+                      disabled={savingNick || !newNickname.trim()}
+                      className="bg-primary text-on-primary rounded-full px-3 py-1 text-sm font-button-text disabled:opacity-50"
+                    >
+                      {savingNick ? '...' : '保存'}
+                    </button>
+                    <button
+                      onClick={() => setEditingNick(false)}
+                      className="text-on-surface-variant rounded-full px-3 py-1 text-sm font-button-text"
+                    >
+                      取消
+                    </button>
+                  </div>
+                ) : (
+                  <h1 className="font-headline-lg md:text-display-lg text-display-lg text-on-surface mb-1 drop-shadow-sm flex items-center justify-center md:justify-start gap-2">
+                    {user.nickname || user.username}
+                    <button
+                      onClick={() => { setNewNickname(user.nickname || user.username); setEditingNick(true); }}
+                      className="text-on-surface-variant hover:text-primary transition-colors"
+                      title="编辑昵称"
+                    >
+                      <span className="material-symbols-outlined text-lg md:text-xl">edit</span>
+                    </button>
+                  </h1>
+                )}
                 <p className="font-body-md text-xs md:text-body-md text-outline flex items-center justify-center md:justify-start gap-1 md:gap-2">
                   <span className="material-symbols-outlined text-sm md:text-[18px]">id_card</span>
                   UID: {user.id}
                 </p>
+                {user.title && (
+                  <p className="font-label-bold text-xs md:text-sm text-tertiary flex items-center justify-center md:justify-start gap-1 mt-1">
+                    <span className="material-symbols-outlined text-sm md:text-[16px] symbol-filled">workspace_premium</span>
+                    {user.title.name}
+                  </p>
+                )}
               </div>
 
+              {/* 经验条 */}
               <div className="w-full mt-2 md:mt-4">
                 <div className="flex justify-between items-end mb-1 md:mb-2">
                   <span className="font-label-bold text-[10px] md:text-label-bold text-primary">经验进度</span>
@@ -93,31 +215,102 @@ export default function Profile() {
                   <div className="absolute top-0 left-0 w-full h-1/2 bg-white/30 shimmer pointer-events-none" />
                 </div>
               </div>
+
+              {/* 保底计数器 */}
+              <div className="flex gap-3 md:gap-4 mt-1">
+                <PityBar label="SSR" current={user.ssrPity} max={user.ssrPityAt} color="amber" />
+                <PityBar label="UR" current={user.urPity} max={user.urPityAt} color="red" />
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 mt-2 md:mt-4">
-          <StatCard icon="stars" label="总抽卡" value={user.drawCount?.toLocaleString() || '0'} color="secondary" />
-          <StatCard icon="workspace_premium" label="连胜" value={user.wins?.toLocaleString() || '0'} color="primary" />
-          <StatCard icon="local_fire_department" label="签到天数" value={user.loginStreak?.toLocaleString() || '0'} color="tertiary" />
+        {/* 背包统计 */}
+        <section className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-4 mt-2 md:mt-4">
+          {RARITY_ORDER.map(r => (
+            <StatCard
+              key={r}
+              rarity={r}
+              value={inventory?.[r]?.toLocaleString() || '—'}
+            />
+          ))}
         </section>
 
+        {/* 称号系统 */}
         <section className="mt-4 md:mt-8">
           <h2 className="font-headline-md md:text-headline-lg text-headline-lg text-on-surface mb-4 md:mb-6 flex items-center gap-2 md:gap-3">
             <span className="material-symbols-outlined text-primary text-2xl md:text-[32px] symbol-filled">emoji_events</span>
-            成就徽章
+            称号
           </h2>
-          <div className="bg-white/40 backdrop-blur-xl border-2 border-outline-variant rounded-2xl md:rounded-[32px] p-4 md:p-6 shadow-[0_8px_32px_rgba(166,48,103,0.1)]">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
-              <Ribbon icon="local_fire_department" label="Pyromancer" color="error" />
-              <Ribbon icon="water_drop" label="Aqua Heart" color="secondary" />
-              <Ribbon icon="electric_bolt" label="Flash Step" color="tertiary" />
-              <Ribbon icon="favorite" label="Idol Status" color="primary" />
+          {titles.length === 0 ? (
+            <div className="bg-white/40 backdrop-blur-xl border-2 border-outline-variant rounded-2xl md:rounded-[32px] p-6 md:p-8 text-center">
+              <span className="material-symbols-outlined text-4xl md:text-5xl text-outline mb-2">lock</span>
+              <p className="text-on-surface-variant text-sm md:text-base">还没有获得任何称号</p>
+              <p className="text-outline text-xs md:text-sm mt-1">升级可解锁专属称号</p>
             </div>
+          ) : (
+            <div className="bg-white/40 backdrop-blur-xl border-2 border-outline-variant rounded-2xl md:rounded-[32px] p-4 md:p-6 shadow-[0_8px_32px_rgba(166,48,103,0.1)]">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+                {titles.map(t => (
+                  <TitleCard key={t.title_id} title={t} onEquip={handleEquip} />
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* 等级里程碑奖励 */}
+        <section className="mt-4 md:mt-8">
+          <h2 className="font-headline-md md:text-headline-lg text-headline-lg text-on-surface mb-4 md:mb-6 flex items-center gap-2 md:gap-3">
+            <span className="material-symbols-outlined text-primary text-2xl md:text-[32px] symbol-filled">card_giftcard</span>
+            等级奖励
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4">
+            {MILESTONES.map(({ level: lv, coins, title }) => {
+              const claimed = user.claimedRewards?.includes(lv);
+              const canClaim = user.level >= lv && !claimed;
+              const locked = user.level < lv;
+              return (
+                <div
+                  key={lv}
+                  className={`relative rounded-2xl md:rounded-[24px] border-2 p-3 md:p-5 flex flex-col gap-1 md:gap-2 transition-all ${
+                    claimed
+                      ? 'bg-surface-variant border-outline-variant opacity-60'
+                      : canClaim
+                        ? 'bg-tertiary-container border-tertiary hover:-translate-y-0.5 md:hover:-translate-y-1 cursor-pointer shadow-[2px_2px_0_theme(colors.tertiary)] md:shadow-[4px_4px_0_theme(colors.tertiary)]'
+                        : 'bg-surface-container-lowest border-outline-variant opacity-50'
+                  }`}
+                  onClick={() => canClaim && handleClaim(lv)}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`font-label-bold text-sm md:text-base ${canClaim ? 'text-on-tertiary-container' : 'text-on-surface-variant'}`}>
+                      Lv.{lv}
+                    </span>
+                    {claimed && <span className="material-symbols-outlined text-lg text-primary symbol-filled">check_circle</span>}
+                    {locked && <span className="material-symbols-outlined text-lg text-outline">lock</span>}
+                    {canClaim && <span className="material-symbols-outlined text-lg text-on-tertiary-container symbol-filled animate-bounce">redeem</span>}
+                  </div>
+                  <div className={`text-xs md:text-sm ${canClaim ? 'text-on-tertiary-container' : 'text-on-surface-variant'}`}>
+                    +{coins} 金币
+                  </div>
+                  {title && (
+                    <div className={`text-[10px] md:text-xs flex items-center gap-1 ${canClaim ? 'text-on-tertiary-container' : 'text-outline'}`}>
+                      <span className="material-symbols-outlined text-sm">workspace_premium</span>
+                      {title}
+                    </div>
+                  )}
+                  {claiming === lv && (
+                    <div className="absolute inset-0 bg-surface/80 rounded-2xl md:rounded-[24px] flex items-center justify-center">
+                      <span className="material-symbols-outlined text-2xl text-primary animate-spin">progress_activity</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
 
+        {/* 每日签到 */}
         <section className="mt-3 md:mt-4">
           <button
             onClick={async () => {
@@ -126,10 +319,11 @@ export default function Profile() {
               try {
                 const res = await api.checkIn();
                 await refreshUser();
-                const bonus = res?.bonus || '';
-                setToast({ message: `签到成功！+${res?.checkIn?.coins ?? 150} 金币 +${res?.checkIn?.exp ?? 50} 经验${bonus}`, type: 'success', key: Date.now() });
+                const streakBonus = res?.checkIn?.streakBonus;
+                const bonus = streakBonus > 0 ? ` (连续签到+${streakBonus})` : '';
+                showToast(`签到成功！+${res?.checkIn?.coins ?? 150} 金币 +${res?.checkIn?.exp ?? 50} 经验${bonus}`);
               } catch (e) {
-                setToast({ message: e?.message || '签到失败', type: 'error', key: Date.now() });
+                showToast(e?.message || '签到失败', 'error');
               } finally {
                 setCheckingIn(false);
               }
@@ -165,32 +359,57 @@ export default function Profile() {
   );
 }
 
-function StatCard({ icon, label, value, color }) {
+function PityBar({ label, current, max, color }) {
+  const pct = max > 0 ? Math.min((current / max) * 100, 100) : 0;
+  const c = PITY_COLORS[color] || PITY_COLORS.amber;
   return (
-    <div className="relative group">
-      <div className={`absolute inset-0 bg-${color} translate-x-1 translate-y-1 md:translate-x-1.5 md:translate-y-1.5 rounded-2xl md:rounded-[24px] transition-transform group-hover:translate-x-1.5 group-hover:translate-y-1.5 md:group-hover:translate-x-2 md:group-hover:translate-y-2`} />
-      <div className={`relative bg-${color}-container rounded-2xl md:rounded-[24px] border-[2px] md:border-[3px] border-${color} p-4 md:p-6 flex flex-col h-full z-10 group-hover:-translate-y-0.5 group-hover:-translate-x-0.5 md:group-hover:-translate-y-1 md:group-hover:-translate-x-1 transition-transform`}>
-        <div className={`bg-${color} text-on-${color} w-8 h-8 md:w-12 md:h-12 rounded-full flex items-center justify-center mb-2 md:mb-4 border-2 border-on-${color}-container`}>
-          <span className="material-symbols-outlined text-base md:text-lg symbol-filled">{icon}</span>
-        </div>
-        <h3 className={`font-label-bold text-[10px] md:text-label-bold text-on-${color}-container uppercase tracking-widest mb-0.5 md:mb-1 opacity-80`}>
-          {label}
-        </h3>
-        <div className={`font-headline-lg md:text-display-lg text-display-lg text-on-${color}-container drop-shadow-sm`}>
-          {value}
-        </div>
+    <div className="flex-1 min-w-0">
+      <div className="flex justify-between items-center mb-0.5">
+        <span className={`font-label-bold text-[10px] md:text-xs ${c.text}`}>{label} 保底</span>
+        <span className={`font-label-bold text-[10px] md:text-xs ${c.text}`}>{current}/{max}</span>
+      </div>
+      <div className={`relative h-2 md:h-3 ${c.bg} rounded-full border ${c.border} overflow-hidden`}>
+        <div className={`absolute top-0 left-0 h-full ${c.bar} transition-all duration-500`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
 }
 
-function Ribbon({ icon, label, color }) {
+function StatCard({ rarity, value }) {
+  const c = RARITY_COLORS[rarity] || RARITY_COLORS.N;
   return (
-    <div className="bg-surface border-2 border-outline rounded-xl md:rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center gap-1.5 md:gap-3 hover:-translate-y-1 md:hover:-translate-y-2 transition-transform shadow-[2px_2px_0_#e3e2e7] md:shadow-[4px_4px_0_#e3e2e7]">
-      <div className={`w-10 h-10 md:w-14 md:h-14 bg-${color}-container rounded-full flex items-center justify-center border-2 border-${color}`}>
-        <span className={`material-symbols-outlined text-lg md:text-[28px] text-${color} symbol-filled`}>{icon}</span>
+    <div className="relative group">
+      <div className={`absolute inset-0 ${c.bg} translate-x-0.5 translate-y-0.5 md:translate-x-1 md:translate-y-1 rounded-xl md:rounded-2xl transition-transform group-hover:translate-x-1 group-hover:translate-y-1 md:group-hover:translate-x-1.5 md:group-hover:translate-y-1.5`} />
+      <div className={`relative bg-surface-container-lowest border-2 ${c.border} rounded-xl md:rounded-2xl p-2 md:p-4 flex flex-col items-center z-10 group-hover:-translate-y-0.5 md:hover:-translate-y-1 transition-transform`}>
+        <span className={`font-headline-md md:text-headline-lg text-on-surface drop-shadow-sm`}>{value}</span>
+        <span className={`font-label-bold text-xs md:text-sm ${c.text} uppercase tracking-wider`}>{rarity}</span>
       </div>
-      <span className="font-label-bold text-[10px] md:text-label-bold text-center text-on-surface">{label}</span>
     </div>
+  );
+}
+
+function TitleCard({ title, onEquip }) {
+  const equipped = title.is_equipped === 1;
+  return (
+    <button
+      onClick={() => onEquip(equipped ? null : title.title_id)}
+      className={`rounded-xl md:rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center gap-1.5 md:gap-2 transition-all border-2 ${
+        equipped
+          ? 'bg-primary-container border-primary shadow-[0_0_12px_rgba(119,1,67,0.3)] scale-[1.02]'
+          : 'bg-surface border-outline hover:border-primary hover:-translate-y-0.5 md:hover:-translate-y-1'
+      }`}
+    >
+      <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center ${equipped ? 'bg-primary' : 'bg-surface-variant'}`}>
+        <span className={`material-symbols-outlined text-lg md:text-xl ${equipped ? 'text-on-primary' : 'text-on-surface-variant'} symbol-filled`}>
+          {equipped ? 'workspace_premium' : 'military_tech'}
+        </span>
+      </div>
+      <span className={`font-label-bold text-[10px] md:text-xs text-center ${equipped ? 'text-on-primary-container' : 'text-on-surface'}`}>
+        {title.title_id}
+      </span>
+      {equipped && (
+        <span className="text-[8px] md:text-[10px] text-primary font-label-bold">装备中</span>
+      )}
+    </button>
   );
 }

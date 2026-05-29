@@ -1,0 +1,66 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - link "KiraKira Gacha" [ref=e6] [cursor=pointer]:
+      - /url: /
+      - heading "KiraKira Gacha" [level=1] [ref=e7]
+    - navigation [ref=e8]:
+      - link "science 合成" [ref=e9] [cursor=pointer]:
+        - /url: /synthesis
+        - generic [ref=e10]: science
+        - text: 合成
+      - link "videogame_asset 游戏" [ref=e11] [cursor=pointer]:
+        - /url: /games
+        - generic [ref=e12]: videogame_asset
+        - text: 游戏
+      - link "style 图鉴" [ref=e13] [cursor=pointer]:
+        - /url: /library
+        - generic [ref=e14]: style
+        - text: 图鉴
+      - link "home 大厅" [ref=e15] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e16]: home
+        - text: 大厅
+      - link "storefront 商店" [ref=e17] [cursor=pointer]:
+        - /url: /shop
+        - generic [ref=e18]: storefront
+        - text: 商店
+    - button "登录" [ref=e20]
+  - main [ref=e21]:
+    - generic [ref=e22]:
+      - paragraph [ref=e23]: 登录后查看个人数据
+      - link "登录" [ref=e24] [cursor=pointer]:
+        - /url: /login
+    - generic [ref=e25]:
+      - generic [ref=e30]:
+        - generic [ref=e31]: 概率 UP!
+        - heading "限定池" [level=2] [ref=e32]
+        - paragraph [ref=e33]: 概率 UP! · 当期角色精选
+      - generic [ref=e34]:
+        - generic [ref=e35]:
+          - button "限定池" [ref=e36]
+          - button "常驻池" [ref=e37]
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e40]:
+              - generic [ref=e41]: SSR 保底
+              - generic [ref=e42]: 0/10
+            - paragraph [ref=e44]: 再抽 10 次必出 SSR
+          - generic [ref=e45]:
+            - generic [ref=e46]:
+              - generic [ref=e47]: UR 保底
+              - generic [ref=e48]: 0/50
+            - paragraph [ref=e50]: 再抽 50 次必出 UR
+        - generic [ref=e51]:
+          - paragraph [ref=e52]: 登录后开启抽卡
+          - link "登录" [ref=e53] [cursor=pointer]:
+            - /url: /login
+      - generic [ref=e54]: star
+      - generic [ref=e55]: star
+      - generic [ref=e56]: star
+    - generic [ref=e57]:
+      - heading "trophy 最新掉落" [level=2] [ref=e58]:
+        - generic [ref=e59]: trophy
+        - text: 最新掉落
+      - generic [ref=e60]:
+        - generic [ref=e61]: style
+        - paragraph [ref=e62]: 暂无掉落记录

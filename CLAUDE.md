@@ -10,6 +10,7 @@ npm run build        # Production build → build/server/ + build/client/
 npm run deploy       # Build + wrangler deploy to Cloudflare Pages
 npm run typecheck    # tsc type checking (noEmit)
 npm run start        # Local preview: wrangler pages dev ./build/client
+npm run preview      # Build + wrangler dev
 ```
 
 No test framework or linter configured. `npm run typecheck` is the only static check.
