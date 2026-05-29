@@ -71,6 +71,7 @@ export default function LoginForm() {
                     value={nickname}
                     onChange={e => setNickname(e.target.value)}
                     placeholder="可选"
+                    disabled={submitting}
                     className={inputClass}
                   />
                 </div>
