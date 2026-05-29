@@ -244,7 +244,7 @@ export class GachaService {
     const data = encoder.encode(str);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).slice(0, 8);
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
   }
 
   async fetchAndUploadRandom(sourceList) {
@@ -339,6 +339,7 @@ export class GachaService {
     const sourceList = CONFIG.SOURCES.filter(s => s.rarity === rarity);
     if (sourceList.length === 0) throw new Error(`配置错误: 无法找到 ${rarity} 的图源`);
     const asset = await this.consumeGlobalBuffer(rarity, sourceList);
+    if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败，请重试`);
 
     const coinsReward = CONFIG.GAME.POINTS[rarity] || CONFIG.GAME.POINTS['N'] || 5;
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
@@ -572,7 +573,36 @@ export class GachaService {
     });
   }
 
-  // ==================== 限定池抽卡 ====================
+  // ==================== 限定池独立保底计数器 ====================
+  async getLimitedPityCounters(userId) {
+    if (!this.env.KV_CACHE) return { ssrPity: 0, urPity: 0 };
+    try {
+      const [ssr, ur] = await Promise.all([
+        this.env.KV_CACHE.get(`pity:limited:ssr:${userId}`),
+        this.env.KV_CACHE.get(`pity:limited:ur:${userId}`)
+      ]);
+      return {
+        ssrPity: parseInt(ssr || '0', 10),
+        urPity: parseInt(ur || '0', 10)
+      };
+    } catch { return { ssrPity: 0, urPity: 0 }; }
+  }
+
+  async updateLimitedPityCounters(userId, rarity) {
+    if (!this.env.KV_CACHE) return;
+    try {
+      let ssrPity = parseInt(await this.env.KV_CACHE.get(`pity:limited:ssr:${userId}`) || '0', 10) + 1;
+      let urPity = parseInt(await this.env.KV_CACHE.get(`pity:limited:ur:${userId}`) || '0', 10) + 1;
+      if (rarity === 'SSR' || rarity === 'UR') ssrPity = 0;
+      if (rarity === 'UR') urPity = 0;
+      await Promise.all([
+        this.env.KV_CACHE.put(`pity:limited:ssr:${userId}`, String(ssrPity), { expirationTtl: 86400 * 7 }),
+        this.env.KV_CACHE.put(`pity:limited:ur:${userId}`, String(urPity), { expirationTtl: 86400 * 7 })
+      ]);
+    } catch (e) { console.error('[Pity] limited update failed:', e); }
+  }
+
+  // ==================== 限定池抽卡（带独立保底） ====================
   async drawLimited(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
     const { poolId } = await request.json();
@@ -583,8 +613,22 @@ export class GachaService {
     if (currentUser.coins < cost) return jsonResponse({ error: '积分不足' }, 400);
     const sources = poolConfig.sources;
     if (!sources?.length) return jsonResponse({ error: '卡池配置错误' }, 500);
-    const rarity = poolConfig.rarity || 'UR';
-    const asset = await this.fetchAndUploadWithFallback(sources[Math.floor(Math.random() * sources.length)]);
+
+    // 限定池独立保底
+    const pityCounters = await this.getLimitedPityCounters(currentUser.id);
+    const baseRarity = poolConfig.rarity || 'UR';
+    const pityResult = this.applyPity(baseRarity, pityCounters.ssrPity, pityCounters.urPity);
+    const rarity = pityResult.rarity;
+    const isPity = pityResult.isPity;
+
+    // 获取图片：保底降级时用对应稀有度的通用源
+    let asset;
+    if (rarity === baseRarity) {
+      asset = await this.fetchAndUploadWithFallback(sources[Math.floor(Math.random() * sources.length)]);
+    } else {
+      const fallbackSources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
+      asset = await this.consumeGlobalBuffer(rarity, fallbackSources.length > 0 ? fallbackSources : sources);
+    }
     const expGain = (CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10);
 
     currentUser.coins -= cost;
@@ -605,12 +649,13 @@ export class GachaService {
     const batch = [
       this.env.DB.prepare('UPDATE users SET coins = coins - ?, draw_count = draw_count + 1, total_exp = total_exp + ? WHERE id = ?').bind(cost, expGain, currentUser.id),
       this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity),
-      this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, 0, asset.sourceName || poolConfig.name || '限定池', Date.now())
+      this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, asset.sourceName || poolConfig.name || '限定池', Date.now())
     ];
     if (levelUpResult) {
       batch.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, levelUpResult.newExp, currentUser.id));
     }
     await this.env.DB.batch(batch);
+    await this.updateLimitedPityCounters(currentUser.id, rarity);
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, ts: getBeijingISOString() }));
 
@@ -618,9 +663,12 @@ export class GachaService {
       success: true,
       card: asset,
       pool: poolConfig.name || pool,
+      rarity,
+      isPity,
       userCoins: currentUser.coins,
       expGained: expGain,
       levelUp: levelUpResult ? { newLevel: levelUpResult.newLevel, reward: levelUpResult.coinsReward } : null,
+      pityInfo: { ssrPity: pityCounters.ssrPity, urPity: pityCounters.urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at }
     });
   }
 
