@@ -516,13 +516,7 @@ export class GachaService {
       }
     }
 
-    // 一次性写入保底计数器（只 2 次 KV put，不是 20 次）
-    await Promise.all([
-      this.env.KV_CACHE.put(`pity:ssr:${currentUser.id}`, String(pityCounters.ssrPity), { expirationTtl: 86400 * 7 }),
-      this.env.KV_CACHE.put(`pity:ur:${currentUser.id}`, String(pityCounters.urPity), { expirationTtl: 86400 * 7 })
-    ]);
-
-    // 一次性写入用户数据 + inventory + history（一个大 batch）
+    // 先写 DB（核心数据），再写 KV（缓存可重建）
     const userStmts = [
       this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + ?, total_exp = total_exp + ? WHERE id = ?').bind(totalCoins, count, totalExp, currentUser.id)
     ];
@@ -530,6 +524,12 @@ export class GachaService {
       userStmts.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.toLevel, currentUser.exp, currentUser.id));
     }
     await this.env.DB.batch([...userStmts, ...inventoryStmts, ...historyStmts]);
+
+    // DB 成功后再写保底计数器
+    await Promise.all([
+      this.env.KV_CACHE.put(`pity:ssr:${currentUser.id}`, String(pityCounters.ssrPity), { expirationTtl: 86400 * 7 }),
+      this.env.KV_CACHE.put(`pity:ur:${currentUser.id}`, String(pityCounters.urPity), { expirationTtl: 86400 * 7 })
+    ]);
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
 
     return jsonResponse({
@@ -581,7 +581,40 @@ export class GachaService {
     });
   }
 
-  // ==================== 限定池抽卡（带保底） ====================
+  // ==================== 限定池独立保底计数器 ====================
+  async getLimitedPityCounters(userId) {
+    if (!this.env.KV_CACHE) return { ssrPity: 0, urPity: 0 };
+    try {
+      const [ssr, ur] = await Promise.all([
+        this.env.KV_CACHE.get(`pity:limited:ssr:${userId}`),
+        this.env.KV_CACHE.get(`pity:limited:ur:${userId}`)
+      ]);
+      return {
+        ssrPity: parseInt(ssr || '0', 10),
+        urPity: parseInt(ur || '0', 10)
+      };
+    } catch { return { ssrPity: 0, urPity: 0 }; }
+  }
+
+  async incrementLimitedPityCounters(userId, rarity) {
+    if (!this.env.KV_CACHE) return;
+    try {
+      const [ssrRaw, urRaw] = await Promise.all([
+        this.env.KV_CACHE.get(`pity:limited:ssr:${userId}`),
+        this.env.KV_CACHE.get(`pity:limited:ur:${userId}`)
+      ]);
+      let ssrPity = parseInt(ssrRaw || '0', 10) + 1;
+      let urPity = parseInt(urRaw || '0', 10) + 1;
+      if (rarity === 'SSR' || rarity === 'UR') ssrPity = 0;
+      if (rarity === 'UR') urPity = 0;
+      await Promise.all([
+        this.env.KV_CACHE.put(`pity:limited:ssr:${userId}`, String(ssrPity), { expirationTtl: 86400 * 7 }),
+        this.env.KV_CACHE.put(`pity:limited:ur:${userId}`, String(urPity), { expirationTtl: 86400 * 7 })
+      ]);
+    } catch (e) { console.error('[Pity] limited increment failed:', e); }
+  }
+
+  // ==================== 限定池抽卡（带独立保底） ====================
   async drawLimited(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
 
@@ -594,20 +627,26 @@ export class GachaService {
     if (!poolConfig) return jsonResponse({ error: '卡池不存在' }, 400);
     const cost = poolConfig.cost || CONFIG.LIMITED.COST;
     if (currentUser.coins < cost) return jsonResponse({ error: '积分不足' }, 400);
-    const sources = poolConfig.sources;
-    if (!sources?.length) return jsonResponse({ error: '卡池配置错误' }, 500);
+    const poolSources = poolConfig.sources;
+    if (!poolSources?.length) return jsonResponse({ error: '卡池配置错误' }, 500);
 
-    // 读取保底计数器
-    const pityCounters = await this.getPityCounters(currentUser.id);
+    // 限定池独立保底
+    const pityCounters = await this.getLimitedPityCounters(currentUser.id);
     const baseRarity = poolConfig.rarity || 'UR';
 
-    // 保底判定
     const pityResult = this.applyPity(baseRarity, pityCounters.ssrPity, pityCounters.urPity);
     const rarity = pityResult.rarity;
     const isPity = pityResult.isPity;
 
-    // 用 buffer 系统获取图片（带缓存 + 黑名单去重）
-    const asset = await this.consumeGlobalBuffer(rarity, sources);
+    // 获取图片：保底降级时用对应稀有度的通用源，否则用限定池专属源
+    let asset;
+    if (rarity === baseRarity) {
+      asset = await this.consumeGlobalBuffer(rarity, poolSources);
+    } else {
+      // 保底降级（如 UR→SSR），用 CONFIG.SOURCES 中对应稀有度的源
+      const fallbackSources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
+      asset = await this.consumeGlobalBuffer(rarity, fallbackSources.length > 0 ? fallbackSources : poolSources);
+    }
     const expGain = (CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10);
 
     currentUser.coins -= cost;
@@ -635,8 +674,8 @@ export class GachaService {
     }
     await this.env.DB.batch(batch);
 
-    // 更新保底计数器
-    await this.incrementPityCounters(currentUser.id, rarity);
+    // 更新限定池独立保底计数器
+    await this.incrementLimitedPityCounters(currentUser.id, rarity);
 
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, ts: getBeijingISOString() }));
