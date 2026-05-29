@@ -3,15 +3,8 @@ import BottomNav from '~/components/BottomNav';
 import Toast from '~/components/Toast';
 import { useAuth } from '~/hooks/useAuth';
 import { api } from '~/lib/api';
+import { rarityBg, rarityBorder, rarityText, rarityGlow } from '~/lib/rarity';
 import { useState, useEffect } from 'react';
-
-const RARITY_COLORS = {
-  N: { bg: 'bg-gray-500', border: 'border-gray-400', text: 'text-gray-500', glow: '' },
-  R: { bg: 'bg-blue-500', border: 'border-blue-400', text: 'text-blue-500', glow: '' },
-  SR: { bg: 'bg-purple-500', border: 'border-purple-400', text: 'text-purple-500', glow: 'shadow-[0_0_12px_rgba(139,92,246,0.3)]' },
-  SSR: { bg: 'bg-amber-500', border: 'border-amber-400', text: 'text-amber-500', glow: 'shadow-[0_0_16px_rgba(245,158,11,0.4)]' },
-  UR: { bg: 'bg-red-500', border: 'border-red-400', text: 'text-red-500', glow: 'shadow-[0_0_20px_rgba(239,68,68,0.4)]' },
-};
 
 const CRAFT_OPTIONS = [
   { target: 'R', source: 'N', cost: 5 },
@@ -88,15 +81,15 @@ export default function Synthesis() {
         <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-lg relative z-10">
           {/* Left: Character Card */}
           <div className="md:col-span-5 relative group">
-            <div className={`w-full aspect-[3/4] rounded-xl border-4 ${RARITY_COLORS[targetRarity].border} bg-surface-container-lowest/80 backdrop-blur-md shadow-[4px_4px_0px_0px_#ffb0cb] md:shadow-[8px_8px_0px_0px_#ffb0cb] transition-transform duration-300 ease-out group-hover:-rotate-2 group-hover:scale-[1.02] p-1 md:p-xs relative overflow-hidden flex flex-col ${resultAnim ? 'animate-card-reveal' : ''}`}>
+            <div className={`w-full aspect-[3/4] rounded-xl border-4 ${rarityBorder(targetRarity)} bg-surface-container-lowest/80 backdrop-blur-md shadow-[4px_4px_0px_0px_#ffb0cb] md:shadow-[8px_8px_0px_0px_#ffb0cb] transition-transform duration-300 ease-out group-hover:-rotate-2 group-hover:scale-[1.02] p-1 md:p-xs relative overflow-hidden flex flex-col ${resultAnim ? 'animate-card-reveal' : ''}`}>
               <div className="absolute top-0 left-0 w-6 h-6 md:w-8 md:h-8 border-t-4 border-l-4 border-secondary rounded-tl-lg z-20 m-1 md:m-xs pointer-events-none" />
               <div className="absolute bottom-0 right-0 w-6 h-6 md:w-8 md:h-8 border-b-4 border-r-4 border-secondary rounded-br-lg z-20 m-1 md:m-xs pointer-events-none" />
 
-              <div className={`flex-1 rounded-lg overflow-hidden relative bg-surface-container-high border-2 border-outline-variant flex items-center justify-center ${RARITY_COLORS[targetRarity].glow}`}>
+              <div className={`flex-1 rounded-lg overflow-hidden relative bg-surface-container-high border-2 border-outline-variant flex items-center justify-center ${rarityGlow(targetRarity)}`}>
                 {lastResult?.imageUrl ? (
                   <img src={lastResult.imageUrl} alt={targetRarity} className="w-full h-full object-cover" />
                 ) : (
-                  <div className={`text-6xl md:text-8xl font-black ${RARITY_COLORS[targetRarity].text} opacity-30`}>
+                  <div className={`text-6xl md:text-8xl font-black ${rarityText(targetRarity)} opacity-30`}>
                     {targetRarity}
                   </div>
                 )}
@@ -105,7 +98,7 @@ export default function Synthesis() {
               {/* 结果角标 */}
               {lastResult && (
                 <div className="absolute top-3 right-3 md:top-4 md:right-4 z-20">
-                  <span className={`inline-block text-xs md:text-sm font-black text-white px-3 py-1 rounded-full ${RARITY_COLORS[targetRarity].bg} shadow-lg`}>
+                  <span className={`inline-block text-xs md:text-sm font-black text-white px-3 py-1 rounded-full ${rarityBg(targetRarity)} shadow-lg`}>
                     {targetRarity}
                   </span>
                 </div>
@@ -121,14 +114,14 @@ export default function Synthesis() {
               <div className="grid grid-cols-5 gap-2">
                 {CRAFT_OPTIONS.map(opt => (
                   <div key={opt.source} className="text-center">
-                    <span className={`inline-block text-[10px] md:text-xs font-black text-white px-2 py-0.5 rounded-full ${RARITY_COLORS[opt.source].bg} mb-1`}>
+                    <span className={`inline-block text-[10px] md:text-xs font-black text-white px-2 py-0.5 rounded-full ${rarityBg(opt.source)} mb-1`}>
                       {opt.source}
                     </span>
                     <p className="font-headline-md text-lg md:text-2xl text-on-surface">{inventory[opt.source] || 0}</p>
                   </div>
                 ))}
                 <div className="text-center">
-                  <span className={`inline-block text-[10px] md:text-xs font-black text-white px-2 py-0.5 rounded-full ${RARITY_COLORS.UR.bg} mb-1`}>UR</span>
+                  <span className={`inline-block text-[10px] md:text-xs font-black text-white px-2 py-0.5 rounded-full ${rarityBg('UR')} mb-1`}>UR</span>
                   <p className="font-headline-md text-lg md:text-2xl text-on-surface">{inventory.UR || 0}</p>
                 </div>
               </div>
@@ -148,7 +141,7 @@ export default function Synthesis() {
                       onClick={() => { setTargetRarity(opt.target); setLastResult(null); }}
                       className={`w-14 h-14 md:w-20 md:h-20 rounded-lg border-2 flex items-center justify-center relative transition-transform cursor-pointer ${
                         targetRarity === opt.target
-                          ? `${RARITY_COLORS[opt.target].border} bg-primary-fixed/20 shadow-[2px_2px_0px_0px_#ff77af]`
+                          ? `${rarityBorder(opt.target)} bg-primary-fixed/20 shadow-[2px_2px_0px_0px_#ff77af]`
                           : `border-outline-variant bg-surface-dim hover:translate-y-[-2px]`
                       }`}
                     >

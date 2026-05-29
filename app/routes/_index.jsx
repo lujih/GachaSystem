@@ -7,6 +7,7 @@ import { useGacha } from '~/hooks/useGacha';
 import DrawResultDialog from '~/components/DrawResultDialog';
 import Toast from '~/components/Toast';
 import { api } from '~/lib/api';
+import { rarityBg, rarityBorder } from '~/lib/rarity';
 
 const POOL_CONFIG = {
   limited: { name: '限定池', cost: 500, multiCost: 5000, desc: '概率 UP! · 当期角色精选', tag: '概率 UP!' },
@@ -23,26 +24,6 @@ function formatRelativeTime(ts) {
   const days = Math.floor(hours / 24);
   return `${days}天前`;
 }
-
-const RARITY_DOT = {
-  N: 'bg-n', R: 'bg-r', SR: 'bg-sr', SSR: 'bg-ssr', UR: 'bg-ur',
-};
-
-const RARITY_BADGE = {
-  N: 'bg-gray-500 text-white',
-  R: 'bg-blue-500 text-white',
-  SR: 'bg-purple-500 text-white',
-  SSR: 'bg-amber-500 text-white',
-  UR: 'bg-red-500 text-white',
-};
-
-const RARITY_BORDER = {
-  N: 'border-gray-400',
-  R: 'border-blue-400',
-  SR: 'border-purple-400',
-  SSR: 'border-amber-400',
-  UR: 'border-red-400',
-};
 
 export async function loader({ request, context }) {
   const env = context?.cloudflare?.env;
@@ -362,7 +343,7 @@ export default function Index() {
           ) : (
             <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
               {showcase.map((item, i) => (
-                <div key={i} className={`group relative aspect-[3/4] rounded-lg overflow-hidden border-2 ${RARITY_BORDER[item.rarity] || 'border-outline-variant'} shadow-[2px_2px_0px_0px_rgba(136,113,120,0.2)] hover:scale-105 hover:shadow-lg transition-all`}>
+                <div key={i} className={`group relative aspect-[3/4] rounded-lg overflow-hidden border-2 ${rarityBorder(item.rarity)} shadow-[2px_2px_0px_0px_rgba(136,113,120,0.2)] hover:scale-105 hover:shadow-lg transition-all`}>
                   {item.url ? (
                     <img src={item.url} alt="" className="w-full h-full object-cover" loading="lazy" />
                   ) : (
@@ -371,7 +352,7 @@ export default function Index() {
                     </div>
                   )}
                   {item.rarity && (
-                    <span className={`absolute top-1.5 left-1.5 text-[10px] font-black px-2 py-0.5 rounded-md shadow-sm ${RARITY_BADGE[item.rarity] || ''}`}>
+                    <span className={`absolute top-1.5 left-1.5 text-[10px] font-black px-2 py-0.5 rounded-md shadow-sm ${rarityBg(item.rarity)} text-white`}>
                       {item.rarity}
                     </span>
                   )}
@@ -404,7 +385,7 @@ export default function Index() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {drawHistory.map((record, i) => (
                   <div key={i} className="flex items-center gap-2.5 py-2.5 px-3 rounded-xl bg-surface-container-low border border-outline-variant hover:bg-surface-container transition-colors">
-                    <span className={`inline-flex items-center justify-center text-[10px] font-black px-2.5 py-0.5 rounded-full shrink-0 shadow-sm ${RARITY_BADGE[record.rarity] || RARITY_BADGE.N}`}>
+                    <span className={`inline-flex items-center justify-center text-[10px] font-black px-2.5 py-0.5 rounded-full shrink-0 shadow-sm ${rarityBg(record.rarity)} text-white`}>
                       {record.rarity}
                     </span>
                     <span className="font-button-text text-xs text-on-surface shrink-0">{formatRelativeTime(record.created_at)}</span>

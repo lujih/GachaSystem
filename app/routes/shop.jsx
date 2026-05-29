@@ -4,16 +4,13 @@ import BottomNav from '~/components/BottomNav';
 import Toast from '~/components/Toast';
 import { useAuth } from '~/hooks/useAuth';
 import { api } from '~/lib/api';
+import { rarityBg } from '~/lib/rarity';
 
 const SHOP_CONFIG = {
   R:   { price: 150,  name: 'R 卡片',   desc: '标准稀有度卡片', gradient: 'from-blue-400 to-blue-600', border: 'border-blue-400', glow: '' },
   SR:  { price: 600,  name: 'SR 卡片',  desc: '高级稀有度卡片', gradient: 'from-purple-400 to-purple-600', border: 'border-purple-400', glow: 'shadow-[0_0_12px_rgba(139,92,246,0.3)]' },
   SSR: { price: 2500, name: 'SSR 卡片', desc: '超稀有卡片',     gradient: 'from-amber-400 to-yellow-500', border: 'border-amber-400', glow: 'shadow-[0_0_16px_rgba(245,158,11,0.4)]' },
   UR:  { price: 10000, name: 'UR 卡片', desc: '终极稀有卡片',   gradient: 'from-red-400 to-rose-600', border: 'border-red-400', glow: 'shadow-[0_0_20px_rgba(239,68,68,0.4)]' },
-};
-
-const RARITY_BG = {
-  R: 'bg-blue-500', SR: 'bg-purple-500', SSR: 'bg-amber-500', UR: 'bg-red-500',
 };
 
 export default function Shop() {
@@ -97,7 +94,7 @@ export default function Shop() {
           <div className="flex gap-3 md:gap-4">
             {['N', 'R', 'SR', 'SSR', 'UR'].map(r => (
               <div key={r} className="text-center">
-                <span className={`inline-block text-[10px] md:text-xs font-black text-white px-2 py-0.5 rounded-full ${RARITY_BG[r] || 'bg-gray-500'} mb-0.5`}>{r}</span>
+                <span className={`inline-block text-[10px] md:text-xs font-black text-white px-2 py-0.5 rounded-full ${rarityBg(r)} mb-0.5`}>{r}</span>
                 <p className="font-headline-md text-sm md:text-lg text-on-surface">{inventory[r] || 0}</p>
               </div>
             ))}
@@ -115,7 +112,7 @@ export default function Shop() {
                 className={`bg-surface-container-lowest border-[3px] ${config.border} rounded-2xl p-4 flex flex-col gap-3 relative transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${config.glow}`}
               >
                 {/* 稀有度角标 */}
-                <span className={`absolute top-3 right-3 text-[10px] font-black text-white px-2.5 py-0.5 rounded-full ${RARITY_BG[rarity]}`}>
+                <span className={`absolute top-3 right-3 text-[10px] font-black text-white px-2.5 py-0.5 rounded-full ${rarityBg(rarity)}`}>
                   {rarity}
                 </span>
 

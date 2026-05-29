@@ -2,10 +2,7 @@ import { useLoaderData, useSearchParams } from '@remix-run/react';
 import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
 import GachaCard from '~/components/GachaCard';
-
-const RARITY_COLORS = {
-  N: 'bg-gray-500', R: 'bg-blue-500', SR: 'bg-purple-500', SSR: 'bg-amber-500', UR: 'bg-red-500',
-};
+import { rarityBg, RARITY_ORDER } from '~/lib/rarity';
 
 export async function loader({ request, context }) {
   const env = context?.cloudflare?.env;
@@ -80,9 +77,9 @@ export default function Library() {
 
           {/* 稀有度统计 */}
           <div className="flex gap-1.5 md:gap-2">
-            {['N', 'R', 'SR', 'SSR', 'UR'].map(r => (
+            {RARITY_ORDER.map(r => (
               <div key={r} className="text-center">
-                <span className={`inline-block text-[9px] md:text-[10px] font-black text-white px-1.5 py-0.5 rounded ${RARITY_COLORS[r]}`}>{r}</span>
+                <span className={`inline-block text-[9px] md:text-[10px] font-black text-white px-1.5 py-0.5 rounded ${rarityBg(r)}`}>{r}</span>
                 <p className="text-[10px] md:text-xs font-bold text-on-surface-variant mt-0.5">{rarityCounts[r] || 0}</p>
               </div>
             ))}
