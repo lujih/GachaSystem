@@ -76,8 +76,8 @@ export default function Index() {
   const pool = POOL_CONFIG[poolType];
   const ssrPity = user?.ssrPity ?? 0;
   const urPity = user?.urPity ?? 0;
-  const ssrAt = user?.ssrPityAt ?? 10;
-  const urAt = user?.urPityAt ?? 50;
+  const ssrAt = user?.ssrPityAt ?? 15;
+  const urAt = user?.urPityAt ?? 80;
 
   function showToast(message, type = 'info') {
     setToast({ message, type, key: Date.now() });

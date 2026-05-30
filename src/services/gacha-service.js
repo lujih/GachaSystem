@@ -146,11 +146,17 @@ export class GachaService {
     } catch { return { ssrPity: 0, urPity: 0 }; }
   }
 
-  async updatePityCounters(userId, rarity) {
+  async updatePityCounters(userId, rarity, current = null) {
     if (!this.env.KV_CACHE) return;
     try {
-      let ssrPity = parseInt(await this.env.KV_CACHE.get(`pity:ssr:${userId}`) || '0', 10) + 1;
-      let urPity = parseInt(await this.env.KV_CACHE.get(`pity:ur:${userId}`) || '0', 10) + 1;
+      let ssrPity, urPity;
+      if (current) {
+        ssrPity = current.ssrPity + 1;
+        urPity = current.urPity + 1;
+      } else {
+        ssrPity = parseInt(await this.env.KV_CACHE.get(`pity:ssr:${userId}`) || '0', 10) + 1;
+        urPity = parseInt(await this.env.KV_CACHE.get(`pity:ur:${userId}`) || '0', 10) + 1;
+      }
       if (rarity === 'SSR' || rarity === 'UR') ssrPity = 0;
       if (rarity === 'UR') urPity = 0;
       await Promise.all([
@@ -368,15 +374,10 @@ export class GachaService {
     return { hasLevelUp: false, newExp: (currentUser.exp || 0) + expGained, coinsReward: 0 };
   }
 
-  // ==================== 抽卡核心逻辑（无 DB） ====================
-  // pity 参数可选：不传则从 KV 读取（单抽用），传入则直接用（多连抽用）
-  async executeDrawLogic(userId, username, pity = null) {
-    const { ssrPity, urPity } = pity || await this.getPityCounters(userId);
-
-    // 软保底：根据保底计数器动态调整概率
-    let urProb = 1;   // 基础 UR 概率 1%
-    let ssrProb = 4;  // 基础 SSR 概率 4%
-
+  // 计算软保底概率（单抽/十连复用）
+  calcSoftPityProbs(ssrPity, urPity) {
+    let urProb = 1;
+    let ssrProb = 4;
     const urConfig = CONFIG.PITY.UR;
     const ssrConfig = CONFIG.PITY.SSR;
     if (urConfig.softStart && urPity >= urConfig.softStart) {
@@ -385,9 +386,15 @@ export class GachaService {
     if (ssrConfig.softStart && ssrPity >= ssrConfig.softStart) {
       ssrProb += (ssrPity - ssrConfig.softStart + 1) * ssrConfig.softRate;
     }
-    urProb = Math.min(urProb, 100);
-    ssrProb = Math.min(ssrProb, 100);
+    return { urProb: Math.min(urProb, 100), ssrProb: Math.min(ssrProb, 100) };
+  }
 
+  // ==================== 抽卡核心逻辑（无 DB） ====================
+  // pity 参数可选：不传则从 KV 读取（单抽用），传入则直接用（多连抽用）
+  async executeDrawLogic(userId, username, pity = null) {
+    const { ssrPity, urPity } = pity || await this.getPityCounters(userId);
+
+    const { urProb, ssrProb } = this.calcSoftPityProbs(ssrPity, urPity);
     const rand = Math.random() * 100;
     let rarity;
     if (rand < urProb) rarity = 'UR';
@@ -465,6 +472,7 @@ export class GachaService {
       return jsonResponse({
         success: true,
         card: asset,
+        rarity,
         expGained: expGain,
         userCoins: currentUser.coins,
         isPity,
@@ -494,12 +502,18 @@ export class GachaService {
     const pity = await this.getPityCounters(currentUser.id);
     const drawCost = Math.floor(cost / count);
 
-    // ① 预抽所有稀有度（内存操作，无 I/O）
+    // ① 预抽所有稀有度（内存操作，无 I/O）— 含软保底
     const drawPlan = [];
     const tempPity = { ssrPity: pity.ssrPity, urPity: pity.urPity };
     for (let i = 0; i < count; i++) {
+      const { urProb, ssrProb } = this.calcSoftPityProbs(tempPity.ssrPity, tempPity.urPity);
       const rand = Math.random() * 100;
-      let rarity = rand < 1 ? 'UR' : rand < 5 ? 'SSR' : rand < 20 ? 'SR' : rand < 55 ? 'R' : 'N';
+      let rarity;
+      if (rand < urProb) rarity = 'UR';
+      else if (rand < urProb + ssrProb) rarity = 'SSR';
+      else if (rand < urProb + ssrProb + 15) rarity = 'SR';
+      else if (rand < urProb + ssrProb + 50) rarity = 'R';
+      else rarity = 'N';
       const pityResult = this.applyPity(rarity, tempPity.ssrPity, tempPity.urPity);
       rarity = pityResult.rarity;
       tempPity.ssrPity++;
