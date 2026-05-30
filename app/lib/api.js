@@ -46,7 +46,7 @@ export const api = {
   // Draw
   draw: () => apiFetch('/api/draw'),
   multiDraw: (count = 10) => apiFetch('/api/draw/multi', { method: 'POST', body: JSON.stringify({ count }) }),
-  drawLimited: (poolId) => apiFetch('/api/draw/limited', { method: 'POST', body: JSON.stringify({ poolId }) }),
+  drawLimited: (poolId, count = 1) => apiFetch('/api/draw/limited', { method: 'POST', body: JSON.stringify({ poolId, count }) }),
   getLimitedPools: () => apiFetch('/api/limited/pools'),
   getDrawHistory: (page = 1, rarity) => apiFetch(`/api/draw/draw-history?page=${page}${rarity ? `&rarity=${rarity}` : ''}`),
 

@@ -10,8 +10,8 @@ import { api } from '~/lib/api';
 import { rarityBg, rarityBorder } from '~/lib/rarity';
 
 const POOL_CONFIG = {
-  limited: { name: '限定池', cost: 500, multiCost: 5000, desc: '概率 UP! · 当期角色精选', tag: '概率 UP!' },
-  permanent: { name: '常驻池', cost: 160, multiCost: 1600, desc: '标准卡池 · 概率均等', tag: null },
+  limited: { name: '限定池', cost: 500, multiCost: 4500, desc: '概率 UP! · 当期角色精选 · 十连9折', tag: '概率 UP!' },
+  permanent: { name: '常驻池', cost: 100, multiCost: 900, desc: '标准卡池 · 概率均等 · 十连9折', tag: null },
 };
 
 function formatRelativeTime(ts) {
@@ -89,7 +89,7 @@ export default function Index() {
     try {
       let result;
       if (poolType === 'limited') {
-        result = await drawLimited(defaultPoolId || 'genshin');
+        result = await drawLimited(defaultPoolId || 'genshin', type === 'multi' ? 10 : 1);
       } else if (type === 'multi') {
         result = await multiDraw(10);
       } else {
@@ -275,7 +275,9 @@ export default function Index() {
                       </div>
                     </div>
                     <p className={`font-body-md text-[10px] mt-0.5 ${isNear ? `font-bold ${color}` : 'text-on-surface-variant'}`}>
-                      {cur >= at ? `✦ 下次必出 ${label}!` : `再抽 ${at - cur} 次必出 ${label}`}
+                      {cur >= at ? `✦ 下次必出 ${label}!` :
+                       pct >= 50 ? `软保底加成中 · 再抽 ${at - cur} 次必出` :
+                       `再抽 ${at - cur} 次必出 ${label}`}
                     </p>
                   </div>
                 );
@@ -287,19 +289,15 @@ export default function Index() {
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => handleDraw('multi')}
-                  disabled={drawing || poolType === 'limited'}
-                  className={`relative group font-button-text text-sm md:text-button-text py-3 md:py-4 px-4 rounded-full border-4 transition-all flex justify-between items-center overflow-hidden ${
-                    poolType === 'limited'
-                      ? 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-50'
-                      : 'bg-tertiary-fixed-dim text-on-tertiary-fixed border-tertiary-container shadow-[4px_4px_0px_0px_#705d00] md:shadow-[6px_6px_0px_0px_#705d00] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed'
-                  }`}
+                  disabled={drawing}
+                  className="relative group font-button-text text-sm md:text-button-text py-3 md:py-4 px-4 rounded-full border-4 transition-all flex justify-between items-center overflow-hidden bg-tertiary-fixed-dim text-on-tertiary-fixed border-tertiary-container shadow-[4px_4px_0px_0px_#705d00] md:shadow-[6px_6px_0px_0px_#705d00] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {poolType !== 'limited' && <div className="absolute inset-0 w-1/4 h-full bg-white/40 -skew-x-12 -translate-x-full group-hover:animate-[sheen_1s_ease-in-out]" />}
+                  <div className="absolute inset-0 w-1/4 h-full bg-white/40 -skew-x-12 -translate-x-full group-hover:animate-[sheen_1s_ease-in-out]" />
                   <span className="flex items-center gap-2">
                     <span className="material-symbols-outlined symbol-filled">diamond</span>
                     {pool.multiCost}
                   </span>
-                  <span className="uppercase tracking-wider">{poolType === 'limited' ? '暂不支持' : '十连抽'}</span>
+                  <span className="uppercase tracking-wider">十连抽</span>
                 </button>
                 <button
                   onClick={() => handleDraw('single')}

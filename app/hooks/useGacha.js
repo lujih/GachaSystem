@@ -27,10 +27,10 @@ export function useGacha() {
     }
   }, []);
 
-  const drawLimited = useCallback(async (poolId) => {
+  const drawLimited = useCallback(async (poolId, count = 1) => {
     setDrawing(true);
     try {
-      const result = await api.drawLimited(poolId);
+      const result = await api.drawLimited(poolId, count);
       setLastDraw(result);
       return result;
     } finally {

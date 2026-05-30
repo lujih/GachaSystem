@@ -2,13 +2,23 @@
  * 业务配置层 - 游戏逻辑相关配置
  */
 export const BUSINESS_CONFIG = {
-  // 图源配置（每个稀有度多个备用源）
+  // 图源配置（每个稀有度多个备用源，抽卡时随机选取）
   SOURCES: [
+    // N — 随机动漫图
     { name: 'Random Anime', url: 'https://api.anosu.top/img', rarity: 'N' },
+    { name: 'Anime 2', url: 'https://www.loliapi.com/acg/pc/', rarity: 'N' },
+    // R — 兽耳/轻度精选
     { name: 'Kemonomimi', url: 'https://api.anosu.top/img?sort=furry', rarity: 'R' },
+    { name: 'Waifu R', url: 'https://www.loliapi.com/acg/pe/', rarity: 'R' },
+    // SR — P站精选
     { name: 'Pixiv Best', url: 'https://api.anosu.top/img?sort=pixiv', rarity: 'SR' },
+    { name: 'Lolimi SR', url: 'https://api.lolimi.cn/API/api/api.php', rarity: 'SR' },
+    // SSR — 高质量精选
     { name: 'Stockings', url: 'https://api.anosu.top/img?sort=setu', rarity: 'SSR' },
-    { name: 'Absolute Territory', url: 'https://moe.jitsu.top/api?sort=r18', rarity: 'UR' }
+    { name: 'Lolimi SSR', url: 'https://api.lolimi.cn/API/api/api.php?n=2', rarity: 'SSR' },
+    // UR — 顶级精选
+    { name: 'Absolute Territory', url: 'https://moe.jitsu.top/api?sort=r18', rarity: 'UR' },
+    { name: 'V2 YS', url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' },
   ],
 
   // 图源备用池（当主源失败时 fallback 使用）
@@ -18,15 +28,16 @@ export const BUSINESS_CONFIG = {
     { url: 'https://v2.xxapi.cn/api/ys?return=302', rarity: 'UR' }
   ],
 
-  // 保底配置
+  // 保底配置（含软保底）
   PITY: {
-    SSR: { at: 10, guaranteed: 'SSR' },    // 小保底：10 抽不 SSR 必 SSR
-    UR: { at: 50, guaranteed: 'UR' },       // 大保底：50 抽不 UR 必 UR
+    SSR: { at: 15, softStart: 10, softRate: 5 },   // 10抽后每抽+5% SSR 概率，15抽硬保底
+    UR:  { at: 80, softStart: 50, softRate: 2 },    // 50抽后每抽+2% UR 概率，80抽硬保底
   },
 
   // 限定池配置
   LIMITED: {
     COST: 500,
+    MULTI_COST: 4500,  // 十连 9 折
     POOLS: {
       'genshin': {
         name: '原神限定',
@@ -67,9 +78,9 @@ export const BUSINESS_CONFIG = {
   // 游戏数值配置
   GAME: {
     POINTS: { 'N': 5, 'R': 15, 'SR': 50, 'SSR': 200, 'UR': 1000 },
-    DRAW_COST: 0,
-    MULTI_DRAW_COST: 0,          // 十连抽消耗
-    MULTI_DRAW_COUNT: 10,        // 十连抽取卡次数
+    DRAW_COST: 100,             // 单抽消耗
+    MULTI_DRAW_COST: 900,       // 十连消耗（9折优惠）
+    MULTI_DRAW_MAX: 10,
     CRAFT_COST: 5,
     SHOP: { 'R': 150, 'SR': 600, 'SSR': 2500, 'UR': 10000 },
     DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2, COOLDOWN_MS: 3000 }
