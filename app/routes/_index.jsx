@@ -404,6 +404,18 @@ export default function Index() {
 
       <BottomNav activeTab="大厅" />
 
+      {/* 抽卡加载动画 */}
+      {drawing && (
+        <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-20 h-20 mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-primary/30" />
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary animate-spin" />
+            <span className="absolute inset-0 flex items-center justify-center material-symbols-outlined text-3xl text-primary symbol-filled animate-pulse">auto_awesome</span>
+          </div>
+          <p className="text-white font-headline-md text-lg animate-pulse">正在抽取...</p>
+        </div>
+      )}
+
       {/* ⑥ 抽卡结果弹窗 — 仅在客户端 open 时渲染，避免 SSR Portal 崩溃 */}
       {dialogOpen && (
         <DrawResultDialog
