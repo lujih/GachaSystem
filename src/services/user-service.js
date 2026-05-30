@@ -338,12 +338,12 @@ export class UserService {
     }
 
     const sql = `
-      SELECT 
-        u.username, u.nickname, u.coins, u.draw_count, u.wins, 
+      SELECT
+        u.id, u.username, u.nickname, u.coins, u.draw_count, u.wins,
         u.level, u.exp, u.total_exp, u.last_login_date, u.login_streak,
         (
-          SELECT title_id 
-          FROM user_titles 
+          SELECT title_id
+          FROM user_titles
           WHERE user_id = u.id AND is_equipped = 1
         ) as active_title
       FROM users u
@@ -381,6 +381,7 @@ export class UserService {
     const urPity = parseInt(urRaw || '0', 10);
 
     const responseData = {
+      id: userRes.id,
       username: userRes.username,
       nickname: userRes.nickname,
       avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${userRes.username}`,
