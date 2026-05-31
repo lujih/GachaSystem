@@ -135,8 +135,11 @@ export default function Library() {
   // 构建 URL 参数（保持当前筛选状态）
   function buildParams(overrides = {}) {
     const params = { page: '1', ...overrides };
-    if (isMine && !overrides.mode) params.mode = 'mine';
-    if (isBookmarks && !overrides.mode) params.mode = 'bookmarks';
+    // mode: 'all' 不写入 URL（默认值）
+    if (params.mode === 'all') delete params.mode;
+    // 保留未显式覆盖的筛选条件
+    if (!overrides.mode && isMine) params.mode = 'mine';
+    if (!overrides.mode && isBookmarks) params.mode = 'bookmarks';
     if (search && !overrides.hasOwnProperty('search')) params.search = search;
     if (period && period !== 'all' && !overrides.hasOwnProperty('period')) params.period = period;
     if (rarity && !overrides.hasOwnProperty('rarity')) params.rarity = rarity;
@@ -198,7 +201,7 @@ export default function Library() {
               {/* Tab 切换 */}
               <div className="flex gap-1 bg-surface-container p-0.5 rounded-full border border-outline-variant">
                 <button
-                  onClick={() => setSearchParams(buildParams({ sort }))}
+                  onClick={() => setSearchParams(buildParams({ mode: 'all', sort }))}
                   className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${!isMine && !isBookmarks ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                 >
                   全服
