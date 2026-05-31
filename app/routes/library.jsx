@@ -27,6 +27,7 @@ export async function loader({ request, context }) {
   const currentUser = context?.data?.currentUser || null;
   // "我的收藏" 模式必须验证 userId 与当前登录用户一致
   const isMine = mode === 'mine' && currentUser;
+  const isBookmarks = mode === 'bookmarks' && currentUser;
 
   let query = 'SELECT id, url, user_id, username, rarity, source_name, created_at FROM gallery';
   let countQuery = 'SELECT COUNT(*) as total FROM gallery';
@@ -35,9 +36,16 @@ export async function loader({ request, context }) {
   const countParams = [];
   const conds = [];
 
-  if (rarity) { conds.push('rarity = ?'); params.push(rarity.toUpperCase()); countParams.push(rarity.toUpperCase()); }
-  if (isMine) { conds.push('user_id = ?'); params.push(currentUser.id); countParams.push(currentUser.id); }
-  if (search) { conds.push('username LIKE ?'); params.push(`%${search}%`); countParams.push(`%${search}%`); }
+  if (rarity) { conds.push('g.rarity = ?'); params.push(rarity.toUpperCase()); countParams.push(rarity.toUpperCase()); }
+  if (isMine) { conds.push('g.user_id = ?'); params.push(currentUser.id); countParams.push(currentUser.id); }
+  if (isBookmarks) {
+    query = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at, (SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) as like_count FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
+    countQuery = 'SELECT COUNT(*) as total FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
+    rarityCountQuery = 'SELECT g.rarity, COUNT(*) as count FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
+    params.unshift(currentUser.id);
+    countParams.unshift(currentUser.id);
+  }
+  if (search) { conds.push('g.username LIKE ?'); params.push(`%${search}%`); countParams.push(`%${search}%`); }
   if (period && period !== 'all') {
     const now = Date.now();
     const PERIOD_MS = { today: 86400000, week: 604800000, month: 2592000000 };
@@ -78,7 +86,7 @@ export async function loader({ request, context }) {
     page,
     totalPages: Math.ceil((countResult?.total || 0) / limit),
     rarity: rarity || '',
-    mode: isMine ? 'mine' : 'all',
+    mode: isBookmarks ? 'bookmarks' : isMine ? 'mine' : 'all',
     sort,
     search: search || '',
     period,
@@ -95,20 +103,29 @@ export default function Library() {
   const [selectedCard, setSelectedCard] = useState(null);
   const [searchInput, setSearchInput] = useState(search);
   const [likedIds, setLikedIds] = useState(new Set());
+  const [bookmarkedIds, setBookmarkedIds] = useState(new Set());
 
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
   const isMine = mode === 'mine';
+  const isBookmarks = mode === 'bookmarks';
 
-  // 获取当前用户的点赞列表
+  // 获取当前用户的点赞和书签列表
   useEffect(() => {
-    if (!user) { setLikedIds(new Set()); return; }
-    api.getMyLikes().then(res => setLikedIds(new Set(res?.likedIds || []))).catch(() => {});
+    if (!user) { setLikedIds(new Set()); setBookmarkedIds(new Set()); return; }
+    Promise.all([
+      api.getMyLikes().catch(() => ({ likedIds: [] })),
+      api.getMyBookmarks().catch(() => ({ bookmarkedIds: [] })),
+    ]).then(([likes, bookmarks]) => {
+      setLikedIds(new Set(likes?.likedIds || []));
+      setBookmarkedIds(new Set(bookmarks?.bookmarkedIds || []));
+    });
   }, [user?.id]);
 
   // 构建 URL 参数（保持当前筛选状态）
   function buildParams(overrides = {}) {
     const params = { page: '1', ...overrides };
-    if (isMine) params.mode = 'mine';
+    if (isMine && !overrides.mode) params.mode = 'mine';
+    if (isBookmarks && !overrides.mode) params.mode = 'bookmarks';
     if (search) params.search = search;
     if (period && period !== 'all') params.period = period;
     return params;
@@ -129,11 +146,23 @@ export default function Library() {
         if (res.liked) next.add(galleryId); else next.delete(galleryId);
         return next;
       });
-      // 更新列表中的 like_count
       const item = items.find(i => i.id === galleryId);
       if (item) item.like_count = res.likeCount;
     } catch {}
   }, [user, likedIds, items]);
+
+  const handleBookmarkToggle = useCallback(async (galleryId) => {
+    if (!user) return;
+    const isBookmarked = bookmarkedIds.has(galleryId);
+    try {
+      const res = isBookmarked ? await api.unbookmarkCard(galleryId) : await api.bookmarkCard(galleryId);
+      setBookmarkedIds(prev => {
+        const next = new Set(prev);
+        if (res.bookmarked) next.add(galleryId); else next.delete(galleryId);
+        return next;
+      });
+    } catch {}
+  }, [user, bookmarkedIds]);
 
   return (
     <div className="min-h-screen bg-surface-bright bg-halftone relative">
@@ -148,28 +177,36 @@ export default function Library() {
         <section className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 md:mb-6 gap-2 md:gap-sm pt-4 md:pt-md">
           <div>
             <h1 className="font-headline-lg md:text-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#dbbfc7] mb-1 md:mb-xs">
-              {isMine ? '我的收藏' : '全服图鉴'}
+              {isBookmarks ? '我的书签' : isMine ? '我的收藏' : '全服图鉴'}
             </h1>
             <div className="flex items-center gap-2 md:gap-3">
               <div className="inline-flex items-center gap-1 md:gap-xs bg-primary-container text-on-primary-container font-label-bold text-[10px] md:text-label-bold px-2 md:px-sm py-1 md:py-xs rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_#770143]">
                 <span className="material-symbols-outlined text-sm md:text-[18px] symbol-filled">style</span>
-                {allCount} 张{isMine ? '已收集' : '总图鉴'}
+                {allCount} 张{isBookmarks ? '已书签' : isMine ? '已收集' : '总图鉴'}
               </div>
               {/* Tab 切换 */}
               <div className="flex gap-1 bg-surface-container p-0.5 rounded-full border border-outline-variant">
                 <button
                   onClick={() => setSearchParams(buildParams({ sort }))}
-                  className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${!isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                  className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${!isMine && !isBookmarks ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                 >
                   全服
                 </button>
                 {user && (
-                  <button
-                    onClick={() => setSearchParams(buildParams({ mode: 'mine', sort }))}
-                    className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
-                  >
-                    我的
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setSearchParams(buildParams({ mode: 'mine', sort }))}
+                      className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                    >
+                      我的
+                    </button>
+                    <button
+                      onClick={() => setSearchParams(buildParams({ mode: 'bookmarks', sort }))}
+                      className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isBookmarks ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                    >
+                      书签
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -311,6 +348,7 @@ export default function Library() {
                   name: item.source_name || item.username || '未知来源',
                   likeCount: item.like_count || 0,
                   isLiked: likedIds.has(item.id),
+                  isBookmarked: bookmarkedIds.has(item.id),
                 }}
                 onClick={() => setSelectedCard({
                   rarity: item.rarity || 'N',
@@ -319,6 +357,7 @@ export default function Library() {
                   time: item.created_at,
                 })}
                 onLikeToggle={handleLikeToggle}
+                onBookmarkToggle={handleBookmarkToggle}
               />
             ))}
           </section>

@@ -31,7 +31,7 @@ const RARITY_STYLES = {
   },
 };
 
-export default function GachaCard({ card, onClick, onLikeToggle, className = '' }) {
+export default function GachaCard({ card, onClick, onLikeToggle, onBookmarkToggle, className = '' }) {
   const rarity = card.rarity || 'N';
   const style = RARITY_STYLES[rarity] || RARITY_STYLES.N;
 
@@ -58,6 +58,16 @@ export default function GachaCard({ card, onClick, onLikeToggle, className = '' 
       <div className={`absolute top-xs right-xs font-button-text text-button-text px-3 py-1 rounded-full border-2 z-10 transform ${rarity === 'SSR' ? '-rotate-6' : rarity === 'UR' ? 'rotate-6' : ''} ${style.badge}`}>
         {rarity}
       </div>
+
+      {/* 书签按钮 */}
+      {card.id && onBookmarkToggle && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onBookmarkToggle(card.id); }}
+          className={`absolute top-xs left-xs z-10 w-7 h-7 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-sm transition-colors ${card.isBookmarked ? 'text-amber-400' : 'text-white/50 hover:text-white'}`}
+        >
+          <span className={`material-symbols-outlined text-sm ${card.isBookmarked ? 'symbol-filled' : ''}`}>bookmark</span>
+        </button>
+      )}
 
       {/* Glassmorphism Info Panel */}
       <div className="absolute bottom-xs left-xs right-xs bg-surface/40 backdrop-blur-md rounded-lg p-xs border-2 border-white/50 flex items-center justify-between z-10 translate-y-1 group-hover:translate-y-0 transition-transform">

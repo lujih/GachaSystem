@@ -199,6 +199,31 @@ async function onRequest(context) {
       return jsonResponse({ likedIds: (likes.results || []).map(r => r.gallery_id) });
     }
 
+    // ─── 图鉴书签 ───
+    if (path === '/library/bookmark' && method === 'POST') {
+      if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+      const { galleryId } = await request.json();
+      if (!galleryId) return jsonResponse({ error: '缺少 galleryId' }, 400);
+      try {
+        await env.DB.prepare('INSERT INTO card_bookmarks (user_id, gallery_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING').bind(currentUser.id, galleryId, Date.now()).run();
+        return jsonResponse({ success: true, bookmarked: true });
+      } catch (e) { return jsonResponse({ error: '操作失败' }, 500); }
+    }
+    if (path === '/library/bookmark' && method === 'DELETE') {
+      if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+      const { galleryId } = await request.json();
+      if (!galleryId) return jsonResponse({ error: '缺少 galleryId' }, 400);
+      await env.DB.prepare('DELETE FROM card_bookmarks WHERE user_id = ? AND gallery_id = ?').bind(currentUser.id, galleryId).run();
+      return jsonResponse({ success: true, bookmarked: false });
+    }
+
+    // ─── 我的书签列表 ───
+    if (path === '/library/my-bookmarks' && method === 'GET') {
+      if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+      const bookmarks = await env.DB.prepare('SELECT gallery_id FROM card_bookmarks WHERE user_id = ?').bind(currentUser.id).all();
+      return jsonResponse({ bookmarkedIds: (bookmarks.results || []).map(r => r.gallery_id) });
+    }
+
     // ─── Admin ───
     if (path.startsWith('/admin/')) {
       const auth = await requireAdmin(request, env);

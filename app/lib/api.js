@@ -63,6 +63,9 @@ export const api = {
   likeCard: (galleryId) => apiFetch('/api/library/like', { method: 'POST', body: JSON.stringify({ galleryId }) }),
   unlikeCard: (galleryId) => apiFetch('/api/library/like', { method: 'DELETE', body: JSON.stringify({ galleryId }) }),
   getMyLikes: () => apiFetch('/api/library/my-likes'),
+  bookmarkCard: (galleryId) => apiFetch('/api/library/bookmark', { method: 'POST', body: JSON.stringify({ galleryId }) }),
+  unbookmarkCard: (galleryId) => apiFetch('/api/library/bookmark', { method: 'DELETE', body: JSON.stringify({ galleryId }) }),
+  getMyBookmarks: () => apiFetch('/api/library/my-bookmarks'),
 
   // Admin
   adminVerify: (password) => apiFetch('/api/admin/verify', { method: 'POST', body: JSON.stringify({ password }) }),
