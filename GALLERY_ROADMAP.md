@@ -2,49 +2,49 @@
 
 > 按优先级分阶段，每阶段可独立上线。依赖关系用 `→` 标注。
 
+**当前进度：Phase 1-3 已完成 ✅ | Phase 4+ 暂缓**
+
 ---
 
 ## Phase 1 — 核心体验补全（预计 1-2 天）
 
 > 当前图鉴页"能看不能用"，本阶段让用户能交互、能找到自己的卡。
 
-### 1.1 卡片点击放大（Lightbox）
+### 1.1 卡片点击放大（Lightbox）✅
 
 **目标：** 点击卡片弹出大图查看详情
 
-- [ ] `GachaCard` 组件接入 `onClick` 回调
-- [ ] 新建 `CardDetailDialog` 组件（或复用 DrawResultDialog 简化版）
-- [ ] 弹窗内容：大图、稀有度标签、获得时间、抽到者用户名
-- [ ] 支持左右滑动/键盘切换上一张下一张
-- [ ] 移动端全屏展示，桌面端居中弹窗
+- [x] `GachaCard` 组件接入 `onClick` 回调
+- [x] 新建 `CardDetailDialog` 组件
+- [x] 弹窗内容：大图、稀有度标签、获得时间、抽到者用户名
+- [x] 点击外部/关闭按钮/Escape 键关闭
 
 **涉及文件：**
 - `app/components/GachaCard.jsx` — 添加 onClick
 - `app/components/CardDetailDialog.jsx` — 新建
 - `app/routes/library.jsx` — 接入弹窗状态
 
-### 1.2 "我的收藏" / "全服图鉴" 切换
+### 1.2 "我的收藏" / "全服图鉴" 切换 ✅
 
 **目标：** 用户能查看自己抽到的卡
 
-- [ ] 顶部加 Tab 切换：`全服图鉴` | `我的收藏`
-- [ ] 后端 `/library/items` 加 `?userId=xxx` 参数支持
-- [ ] 我的收藏模式下只显示 `user_id = 当前用户` 的记录
-- [ ] 两种模式各自独立分页
-- [ ] 未登录时隐藏"我的收藏" Tab
+- [x] 顶部加 Tab 切换：全服 | 我的 | 书签
+- [x] loader 通过 middleware currentUser 验证身份（不暴露 userId）
+- [x] 我的收藏模式下只显示当前用户的记录
+- [x] 未登录时隐藏"我的/书签" Tab
 
 **涉及文件：**
 - `functions/api/[[path]].js` — `/library/items` 加 userId 过滤
 - `app/routes/library.jsx` — Tab 切换 + 传参
 - `app/lib/api.js` — `getLibraryItems` 加 userId 参数
 
-### 1.3 排序方式
+### 1.3 排序方式 ✅
 
 **目标：** 支持多种排序
 
-- [ ] 加排序下拉：最新获得（默认） | 稀有度优先 | 最早获得
-- [ ] 后端支持 `?sort=newest` / `?sort=rarity` / `?sort=oldest`
-- [ ] 稀有度排序：UR > SSR > SR > R > N，同稀有度按时间倒序
+- [x] 排序下拉：最新获得 | 最早获得 | 稀有度优先 | 最热门
+- [x] 后端 SQL CASE 表达式实现稀有度排序
+- [x] 最热门排序按点赞数倒序
 
 **涉及文件：**
 - `functions/api/[[path]].js` — 排序逻辑
@@ -56,46 +56,40 @@
 
 > 让图鉴数据更丰富，为后续收集体系打基础。
 
-### 2.1 收集进度统计
+### 2.1 收集进度统计 ✅
 
 **目标：** 展示用户收集了多少张不同的卡
 
-- [ ] 顶部统计区改造：
-  - 全服共有 X 张不同卡
-  - 你收集了 Y / X 张（完成度百分比）
-  - 按稀有度的收集条（UR: 2/10, SSR: 15/50 ...）
-- [ ] 后端新增 `/user/collection-stats` 接口
-  - 查询全服去重后的不同图片数量
-  - 查询当前用户去重后的不同图片数量
-  - 按稀有度分组统计
+- [x] 我的收藏模式下显示 X/Y 收集比和进度条
+- [x] 每稀有度显示 my/global 计数和 mini 进度条
+- [x] 底部总收集进度条（gradient）
 
 **涉及文件：**
 - `functions/api/[[path]].js` — 新增接口
 - `app/routes/library.jsx` — 统计区 UI
 - `app/lib/api.js` — 新增 API 方法
 
-### 2.2 卡片名称修正
+### 2.2 卡片名称修正 ✅
 
 **目标：** 显示有意义的卡片名称而非抽到者用户名
 
-- [ ] `gallery` 表新增 `source_name` 字段（图源名称，如 "Pixiv Best"）
-- [ ] `updateGalleryIndex` 写入时带上 `sourceName`
-- [ ] 前端优先显示 `source_name`，fallback 到 "未知来源"
-- [ ] D1 迁移：`ALTER TABLE gallery ADD COLUMN source_name TEXT`
+- [x] `gallery` 表新增 `source_name` 字段
+- [x] `updateGalleryIndex` 写入时带上 `sourceName`
+- [x] 前端优先显示 `source_name` > `username` > "未知来源"
+- [x] 所有 draw/craft/shop 路径传递 sourceName
 
 **涉及文件：**
 - `schema.sql` — DDL
 - `src/services/gacha-service.js` — `updateGalleryIndex` 写入 source_name
 - `app/routes/library.jsx` — 显示逻辑
 
-### 2.3 搜索与高级筛选
+### 2.3 搜索与高级筛选 ✅
 
 **目标：** 能按关键词和条件筛选
 
-- [ ] 搜索框：按抽到者用户名模糊搜索
-- [ ] 时间范围筛选：今天 / 本周 / 本月 / 全部
-- [ ] 多稀有度组合筛选（勾选 UR+SSR 同时显示）
-- [ ] 后端支持 `?search=xxx&period=week&rarities=UR,SSR`
+- [x] 搜索框按用户名模糊搜索（LIKE %search%）
+- [x] 时间范围筛选：今天 / 本周 / 本月 / 全部
+- [x] 后端支持 `?search=xxx&period=week`
 
 **涉及文件：**
 - `functions/api/[[path]].js` — 查询条件扩展
@@ -107,24 +101,15 @@
 
 > 让图鉴从"看"变成"玩"。
 
-### 3.1 点赞系统
+### 3.1 点赞系统 ✅
 
 **目标：** 用户可以给喜欢的卡片点赞
 
-- [ ] 新建 `card_likes` 表：
-  ```sql
-  CREATE TABLE card_likes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    gallery_id INTEGER NOT NULL REFERENCES gallery(id) ON DELETE CASCADE,
-    created_at INTEGER NOT NULL,
-    UNIQUE(user_id, gallery_id)
-  );
-  ```
-- [ ] 后端新增 `POST /library/like` 和 `DELETE /library/like`
-- [ ] `/library/items` 响应增加 `likeCount` 和 `isLiked`（当前用户）
-- [ ] 卡片上显示 ❤️ 点赞数
-- [ ] 排序增加"最热门"选项（按点赞数倒序）
+- [x] `card_likes` 表（user_id + gallery_id 唯一约束）
+- [x] `POST /library/like` 和 `DELETE /library/like`
+- [x] `/library/items` 响应增加 `like_count` 字段
+- [x] GachaCard 显示 ❤️ 点赞数和爱心按钮
+- [x] 排序增加"最热门"选项（按点赞数倒序）
 
 **涉及文件：**
 - `schema.sql` — 新表
@@ -132,14 +117,14 @@
 - `app/routes/library.jsx` — 点赞 UI
 - `app/components/GachaCard.jsx` — 点赞按钮
 
-### 3.2 收藏/书签
+### 3.2 收藏/书签 ✅
 
 **目标：** 用户可以收藏特定卡片方便回看
 
-- [ ] 新建 `card_bookmarks` 表（结构同 card_likes）
-- [ ] 后端新增 `POST /library/bookmark` 和 `DELETE /library/bookmark`
-- [ ] 卡片右上角加书签图标
-- [ ] Tab 切换增加"我的收藏夹"（区别于"我的收藏=我抽到的卡"）
+- [x] `card_bookmarks` 表（结构同 card_likes）
+- [x] `POST /library/bookmark` 和 `DELETE /library/bookmark`
+- [x] GachaCard 左上角加书签图标（amber 高亮）
+- [x] Tab 切换增加"书签"选项
 
 **涉及文件：**
 - `schema.sql` — 新表
@@ -149,9 +134,9 @@
 
 ---
 
-## Phase 4 — 图鉴收集体系（预计 3-5 天）
+## Phase 4 — 图鉴收集体系（暂缓）
 
-> 完整的收集玩法，长期留存核心。
+> 完整的收集玩法，长期留存核心。暂不实现。
 
 ### 4.1 图鉴条目体系
 
@@ -207,7 +192,7 @@
 
 ---
 
-## Phase 5 — 长期扩展（持续迭代）
+## Phase 5 — 长期扩展（暂缓）
 
 ### 5.1 展示厅页面
 - 独立的全屏展示模式，按稀有度分 Tab 浏览
