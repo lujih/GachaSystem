@@ -318,12 +318,11 @@ export default function Library() {
               <option value="month">本月</option>
             </select>
           </div>
-            {rarity && (
-              <span className="text-xs text-on-surface-variant">
-                筛选 {rarity}：{total} 张
-              </span>
-            )}
-          </div>
+          {rarity && (
+            <span className="text-xs text-on-surface-variant">
+              筛选 {rarity}：{total} 张
+            </span>
+          )}
         </section>
 
         {/* 卡片网格 */}
