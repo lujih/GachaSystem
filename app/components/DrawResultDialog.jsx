@@ -78,30 +78,26 @@ export default function DrawResultDialog({ open, onClose, result }) {
 
       {showAll ? (
         <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto px-4 py-12">
-          <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-2 space-y-2">
-            {cards.map((c, i) => {
-              const dim = dims[i];
-              const ratio = dim ? clampRatio(dim.w, dim.h) : 3 / 4;
-              return (
-                <div
-                  key={i}
-                  className="relative break-inside-avoid rounded-md overflow-hidden border-2 border-outline-variant animate-card-reveal"
-                  style={{ aspectRatio: `${ratio}`, animationDelay: `${i * 0.05}s` }}
-                >
-                  <div className={`absolute inset-0 bg-gradient-to-br ${rarityGradient(c.rarity || 'N')}`} />
-                  {getSrc(c) ? (
-                    <img src={getSrc(c)} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-white text-lg font-black">{c.rarity || 'N'}</span>
-                    </div>
-                  )}
-                  <div className="absolute bottom-0 left-0 right-0 p-0.5 bg-gradient-to-t from-black/60 to-transparent">
-                    <span className={`inline-block text-[9px] font-bold text-white px-1 rounded ${rarityBg(c.rarity || 'N')}`}>{c.rarity || 'N'}</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
+            {cards.map((c, i) => (
+              <div
+                key={i}
+                className="relative aspect-[3/4] rounded-lg overflow-hidden border-2 border-outline-variant animate-card-reveal"
+                style={{ animationDelay: `${i * 0.05}s` }}
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br ${rarityGradient(c.rarity || 'N')}`} />
+                {getSrc(c) ? (
+                  <img src={getSrc(c)} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-white text-lg font-black">{c.rarity || 'N'}</span>
                   </div>
+                )}
+                <div className="absolute bottom-0 left-0 right-0 p-0.5 bg-gradient-to-t from-black/60 to-transparent">
+                  <span className={`inline-block text-[9px] font-bold text-white px-1 rounded ${rarityBg(c.rarity || 'N')}`}>{c.rarity || 'N'}</span>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
           <div className="mt-6 flex justify-center gap-3">
             <button onClick={onClose} className="bg-white/20 text-white font-button-text text-sm px-8 py-2.5 rounded-full hover:bg-white/30 transition-colors">关闭</button>
@@ -110,7 +106,7 @@ export default function DrawResultDialog({ open, onClose, result }) {
       ) : (
         <div className="flex flex-col items-center gap-4 md:gap-6 w-full px-4">
           <div
-            className="relative w-[90vw] max-w-[420px] md:max-w-lg perspective-[800px]"
+            className="relative w-[90vw] max-w-[420px] md:max-w-2xl perspective-[800px]"
             style={cardStyle}
           >
             <div
