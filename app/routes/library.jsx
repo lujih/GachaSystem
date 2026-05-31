@@ -99,17 +99,18 @@ export async function loader({ request, context }) {
 
 export default function Library() {
   const { items, total, page, totalPages, rarity, mode, sort, search, period, rarityCounts, globalRarityCounts, globalTotal } = useLoaderData();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [selectedCard, setSelectedCard] = useState(null);
   const [searchInput, setSearchInput] = useState(search);
   const [likedIds, setLikedIds] = useState(new Set());
   const [bookmarkedIds, setBookmarkedIds] = useState(new Set());
   const [likeCounts, setLikeCounts] = useState({});
+  const [tabMode, setTabMode] = useState(mode || 'all');
 
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
-  const isMine = mode === 'mine';
-  const isBookmarks = mode === 'bookmarks';
+  const isMine = tabMode === 'mine';
+  const isBookmarks = tabMode === 'bookmarks';
 
   // 获取当前用户的点赞和书签列表
   useEffect(() => {
@@ -132,14 +133,23 @@ export default function Library() {
     }).catch(() => {});
   }, [items.map(i => i.id).join(',')]);
 
+  // 切换 Tab 并重新加载数据
+  function switchTab(newMode) {
+    setTabMode(newMode);
+    const params = { page: '1', sort };
+    if (newMode === 'mine') params.mode = 'mine';
+    if (newMode === 'bookmarks') params.mode = 'bookmarks';
+    if (rarity) params.rarity = rarity;
+    if (search) params.search = search;
+    if (period && period !== 'all') params.period = period;
+    setSearchParams(params);
+  }
+
   // 构建 URL 参数（保持当前筛选状态）
   function buildParams(overrides = {}) {
     const params = { page: '1', ...overrides };
-    // mode: 'all' 不写入 URL（默认值）
-    if (params.mode === 'all') delete params.mode;
-    // 保留未显式覆盖的筛选条件
-    if (!overrides.mode && isMine) params.mode = 'mine';
-    if (!overrides.mode && isBookmarks) params.mode = 'bookmarks';
+    if (tabMode === 'mine') params.mode = 'mine';
+    if (tabMode === 'bookmarks') params.mode = 'bookmarks';
     if (search && !overrides.hasOwnProperty('search')) params.search = search;
     if (period && period !== 'all' && !overrides.hasOwnProperty('period')) params.period = period;
     if (rarity && !overrides.hasOwnProperty('rarity')) params.rarity = rarity;
@@ -201,7 +211,7 @@ export default function Library() {
               {/* Tab 切换 */}
               <div className="flex gap-1 bg-surface-container p-0.5 rounded-full border border-outline-variant">
                 <button
-                  onClick={() => setSearchParams(buildParams({ mode: 'all', sort }))}
+                  onClick={() => switchTab('all')}
                   className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${!isMine && !isBookmarks ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                 >
                   全服
@@ -209,13 +219,13 @@ export default function Library() {
                 {user && (
                   <>
                     <button
-                      onClick={() => setSearchParams(buildParams({ mode: 'mine', sort }))}
+                      onClick={() => switchTab('mine')}
                       className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                     >
                       我的
                     </button>
                     <button
-                      onClick={() => setSearchParams(buildParams({ mode: 'bookmarks', sort }))}
+                      onClick={() => switchTab('bookmarks')}
                       className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isBookmarks ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                     >
                       书签
