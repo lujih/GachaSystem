@@ -146,6 +146,8 @@ async function onRequest(context) {
       const rarity = url.searchParams.get('rarity');
       const userId = url.searchParams.get('userId');
       const sort = url.searchParams.get('sort') || 'newest';
+      const search = url.searchParams.get('search')?.trim();
+      const period = url.searchParams.get('period');
       const offset = (page - 1) * limit;
       let q = 'SELECT id, url, user_id, username, rarity, source_name, created_at FROM gallery';
       let cq = 'SELECT COUNT(*) as total FROM gallery';
@@ -153,6 +155,13 @@ async function onRequest(context) {
       const conds = [];
       if (rarity) { conds.push('rarity = ?'); p.push(rarity.toUpperCase()); cp.push(rarity.toUpperCase()); }
       if (userId) { conds.push('user_id = ?'); p.push(parseInt(userId)); cp.push(parseInt(userId)); }
+      if (search) { conds.push('username LIKE ?'); p.push(`%${search}%`); cp.push(`%${search}%`); }
+      if (period && period !== 'all') {
+        const now = Date.now();
+        const PERIOD_MS = { today: 86400000, week: 604800000, month: 2592000000 };
+        const ms = PERIOD_MS[period];
+        if (ms) { conds.push('created_at > ?'); p.push(now - ms); cp.push(now - ms); }
+      }
       if (conds.length) { q += ' WHERE ' + conds.join(' AND '); cq += ' WHERE ' + conds.join(' AND '); }
       const ORDER = { newest: 'created_at DESC', oldest: 'created_at ASC', rarity: "CASE rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, created_at DESC" };
       const orderBy = ORDER[sort] || ORDER.newest;

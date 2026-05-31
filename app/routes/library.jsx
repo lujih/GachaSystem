@@ -18,6 +18,8 @@ export async function loader({ request, context }) {
   const rarity = url.searchParams.get('rarity');
   const mode = url.searchParams.get('mode') || 'all';
   const sort = url.searchParams.get('sort') || 'newest';
+  const search = url.searchParams.get('search')?.trim();
+  const period = url.searchParams.get('period') || 'all';
   const offset = (page - 1) * limit;
 
   // 获取当前登录用户（middleware 注入）
@@ -34,6 +36,13 @@ export async function loader({ request, context }) {
 
   if (rarity) { conds.push('rarity = ?'); params.push(rarity.toUpperCase()); countParams.push(rarity.toUpperCase()); }
   if (isMine) { conds.push('user_id = ?'); params.push(currentUser.id); countParams.push(currentUser.id); }
+  if (search) { conds.push('username LIKE ?'); params.push(`%${search}%`); countParams.push(`%${search}%`); }
+  if (period && period !== 'all') {
+    const now = Date.now();
+    const PERIOD_MS = { today: 86400000, week: 604800000, month: 2592000000 };
+    const ms = PERIOD_MS[period];
+    if (ms) { conds.push('created_at > ?'); params.push(now - ms); countParams.push(now - ms); }
+  }
   if (conds.length) {
     query += ' WHERE ' + conds.join(' AND ');
     countQuery += ' WHERE ' + conds.join(' AND ');
@@ -70,6 +79,8 @@ export async function loader({ request, context }) {
     rarity: rarity || '',
     mode: isMine ? 'mine' : 'all',
     sort,
+    search: search || '',
+    period,
     rarityCounts,
     globalRarityCounts,
     globalTotal,
@@ -77,10 +88,11 @@ export async function loader({ request, context }) {
 }
 
 export default function Library() {
-  const { items, total, page, totalPages, rarity, mode, sort, rarityCounts, globalRarityCounts, globalTotal } = useLoaderData();
+  const { items, total, page, totalPages, rarity, mode, sort, search, period, rarityCounts, globalRarityCounts, globalTotal } = useLoaderData();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [selectedCard, setSelectedCard] = useState(null);
+  const [searchInput, setSearchInput] = useState(search);
 
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
   const isMine = mode === 'mine';
@@ -89,7 +101,14 @@ export default function Library() {
   function buildParams(overrides = {}) {
     const params = { page: '1', ...overrides };
     if (isMine) params.mode = 'mine';
+    if (search) params.search = search;
+    if (period && period !== 'all') params.period = period;
     return params;
+  }
+
+  function handleSearch(e) {
+    e.preventDefault();
+    setSearchParams(buildParams({ search: searchInput || undefined, sort, ...(rarity && { rarity }) }));
   }
 
   return (
@@ -203,6 +222,36 @@ export default function Library() {
               <option value="newest">最新获得</option>
               <option value="oldest">最早获得</option>
               <option value="rarity">稀有度优先</option>
+            </select>
+          </div>
+          {/* 搜索 + 时间筛选 */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <form onSubmit={handleSearch} className="flex items-center gap-1">
+              <input
+                type="text"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                placeholder="搜索用户名..."
+                className="text-xs bg-surface-container text-on-surface border-2 border-outline-variant rounded-full px-3 py-1.5 outline-none w-32 md:w-40 focus:border-primary transition-colors"
+              />
+              <button type="submit" className="text-xs bg-surface-container text-on-surface border-2 border-outline-variant rounded-full px-2.5 py-1.5 hover:bg-surface-variant transition-colors">
+                <span className="material-symbols-outlined text-sm">search</span>
+              </button>
+              {search && (
+                <button type="button" onClick={() => { setSearchInput(''); setSearchParams(buildParams({ sort, ...(rarity && { rarity }) })); }} className="text-xs text-on-surface-variant hover:text-on-surface">
+                  ✕
+                </button>
+              )}
+            </form>
+            <select
+              value={period}
+              onChange={e => setSearchParams(buildParams({ period: e.target.value, sort, ...(rarity && { rarity }) }))}
+              className="text-xs font-label-bold bg-surface-container text-on-surface border-2 border-outline-variant rounded-full px-3 py-1.5 outline-none cursor-pointer"
+            >
+              <option value="all">全部时间</option>
+              <option value="today">今天</option>
+              <option value="week">本周</option>
+              <option value="month">本月</option>
             </select>
           </div>
             {rarity && (
