@@ -17,6 +17,7 @@ export async function loader({ request, context }) {
   const limit = 20;
   const rarity = url.searchParams.get('rarity');
   const mode = url.searchParams.get('mode') || 'all';
+  const sort = url.searchParams.get('sort') || 'newest';
   const offset = (page - 1) * limit;
 
   // 获取当前登录用户（middleware 注入）
@@ -39,8 +40,11 @@ export async function loader({ request, context }) {
     rarityCountQuery += ' WHERE ' + conds.join(' AND ');
   }
 
+  const ORDER = { newest: 'created_at DESC', oldest: 'created_at ASC', rarity: "CASE rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, created_at DESC" };
+  const orderBy = ORDER[sort] || ORDER.newest;
+
   const [itemsResult, countResult, rarityCountsResult] = await Promise.all([
-    env.DB.prepare(`${query} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
+    env.DB.prepare(`${query} ORDER BY ${orderBy} LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
     env.DB.prepare(countQuery).bind(...countParams).first(),
     env.DB.prepare(`${rarityCountQuery} GROUP BY rarity`).bind(...countParams).all(),
   ]);
@@ -57,12 +61,13 @@ export async function loader({ request, context }) {
     totalPages: Math.ceil((countResult?.total || 0) / limit),
     rarity: rarity || '',
     mode: isMine ? 'mine' : 'all',
+    sort,
     rarityCounts,
   };
 }
 
 export default function Library() {
-  const { items, total, page, totalPages, rarity, mode, rarityCounts } = useLoaderData();
+  const { items, total, page, totalPages, rarity, mode, sort, rarityCounts } = useLoaderData();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [selectedCard, setSelectedCard] = useState(null);
@@ -70,11 +75,11 @@ export default function Library() {
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
   const isMine = mode === 'mine';
 
-  function setMode(newMode) {
-    const params = { page: '1' };
-    if (newMode === 'mine' && user) { params.mode = 'mine'; }
-    if (rarity) params.rarity = rarity;
-    setSearchParams(params);
+  // 构建 URL 参数（保持当前筛选状态）
+  function buildParams(overrides = {}) {
+    const params = { page: '1', ...overrides };
+    if (isMine) params.mode = 'mine';
+    return params;
   }
 
   return (
@@ -100,14 +105,14 @@ export default function Library() {
               {/* Tab 切换 */}
               <div className="flex gap-1 bg-surface-container p-0.5 rounded-full border border-outline-variant">
                 <button
-                  onClick={() => setMode('all')}
+                  onClick={() => setSearchParams(buildParams({ sort }))}
                   className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${!isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                 >
                   全服
                 </button>
                 {user && (
                   <button
-                    onClick={() => setMode('mine')}
+                    onClick={() => setSearchParams(buildParams({ mode: 'mine', sort }))}
                     className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                   >
                     我的
@@ -130,28 +135,41 @@ export default function Library() {
 
         {/* 筛选栏 */}
         <section className="flex flex-col gap-2 md:gap-sm mb-4 md:mb-6">
-          <h2 className="font-label-bold text-[10px] md:text-label-bold text-outline uppercase tracking-widest pl-1 md:pl-xs">按稀有度筛选</h2>
-          <div className="flex flex-wrap gap-2 md:gap-md items-center">
-            <div className="flex gap-1 md:gap-xs bg-surface-container p-1 md:p-xs rounded-full border-2 border-surface-variant shadow-[2px_2px_0px_0px_#dad9de]">
-              {['', 'UR', 'SSR', 'SR', 'R', 'N'].map(r => (
-                <button
-                  key={r || 'all'}
-                  onClick={() => {
-                    const params = { page: '1' };
-                    if (r) params.rarity = r;
-                    if (isMine) params.mode = 'mine';
-                    setSearchParams(params);
-                  }}
-                  className={`font-label-bold text-[10px] md:text-label-bold px-2 md:px-md py-1 md:py-xs rounded-full border-2 transition-all duration-200 hover:-translate-y-1 active:translate-y-0 ${
-                    rarity === r
-                      ? 'bg-tertiary text-on-tertiary border-on-tertiary-container shadow-[2px_2px_0px_0px_#473a00]'
-                      : 'bg-surface-bright text-on-surface border-outline-variant hover:bg-surface-variant'
-                  }`}
-                >
-                  {r || '全部'}
-                </button>
-              ))}
+          <div className="flex flex-wrap gap-2 md:gap-md items-center justify-between">
+            {/* 稀有度筛选 */}
+            <div className="flex flex-wrap gap-2 md:gap-md items-center">
+              <div className="flex gap-1 md:gap-xs bg-surface-container p-1 md:p-xs rounded-full border-2 border-surface-variant shadow-[2px_2px_0px_0px_#dad9de]">
+                {['', 'UR', 'SSR', 'SR', 'R', 'N'].map(r => (
+                  <button
+                    key={r || 'all'}
+                    onClick={() => setSearchParams(buildParams(r ? { rarity: r, sort } : { sort }))}
+                    className={`font-label-bold text-[10px] md:text-label-bold px-2 md:px-md py-1 md:py-xs rounded-full border-2 transition-all duration-200 hover:-translate-y-1 active:translate-y-0 ${
+                      rarity === r
+                        ? 'bg-tertiary text-on-tertiary border-on-tertiary-container shadow-[2px_2px_0px_0px_#473a00]'
+                        : 'bg-surface-bright text-on-surface border-outline-variant hover:bg-surface-variant'
+                    }`}
+                  >
+                    {r || '全部'}
+                  </button>
+                ))}
+              </div>
+              {rarity && (
+                <span className="text-xs text-on-surface-variant">
+                  {total} 张
+                </span>
+              )}
             </div>
+            {/* 排序 */}
+            <select
+              value={sort}
+              onChange={e => setSearchParams(buildParams({ sort: e.target.value, ...(rarity && { rarity }) }))}
+              className="text-xs font-label-bold bg-surface-container text-on-surface border-2 border-outline-variant rounded-full px-3 py-1.5 outline-none cursor-pointer"
+            >
+              <option value="newest">最新获得</option>
+              <option value="oldest">最早获得</option>
+              <option value="rarity">稀有度优先</option>
+            </select>
+          </div>
             {rarity && (
               <span className="text-xs text-on-surface-variant">
                 筛选 {rarity}：{total} 张
@@ -197,12 +215,7 @@ export default function Library() {
         {totalPages > 1 && (
           <div className="mt-6 md:mt-xl flex justify-center items-center gap-3 pb-6 md:pb-xl">
             <button
-              onClick={() => {
-                const params = { page: String(page - 1) };
-                if (rarity) params.rarity = rarity;
-                if (isMine) params.mode = 'mine';
-                setSearchParams(params);
-              }}
+              onClick={() => setSearchParams(buildParams({ page: String(page - 1), sort, ...(rarity && { rarity }) }))}}
               disabled={page <= 1}
               className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
             >
@@ -212,12 +225,7 @@ export default function Library() {
               {page} / {totalPages}
             </span>
             <button
-              onClick={() => {
-                const params = { page: String(page + 1) };
-                if (rarity) params.rarity = rarity;
-                if (isMine) params.mode = 'mine';
-                setSearchParams(params);
-              }}
+              onClick={() => setSearchParams(buildParams({ page: String(page + 1), sort, ...(rarity && { rarity }) }))}}
               disabled={page >= totalPages}
               className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
             >
