@@ -136,12 +136,12 @@ export default function Library() {
   // 切换 Tab 并重新加载数据
   function switchTab(newMode) {
     setTabMode(newMode);
-    setSearchParams({
-      page: '1',
-      sort,
-      ...(newMode !== 'all' && { mode: newMode }),
-      ...(rarity && { rarity }),
-    });
+    const p = new URLSearchParams();
+    p.set('page', '1');
+    p.set('sort', sort);
+    if (newMode !== 'all') p.set('mode', newMode);
+    if (rarity) p.set('rarity', rarity);
+    window.location.search = p.toString();
   }
 
   // 构建 URL 参数（保持当前筛选状态）
