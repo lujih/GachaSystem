@@ -199,6 +199,19 @@ async function onRequest(context) {
       return jsonResponse({ likedIds: (likes.results || []).map(r => r.gallery_id) });
     }
 
+    // ─── 点赞数查询（带边缘缓存） ───
+    if (path === '/library/like-counts' && method === 'GET') {
+      const idsParam = url.searchParams.get('ids');
+      if (!idsParam) return jsonResponse({ counts: {} }, 200, CACHE_1M);
+      const ids = idsParam.split(',').map(Number).filter(n => n > 0).slice(0, 50);
+      if (ids.length === 0) return jsonResponse({ counts: {} }, 200, CACHE_1M);
+      const placeholders = ids.map(() => '?').join(',');
+      const rows = await env.DB.prepare(`SELECT gallery_id, COUNT(*) as c FROM card_likes WHERE gallery_id IN (${placeholders}) GROUP BY gallery_id`).bind(...ids).all();
+      const counts = {};
+      (rows.results || []).forEach(r => { counts[r.gallery_id] = r.c; });
+      return jsonResponse({ counts }, 200, CACHE_1M);
+    }
+
     // ─── 图鉴书签 ───
     if (path === '/library/bookmark' && method === 'POST') {
       if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);

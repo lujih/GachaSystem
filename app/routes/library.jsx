@@ -29,7 +29,7 @@ export async function loader({ request, context }) {
   const isMine = mode === 'mine' && currentUser;
   const isBookmarks = mode === 'bookmarks' && currentUser;
 
-  const baseSelect = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at, (SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) as like_count';
+  const baseSelect = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at';
   let query = `${baseSelect} FROM gallery g`;
   let countQuery = 'SELECT COUNT(*) as total FROM gallery g';
   let rarityCountQuery = 'SELECT g.rarity, COUNT(*) as count FROM gallery g';
@@ -38,7 +38,7 @@ export async function loader({ request, context }) {
   const conds = [];
 
   if (isBookmarks) {
-    query = `${baseSelect} FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?`;
+    query = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
     countQuery = 'SELECT COUNT(*) as total FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
     rarityCountQuery = 'SELECT g.rarity, COUNT(*) as count FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
     params.push(currentUser.id);
@@ -59,7 +59,7 @@ export async function loader({ request, context }) {
     rarityCountQuery += ' WHERE ' + conds.join(' AND ');
   }
 
-  const ORDER = { newest: 'g.created_at DESC', oldest: 'g.created_at ASC', rarity: "CASE g.rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, g.created_at DESC", hot: '(SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) DESC, g.created_at DESC' };
+  const ORDER = { newest: 'g.created_at DESC', oldest: 'g.created_at ASC', rarity: "CASE g.rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, g.created_at DESC" };
   const orderBy = ORDER[sort] || ORDER.newest;
 
   const globalRarityQuery = 'SELECT rarity, COUNT(*) as count FROM gallery GROUP BY rarity';
@@ -122,6 +122,15 @@ export default function Library() {
       setBookmarkedIds(new Set(bookmarks?.bookmarkedIds || []));
     });
   }, [user?.id]);
+
+  // 获取当前页卡片的点赞数（边缘缓存）
+  useEffect(() => {
+    const ids = items.map(i => i.id).filter(Boolean);
+    if (ids.length === 0) return;
+    api.getLikeCounts(ids).then(res => {
+      if (res?.counts) setLikeCounts(prev => ({ ...prev, ...res.counts }));
+    }).catch(() => {});
+  }, [items.map(i => i.id).join(',')]);
 
   // 构建 URL 参数（保持当前筛选状态）
   function buildParams(overrides = {}) {
