@@ -1,7 +1,9 @@
 import { useLoaderData, useSearchParams } from '@remix-run/react';
+import { useState } from 'react';
 import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
 import GachaCard from '~/components/GachaCard';
+import CardDetailDialog from '~/components/CardDetailDialog';
 import { rarityBg, RARITY_ORDER } from '~/lib/rarity';
 
 export async function loader({ request, context }) {
@@ -51,6 +53,7 @@ export async function loader({ request, context }) {
 export default function Library() {
   const { items, total, page, totalPages, rarity, rarityCounts } = useLoaderData();
   const [, setSearchParams] = useSearchParams();
+  const [selectedCard, setSelectedCard] = useState(null);
 
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
 
@@ -135,6 +138,12 @@ export default function Library() {
                   imageUrl: item.url,
                   name: item.username || '匿名',
                 }}
+                onClick={() => setSelectedCard({
+                  rarity: item.rarity || 'N',
+                  imageUrl: item.url,
+                  name: item.username || '匿名',
+                  time: item.created_at,
+                })}
               />
             ))}
           </section>
@@ -165,6 +174,13 @@ export default function Library() {
       </main>
 
       <BottomNav activeTab="图鉴" />
+
+      {selectedCard && (
+        <CardDetailDialog
+          card={selectedCard}
+          onClose={() => setSelectedCard(null)}
+        />
+      )}
     </div>
   );
 }
