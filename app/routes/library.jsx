@@ -29,28 +29,29 @@ export async function loader({ request, context }) {
   const isMine = mode === 'mine' && currentUser;
   const isBookmarks = mode === 'bookmarks' && currentUser;
 
-  let query = 'SELECT id, url, user_id, username, rarity, source_name, created_at FROM gallery';
-  let countQuery = 'SELECT COUNT(*) as total FROM gallery';
-  let rarityCountQuery = 'SELECT rarity, COUNT(*) as count FROM gallery';
+  const baseSelect = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at, (SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) as like_count';
+  let query = `${baseSelect} FROM gallery g`;
+  let countQuery = 'SELECT COUNT(*) as total FROM gallery g';
+  let rarityCountQuery = 'SELECT g.rarity, COUNT(*) as count FROM gallery g';
   const params = [];
   const countParams = [];
   const conds = [];
 
-  if (rarity) { conds.push('g.rarity = ?'); params.push(rarity.toUpperCase()); countParams.push(rarity.toUpperCase()); }
-  if (isMine) { conds.push('g.user_id = ?'); params.push(currentUser.id); countParams.push(currentUser.id); }
   if (isBookmarks) {
-    query = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at, (SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) as like_count FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
+    query = `${baseSelect} FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?`;
     countQuery = 'SELECT COUNT(*) as total FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
     rarityCountQuery = 'SELECT g.rarity, COUNT(*) as count FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
-    params.unshift(currentUser.id);
-    countParams.unshift(currentUser.id);
+    params.push(currentUser.id);
+    countParams.push(currentUser.id);
   }
+  if (rarity) { conds.push('g.rarity = ?'); params.push(rarity.toUpperCase()); countParams.push(rarity.toUpperCase()); }
+  if (isMine) { conds.push('g.user_id = ?'); params.push(currentUser.id); countParams.push(currentUser.id); }
   if (search) { conds.push('g.username LIKE ?'); params.push(`%${search}%`); countParams.push(`%${search}%`); }
   if (period && period !== 'all') {
     const now = Date.now();
     const PERIOD_MS = { today: 86400000, week: 604800000, month: 2592000000 };
     const ms = PERIOD_MS[period];
-    if (ms) { conds.push('created_at > ?'); params.push(now - ms); countParams.push(now - ms); }
+    if (ms) { conds.push('g.created_at > ?'); params.push(now - ms); countParams.push(now - ms); }
   }
   if (conds.length) {
     query += ' WHERE ' + conds.join(' AND ');
@@ -58,7 +59,7 @@ export async function loader({ request, context }) {
     rarityCountQuery += ' WHERE ' + conds.join(' AND ');
   }
 
-  const ORDER = { newest: 'created_at DESC', oldest: 'created_at ASC', rarity: "CASE rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, created_at DESC" };
+  const ORDER = { newest: 'g.created_at DESC', oldest: 'g.created_at ASC', rarity: "CASE g.rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, g.created_at DESC", hot: '(SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) DESC, g.created_at DESC' };
   const orderBy = ORDER[sort] || ORDER.newest;
 
   const globalRarityQuery = 'SELECT rarity, COUNT(*) as count FROM gallery GROUP BY rarity';
@@ -104,6 +105,7 @@ export default function Library() {
   const [searchInput, setSearchInput] = useState(search);
   const [likedIds, setLikedIds] = useState(new Set());
   const [bookmarkedIds, setBookmarkedIds] = useState(new Set());
+  const [likeCounts, setLikeCounts] = useState({});
 
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
   const isMine = mode === 'mine';
@@ -126,8 +128,9 @@ export default function Library() {
     const params = { page: '1', ...overrides };
     if (isMine && !overrides.mode) params.mode = 'mine';
     if (isBookmarks && !overrides.mode) params.mode = 'bookmarks';
-    if (search) params.search = search;
-    if (period && period !== 'all') params.period = period;
+    if (search && !overrides.hasOwnProperty('search')) params.search = search;
+    if (period && period !== 'all' && !overrides.hasOwnProperty('period')) params.period = period;
+    if (rarity && !overrides.hasOwnProperty('rarity')) params.rarity = rarity;
     return params;
   }
 
@@ -146,10 +149,9 @@ export default function Library() {
         if (res.liked) next.add(galleryId); else next.delete(galleryId);
         return next;
       });
-      const item = items.find(i => i.id === galleryId);
-      if (item) item.like_count = res.likeCount;
+      setLikeCounts(prev => ({ ...prev, [galleryId]: res.likeCount }));
     } catch {}
-  }, [user, likedIds, items]);
+  }, [user, likedIds]);
 
   const handleBookmarkToggle = useCallback(async (galleryId) => {
     if (!user) return;
@@ -346,7 +348,7 @@ export default function Library() {
                   rarity: item.rarity || 'N',
                   imageUrl: item.url,
                   name: item.source_name || item.username || '未知来源',
-                  likeCount: item.like_count || 0,
+                  likeCount: likeCounts[item.id] ?? (item.like_count || 0),
                   isLiked: likedIds.has(item.id),
                   isBookmarked: bookmarkedIds.has(item.id),
                 }}
@@ -367,7 +369,7 @@ export default function Library() {
         {totalPages > 1 && (
           <div className="mt-6 md:mt-xl flex justify-center items-center gap-3 pb-6 md:pb-xl">
             <button
-              onClick={() => setSearchParams(buildParams({ page: String(page - 1), sort, ...(rarity && { rarity }) }))}}
+              onClick={() => setSearchParams(buildParams({ page: String(page - 1), sort, ...(rarity && { rarity }) }))}
               disabled={page <= 1}
               className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
             >
@@ -377,7 +379,7 @@ export default function Library() {
               {page} / {totalPages}
             </span>
             <button
-              onClick={() => setSearchParams(buildParams({ page: String(page + 1), sort, ...(rarity && { rarity }) }))}}
+              onClick={() => setSearchParams(buildParams({ page: String(page + 1), sort, ...(rarity && { rarity }) }))}
               disabled={page >= totalPages}
               className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
             >
