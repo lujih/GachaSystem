@@ -147,7 +147,7 @@ async function onRequest(context) {
       const userId = url.searchParams.get('userId');
       const sort = url.searchParams.get('sort') || 'newest';
       const offset = (page - 1) * limit;
-      let q = 'SELECT id, url, user_id, username, rarity, created_at FROM gallery';
+      let q = 'SELECT id, url, user_id, username, rarity, source_name, created_at FROM gallery';
       let cq = 'SELECT COUNT(*) as total FROM gallery';
       const p = [], cp = [];
       const conds = [];

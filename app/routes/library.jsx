@@ -25,7 +25,7 @@ export async function loader({ request, context }) {
   // "我的收藏" 模式必须验证 userId 与当前登录用户一致
   const isMine = mode === 'mine' && currentUser;
 
-  let query = 'SELECT id, url, user_id, username, rarity, created_at FROM gallery';
+  let query = 'SELECT id, url, user_id, username, rarity, source_name, created_at FROM gallery';
   let countQuery = 'SELECT COUNT(*) as total FROM gallery';
   let rarityCountQuery = 'SELECT rarity, COUNT(*) as count FROM gallery';
   const params = [];
@@ -233,12 +233,12 @@ export default function Library() {
                 card={{
                   rarity: item.rarity || 'N',
                   imageUrl: item.url,
-                  name: item.username || '匿名',
+                  name: item.source_name || item.username || '未知来源',
                 }}
                 onClick={() => setSelectedCard({
                   rarity: item.rarity || 'N',
                   imageUrl: item.url,
-                  name: item.username || '匿名',
+                  name: item.source_name || item.username || '未知来源',
                   time: item.created_at,
                 })}
               />

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS gallery (
     user_id INTEGER,
     username TEXT, -- 保留作为快照，或者仅使用 user_id 并在查询时 JOIN
     rarity TEXT DEFAULT 'N',
+    source_name TEXT, -- 图源名称
     created_at INTEGER NOT NULL,
     CONSTRAINT fk_gallery_user FOREIGN KEY (user_id)
         REFERENCES users(id) ON DELETE CASCADE
@@ -147,3 +148,6 @@ CREATE INDEX IF NOT EXISTS idx_gallery_id ON gallery(id DESC);
 
 -- Migration: add rarity column to gallery (existing databases)
 ALTER TABLE gallery ADD COLUMN rarity TEXT DEFAULT 'N';
+
+-- Migration: add source_name column to gallery
+ALTER TABLE gallery ADD COLUMN source_name TEXT;

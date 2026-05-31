@@ -48,8 +48,8 @@ async function updateGalleryIndex(env, newItem) {
   try {
     const ts = typeof newItem.ts === 'string' ? Date.parse(newItem.ts) : newItem.ts;
     await env.DB.prepare(
-      'INSERT INTO gallery (url, user_id, username, rarity, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET user_id = excluded.user_id, username = excluded.username, rarity = excluded.rarity, created_at = excluded.created_at'
-    ).bind(newItem.url, newItem.userId, newItem.username, newItem.rarity || 'N', ts).run();
+      'INSERT INTO gallery (url, user_id, username, rarity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET user_id = excluded.user_id, username = excluded.username, rarity = excluded.rarity, source_name = excluded.source_name, created_at = excluded.created_at'
+    ).bind(newItem.url, newItem.userId, newItem.username, newItem.rarity || 'N', newItem.sourceName || null, ts).run();
   } catch (e) {
     console.error('Gallery D1 error:', e);
   }
@@ -461,7 +461,7 @@ export class GachaService {
 
       // 图库 & 排行榜
       if (asset.success) {
-        this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, ts: getBeijingISOString() }));
+        this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
         if (rarity === 'UR') {
           this.safeWaitUntil(updateLeaderboard(this.env, { username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() }));
         }
@@ -600,7 +600,7 @@ export class GachaService {
 
         // 异步更新图库和排行榜
         if (finalAsset.success) {
-          this.safeWaitUntil(updateGalleryIndex(this.env, { url: finalAsset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, ts: getBeijingISOString() }));
+          this.safeWaitUntil(updateGalleryIndex(this.env, { url: finalAsset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: finalAsset.sourceName, ts: getBeijingISOString() }));
           if (rarity === 'UR') {
             this.safeWaitUntil(updateLeaderboard(this.env, { username: currentUser.username, rarity, imageUrl: finalAsset.imageUrl, ts: Date.now() + i }));
           }
@@ -785,7 +785,7 @@ export class GachaService {
       );
 
       if (finalAsset.success) {
-        this.safeWaitUntil(updateGalleryIndex(this.env, { url: finalAsset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, ts: getBeijingISOString() }));
+        this.safeWaitUntil(updateGalleryIndex(this.env, { url: finalAsset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: finalAsset.sourceName, ts: getBeijingISOString() }));
       }
     }
 
@@ -891,7 +891,7 @@ export class GachaService {
       currentUser.level = levelUpResult.newLevel;
       currentUser.exp = levelUpInfo.currentExp;
     }
-    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, ts: getBeijingISOString() }));
+    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     return jsonResponse({
       success: true,
@@ -932,7 +932,7 @@ export class GachaService {
     if (levelUpResult) {
       await this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, currentUser.exp, currentUser.id).run();
     }
-    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, ts: getBeijingISOString() }));
+    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     return jsonResponse({
       success: true,
