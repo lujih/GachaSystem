@@ -43,15 +43,23 @@ export async function loader({ request, context }) {
   const ORDER = { newest: 'created_at DESC', oldest: 'created_at ASC', rarity: "CASE rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, created_at DESC" };
   const orderBy = ORDER[sort] || ORDER.newest;
 
-  const [itemsResult, countResult, rarityCountsResult] = await Promise.all([
+  const globalRarityQuery = 'SELECT rarity, COUNT(*) as count FROM gallery GROUP BY rarity';
+
+  const [itemsResult, countResult, rarityCountsResult, globalRarityResult] = await Promise.all([
     env.DB.prepare(`${query} ORDER BY ${orderBy} LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
     env.DB.prepare(countQuery).bind(...countParams).first(),
     env.DB.prepare(`${rarityCountQuery} GROUP BY rarity`).bind(...countParams).all(),
+    env.DB.prepare(globalRarityQuery).all(),
   ]);
 
   const rarityCounts = {};
   if (rarityCountsResult.results) {
     rarityCountsResult.results.forEach(r => { rarityCounts[r.rarity] = r.count; });
+  }
+  const globalRarityCounts = {};
+  let globalTotal = 0;
+  if (globalRarityResult.results) {
+    globalRarityResult.results.forEach(r => { globalRarityCounts[r.rarity] = r.count; globalTotal += r.count; });
   }
 
   return {
@@ -63,11 +71,13 @@ export async function loader({ request, context }) {
     mode: isMine ? 'mine' : 'all',
     sort,
     rarityCounts,
+    globalRarityCounts,
+    globalTotal,
   };
 }
 
 export default function Library() {
-  const { items, total, page, totalPages, rarity, mode, sort, rarityCounts } = useLoaderData();
+  const { items, total, page, totalPages, rarity, mode, sort, rarityCounts, globalRarityCounts, globalTotal } = useLoaderData();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [selectedCard, setSelectedCard] = useState(null);
@@ -124,13 +134,38 @@ export default function Library() {
 
           {/* 稀有度统计 */}
           <div className="flex gap-1.5 md:gap-2">
-            {RARITY_ORDER.map(r => (
-              <div key={r} className="text-center">
-                <span className={`inline-block text-[9px] md:text-[10px] font-black text-white px-1.5 py-0.5 rounded ${rarityBg(r)}`}>{r}</span>
-                <p className="text-[10px] md:text-xs font-bold text-on-surface-variant mt-0.5">{rarityCounts[r] || 0}</p>
-              </div>
-            ))}
+            {RARITY_ORDER.map(r => {
+              const my = rarityCounts[r] || 0;
+              const global = globalRarityCounts[r] || 0;
+              const pct = global > 0 ? Math.min(Math.round((my / global) * 100), 100) : 0;
+              return (
+                <div key={r} className="text-center min-w-[40px]">
+                  <span className={`inline-block text-[9px] md:text-[10px] font-black text-white px-1.5 py-0.5 rounded ${rarityBg(r)}`}>{r}</span>
+                  <p className="text-[10px] md:text-xs font-bold text-on-surface-variant mt-0.5">
+                    {isMine ? `${my}/${global}` : my}
+                  </p>
+                  {isMine && global > 0 && (
+                    <div className="w-full h-1 bg-surface-variant rounded-full mt-0.5 overflow-hidden">
+                      <div className={`h-full ${rarityBg(r)} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
+          {/* 收集进度总览（我的收藏模式） */}
+          {isMine && globalTotal > 0 && (
+            <div className="mt-2 md:mt-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] md:text-xs text-on-surface-variant">收集进度</span>
+                <span className="text-[10px] md:text-xs font-bold text-primary">{allCount} / {globalTotal}</span>
+                <span className="text-[10px] md:text-xs text-outline">({globalTotal > 0 ? Math.round((allCount / globalTotal) * 100) : 0}%)</span>
+              </div>
+              <div className="w-full h-1.5 md:h-2 bg-surface-variant rounded-full mt-1 overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all" style={{ width: `${globalTotal > 0 ? Math.min((allCount / globalTotal) * 100, 100) : 0}%` }} />
+              </div>
+            </div>
+          )}
         </section>
 
         {/* 筛选栏 */}
