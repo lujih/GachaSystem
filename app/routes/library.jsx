@@ -136,24 +136,24 @@ export default function Library() {
   // 切换 Tab 并重新加载数据
   function switchTab(newMode) {
     setTabMode(newMode);
-    const params = { page: '1', sort };
-    if (newMode === 'mine') params.mode = 'mine';
-    if (newMode === 'bookmarks') params.mode = 'bookmarks';
-    if (rarity) params.rarity = rarity;
-    if (search) params.search = search;
-    if (period && period !== 'all') params.period = period;
-    setSearchParams(params);
+    setSearchParams({
+      page: '1',
+      sort,
+      ...(newMode !== 'all' && { mode: newMode }),
+      ...(rarity && { rarity }),
+    });
   }
 
   // 构建 URL 参数（保持当前筛选状态）
   function buildParams(overrides = {}) {
-    const params = { page: '1', ...overrides };
-    if (tabMode === 'mine') params.mode = 'mine';
-    if (tabMode === 'bookmarks') params.mode = 'bookmarks';
-    if (search && !overrides.hasOwnProperty('search')) params.search = search;
-    if (period && period !== 'all' && !overrides.hasOwnProperty('period')) params.period = period;
-    if (rarity && !overrides.hasOwnProperty('rarity')) params.rarity = rarity;
-    return params;
+    return {
+      page: '1',
+      ...(tabMode !== 'all' && { mode: tabMode }),
+      ...(rarity && { rarity }),
+      ...(search && { search }),
+      ...(period && period !== 'all' && { period }),
+      ...overrides,
+    };
   }
 
   function handleSearch(e) {
