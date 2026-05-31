@@ -31,7 +31,7 @@ const RARITY_STYLES = {
   },
 };
 
-export default function GachaCard({ card, onClick, className = '' }) {
+export default function GachaCard({ card, onClick, onLikeToggle, className = '' }) {
   const rarity = card.rarity || 'N';
   const style = RARITY_STYLES[rarity] || RARITY_STYLES.N;
 
@@ -61,8 +61,8 @@ export default function GachaCard({ card, onClick, className = '' }) {
 
       {/* Glassmorphism Info Panel */}
       <div className="absolute bottom-xs left-xs right-xs bg-surface/40 backdrop-blur-md rounded-lg p-xs border-2 border-white/50 flex items-center justify-between z-10 translate-y-1 group-hover:translate-y-0 transition-transform">
-        <div className="flex flex-col">
-          <span className="font-headline-md text-headline-md text-on-secondary drop-shadow-md leading-tight">
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="font-headline-md text-headline-md text-on-secondary drop-shadow-md leading-tight truncate">
             {card.name || rarity}
           </span>
           {card.level && (
@@ -71,6 +71,16 @@ export default function GachaCard({ card, onClick, className = '' }) {
             </span>
           )}
         </div>
+        {/* 点赞按钮 */}
+        {card.id && onLikeToggle && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onLikeToggle(card.id); }}
+            className={`flex items-center gap-0.5 text-[10px] shrink-0 ml-1 transition-colors ${card.isLiked ? 'text-error' : 'text-on-surface-variant/60 hover:text-error'}`}
+          >
+            <span className={`material-symbols-outlined text-sm ${card.isLiked ? 'symbol-filled' : ''}`}>favorite</span>
+            {card.likeCount > 0 && <span>{card.likeCount}</span>}
+          </button>
+        )}
       </div>
 
       {/* Card Inner Shadow */}

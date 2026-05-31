@@ -60,6 +60,9 @@ export const api = {
   getShowcase: () => apiFetch('/api/showcase'),
   getAnnouncement: () => apiFetch('/api/announcement'),
   getChangelog: () => apiFetch('/api/changelog'),
+  likeCard: (galleryId) => apiFetch('/api/library/like', { method: 'POST', body: JSON.stringify({ galleryId }) }),
+  unlikeCard: (galleryId) => apiFetch('/api/library/like', { method: 'DELETE', body: JSON.stringify({ galleryId }) }),
+  getMyLikes: () => apiFetch('/api/library/my-likes'),
 
   // Admin
   adminVerify: (password) => apiFetch('/api/admin/verify', { method: 'POST', body: JSON.stringify({ password }) }),

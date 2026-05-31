@@ -1,6 +1,7 @@
 import { useLoaderData, useSearchParams } from '@remix-run/react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '~/hooks/useAuth';
+import { api } from '~/lib/api';
 import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
 import GachaCard from '~/components/GachaCard';
@@ -93,9 +94,16 @@ export default function Library() {
   const { user } = useAuth();
   const [selectedCard, setSelectedCard] = useState(null);
   const [searchInput, setSearchInput] = useState(search);
+  const [likedIds, setLikedIds] = useState(new Set());
 
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
   const isMine = mode === 'mine';
+
+  // 获取当前用户的点赞列表
+  useEffect(() => {
+    if (!user) { setLikedIds(new Set()); return; }
+    api.getMyLikes().then(res => setLikedIds(new Set(res?.likedIds || []))).catch(() => {});
+  }, [user?.id]);
 
   // 构建 URL 参数（保持当前筛选状态）
   function buildParams(overrides = {}) {
@@ -110,6 +118,22 @@ export default function Library() {
     e.preventDefault();
     setSearchParams(buildParams({ search: searchInput || undefined, sort, ...(rarity && { rarity }) }));
   }
+
+  const handleLikeToggle = useCallback(async (galleryId) => {
+    if (!user) return;
+    const isLiked = likedIds.has(galleryId);
+    try {
+      const res = isLiked ? await api.unlikeCard(galleryId) : await api.likeCard(galleryId);
+      setLikedIds(prev => {
+        const next = new Set(prev);
+        if (res.liked) next.add(galleryId); else next.delete(galleryId);
+        return next;
+      });
+      // 更新列表中的 like_count
+      const item = items.find(i => i.id === galleryId);
+      if (item) item.like_count = res.likeCount;
+    } catch {}
+  }, [user, likedIds, items]);
 
   return (
     <div className="min-h-screen bg-surface-bright bg-halftone relative">
@@ -222,6 +246,7 @@ export default function Library() {
               <option value="newest">最新获得</option>
               <option value="oldest">最早获得</option>
               <option value="rarity">稀有度优先</option>
+              <option value="hot">最热门</option>
             </select>
           </div>
           {/* 搜索 + 时间筛选 */}
@@ -280,9 +305,12 @@ export default function Library() {
               <GachaCard
                 key={item.id}
                 card={{
+                  id: item.id,
                   rarity: item.rarity || 'N',
                   imageUrl: item.url,
                   name: item.source_name || item.username || '未知来源',
+                  likeCount: item.like_count || 0,
+                  isLiked: likedIds.has(item.id),
                 }}
                 onClick={() => setSelectedCard({
                   rarity: item.rarity || 'N',
@@ -290,6 +318,7 @@ export default function Library() {
                   name: item.source_name || item.username || '未知来源',
                   time: item.created_at,
                 })}
+                onLikeToggle={handleLikeToggle}
               />
             ))}
           </section>

@@ -151,3 +151,25 @@ ALTER TABLE gallery ADD COLUMN rarity TEXT DEFAULT 'N';
 
 -- Migration: add source_name column to gallery
 ALTER TABLE gallery ADD COLUMN source_name TEXT;
+
+-- 10. 点赞表
+CREATE TABLE IF NOT EXISTS card_likes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    gallery_id INTEGER NOT NULL REFERENCES gallery(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    UNIQUE(user_id, gallery_id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_likes_gallery ON card_likes(gallery_id);
+CREATE INDEX IF NOT EXISTS idx_likes_user ON card_likes(user_id, created_at DESC);
+
+-- 11. 书签表
+CREATE TABLE IF NOT EXISTS card_bookmarks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    gallery_id INTEGER NOT NULL REFERENCES gallery(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    UNIQUE(user_id, gallery_id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_bookmarks_gallery ON card_bookmarks(gallery_id);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON card_bookmarks(user_id, created_at DESC);

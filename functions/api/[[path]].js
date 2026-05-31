@@ -149,27 +149,54 @@ async function onRequest(context) {
       const search = url.searchParams.get('search')?.trim();
       const period = url.searchParams.get('period');
       const offset = (page - 1) * limit;
-      let q = 'SELECT id, url, user_id, username, rarity, source_name, created_at FROM gallery';
-      let cq = 'SELECT COUNT(*) as total FROM gallery';
+      let q = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at, (SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) as like_count FROM gallery g';
+      let cq = 'SELECT COUNT(*) as total FROM gallery g';
       const p = [], cp = [];
       const conds = [];
-      if (rarity) { conds.push('rarity = ?'); p.push(rarity.toUpperCase()); cp.push(rarity.toUpperCase()); }
-      if (userId) { conds.push('user_id = ?'); p.push(parseInt(userId)); cp.push(parseInt(userId)); }
-      if (search) { conds.push('username LIKE ?'); p.push(`%${search}%`); cp.push(`%${search}%`); }
+      if (rarity) { conds.push('g.rarity = ?'); p.push(rarity.toUpperCase()); cp.push(rarity.toUpperCase()); }
+      if (userId) { conds.push('g.user_id = ?'); p.push(parseInt(userId)); cp.push(parseInt(userId)); }
+      if (search) { conds.push('g.username LIKE ?'); p.push(`%${search}%`); cp.push(`%${search}%`); }
       if (period && period !== 'all') {
         const now = Date.now();
         const PERIOD_MS = { today: 86400000, week: 604800000, month: 2592000000 };
         const ms = PERIOD_MS[period];
-        if (ms) { conds.push('created_at > ?'); p.push(now - ms); cp.push(now - ms); }
+        if (ms) { conds.push('g.created_at > ?'); p.push(now - ms); cp.push(now - ms); }
       }
       if (conds.length) { q += ' WHERE ' + conds.join(' AND '); cq += ' WHERE ' + conds.join(' AND '); }
-      const ORDER = { newest: 'created_at DESC', oldest: 'created_at ASC', rarity: "CASE rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, created_at DESC" };
+      const ORDER = { newest: 'g.created_at DESC', oldest: 'g.created_at ASC', rarity: "CASE g.rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, g.created_at DESC", hot: '(SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) DESC, g.created_at DESC' };
       const orderBy = ORDER[sort] || ORDER.newest;
       const [items, count] = await Promise.all([
         env.DB.prepare(`${q} ORDER BY ${orderBy} LIMIT ? OFFSET ?`).bind(...p, limit, offset).all(),
         env.DB.prepare(cq).bind(...cp).first(),
       ]);
       return jsonResponse({ items: items.results || [], total: count?.total || 0, page, totalPages: Math.ceil((count?.total || 0) / limit) }, 200, CACHE_1M);
+    }
+
+    // ─── 图鉴点赞 ───
+    if (path === '/library/like' && method === 'POST') {
+      if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+      const { galleryId } = await request.json();
+      if (!galleryId) return jsonResponse({ error: '缺少 galleryId' }, 400);
+      try {
+        await env.DB.prepare('INSERT INTO card_likes (user_id, gallery_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING').bind(currentUser.id, galleryId, Date.now()).run();
+        const count = await env.DB.prepare('SELECT COUNT(*) as c FROM card_likes WHERE gallery_id = ?').bind(galleryId).first();
+        return jsonResponse({ success: true, liked: true, likeCount: count?.c || 0 });
+      } catch (e) { return jsonResponse({ error: '操作失败' }, 500); }
+    }
+    if (path === '/library/like' && method === 'DELETE') {
+      if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+      const { galleryId } = await request.json();
+      if (!galleryId) return jsonResponse({ error: '缺少 galleryId' }, 400);
+      await env.DB.prepare('DELETE FROM card_likes WHERE user_id = ? AND gallery_id = ?').bind(currentUser.id, galleryId).run();
+      const count = await env.DB.prepare('SELECT COUNT(*) as c FROM card_likes WHERE gallery_id = ?').bind(galleryId).first();
+      return jsonResponse({ success: true, liked: false, likeCount: count?.c || 0 });
+    }
+
+    // ─── 我的点赞列表 ───
+    if (path === '/library/my-likes' && method === 'GET') {
+      if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+      const likes = await env.DB.prepare('SELECT gallery_id FROM card_likes WHERE user_id = ?').bind(currentUser.id).all();
+      return jsonResponse({ likedIds: (likes.results || []).map(r => r.gallery_id) });
     }
 
     // ─── Admin ───
