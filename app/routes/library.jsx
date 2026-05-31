@@ -1,5 +1,6 @@
 import { useLoaderData, useSearchParams } from '@remix-run/react';
 import { useState } from 'react';
+import { useAuth } from '~/hooks/useAuth';
 import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
 import GachaCard from '~/components/GachaCard';
@@ -9,30 +10,39 @@ import { rarityBg, RARITY_ORDER } from '~/lib/rarity';
 export async function loader({ request, context }) {
   const env = context?.cloudflare?.env;
   if (!env?.DB) {
-    return { items: [], total: 0, page: 1, totalPages: 0, rarity: '', rarityCounts: {} };
+    return { items: [], total: 0, page: 1, totalPages: 0, rarity: '', mode: 'all', rarityCounts: {} };
   }
   const url = new URL(request.url);
   const page = parseInt(url.searchParams.get('page') || '1');
   const limit = 20;
   const rarity = url.searchParams.get('rarity');
+  const mode = url.searchParams.get('mode') || 'all';
   const offset = (page - 1) * limit;
+
+  // 获取当前登录用户（middleware 注入）
+  const currentUser = context?.data?.currentUser || null;
+  // "我的收藏" 模式必须验证 userId 与当前登录用户一致
+  const isMine = mode === 'mine' && currentUser;
 
   let query = 'SELECT id, url, user_id, username, rarity, created_at FROM gallery';
   let countQuery = 'SELECT COUNT(*) as total FROM gallery';
+  let rarityCountQuery = 'SELECT rarity, COUNT(*) as count FROM gallery';
   const params = [];
   const countParams = [];
+  const conds = [];
 
-  if (rarity) {
-    query += ' WHERE rarity = ?';
-    countQuery += ' WHERE rarity = ?';
-    params.push(rarity.toUpperCase());
-    countParams.push(rarity.toUpperCase());
+  if (rarity) { conds.push('rarity = ?'); params.push(rarity.toUpperCase()); countParams.push(rarity.toUpperCase()); }
+  if (isMine) { conds.push('user_id = ?'); params.push(currentUser.id); countParams.push(currentUser.id); }
+  if (conds.length) {
+    query += ' WHERE ' + conds.join(' AND ');
+    countQuery += ' WHERE ' + conds.join(' AND ');
+    rarityCountQuery += ' WHERE ' + conds.join(' AND ');
   }
 
   const [itemsResult, countResult, rarityCountsResult] = await Promise.all([
     env.DB.prepare(`${query} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
     env.DB.prepare(countQuery).bind(...countParams).first(),
-    env.DB.prepare('SELECT rarity, COUNT(*) as count FROM gallery GROUP BY rarity').all(),
+    env.DB.prepare(`${rarityCountQuery} GROUP BY rarity`).bind(...countParams).all(),
   ]);
 
   const rarityCounts = {};
@@ -46,16 +56,26 @@ export async function loader({ request, context }) {
     page,
     totalPages: Math.ceil((countResult?.total || 0) / limit),
     rarity: rarity || '',
+    mode: isMine ? 'mine' : 'all',
     rarityCounts,
   };
 }
 
 export default function Library() {
-  const { items, total, page, totalPages, rarity, rarityCounts } = useLoaderData();
-  const [, setSearchParams] = useSearchParams();
+  const { items, total, page, totalPages, rarity, mode, rarityCounts } = useLoaderData();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuth();
   const [selectedCard, setSelectedCard] = useState(null);
 
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
+  const isMine = mode === 'mine';
+
+  function setMode(newMode) {
+    const params = { page: '1' };
+    if (newMode === 'mine' && user) { params.mode = 'mine'; }
+    if (rarity) params.rarity = rarity;
+    setSearchParams(params);
+  }
 
   return (
     <div className="min-h-screen bg-surface-bright bg-halftone relative">
@@ -70,11 +90,30 @@ export default function Library() {
         <section className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 md:mb-6 gap-2 md:gap-sm pt-4 md:pt-md">
           <div>
             <h1 className="font-headline-lg md:text-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#dbbfc7] mb-1 md:mb-xs">
-              我的收藏
+              {isMine ? '我的收藏' : '全服图鉴'}
             </h1>
-            <div className="inline-flex items-center gap-1 md:gap-xs bg-primary-container text-on-primary-container font-label-bold text-[10px] md:text-label-bold px-2 md:px-sm py-1 md:py-xs rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_#770143]">
-              <span className="material-symbols-outlined text-sm md:text-[18px] symbol-filled">style</span>
-              {allCount} 张已收集
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="inline-flex items-center gap-1 md:gap-xs bg-primary-container text-on-primary-container font-label-bold text-[10px] md:text-label-bold px-2 md:px-sm py-1 md:py-xs rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_#770143]">
+                <span className="material-symbols-outlined text-sm md:text-[18px] symbol-filled">style</span>
+                {allCount} 张{isMine ? '已收集' : '总图鉴'}
+              </div>
+              {/* Tab 切换 */}
+              <div className="flex gap-1 bg-surface-container p-0.5 rounded-full border border-outline-variant">
+                <button
+                  onClick={() => setMode('all')}
+                  className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${!isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                >
+                  全服
+                </button>
+                {user && (
+                  <button
+                    onClick={() => setMode('mine')}
+                    className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                  >
+                    我的
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -97,7 +136,12 @@ export default function Library() {
               {['', 'UR', 'SSR', 'SR', 'R', 'N'].map(r => (
                 <button
                   key={r || 'all'}
-                  onClick={() => setSearchParams(r ? { rarity: r, page: '1' } : { page: '1' })}
+                  onClick={() => {
+                    const params = { page: '1' };
+                    if (r) params.rarity = r;
+                    if (isMine) params.mode = 'mine';
+                    setSearchParams(params);
+                  }}
                   className={`font-label-bold text-[10px] md:text-label-bold px-2 md:px-md py-1 md:py-xs rounded-full border-2 transition-all duration-200 hover:-translate-y-1 active:translate-y-0 ${
                     rarity === r
                       ? 'bg-tertiary text-on-tertiary border-on-tertiary-container shadow-[2px_2px_0px_0px_#473a00]'
@@ -153,7 +197,12 @@ export default function Library() {
         {totalPages > 1 && (
           <div className="mt-6 md:mt-xl flex justify-center items-center gap-3 pb-6 md:pb-xl">
             <button
-              onClick={() => setSearchParams({ page: String(page - 1), ...(rarity && { rarity }) })}
+              onClick={() => {
+                const params = { page: String(page - 1) };
+                if (rarity) params.rarity = rarity;
+                if (isMine) params.mode = 'mine';
+                setSearchParams(params);
+              }}
               disabled={page <= 1}
               className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
             >
@@ -163,7 +212,12 @@ export default function Library() {
               {page} / {totalPages}
             </span>
             <button
-              onClick={() => setSearchParams({ page: String(page + 1), ...(rarity && { rarity }) })}
+              onClick={() => {
+                const params = { page: String(page + 1) };
+                if (rarity) params.rarity = rarity;
+                if (isMine) params.mode = 'mine';
+                setSearchParams(params);
+              }}
               disabled={page >= totalPages}
               className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
             >

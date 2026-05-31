@@ -144,11 +144,15 @@ async function onRequest(context) {
       const page = parseInt(url.searchParams.get('page') || '1');
       const limit = Math.min(parseInt(url.searchParams.get('limit') || '20'), 100);
       const rarity = url.searchParams.get('rarity');
+      const userId = url.searchParams.get('userId');
       const offset = (page - 1) * limit;
       let q = 'SELECT id, url, user_id, username, rarity, created_at FROM gallery';
       let cq = 'SELECT COUNT(*) as total FROM gallery';
       const p = [], cp = [];
-      if (rarity) { q += ' WHERE rarity = ?'; cq += ' WHERE rarity = ?'; p.push(rarity.toUpperCase()); cp.push(rarity.toUpperCase()); }
+      const conds = [];
+      if (rarity) { conds.push('rarity = ?'); p.push(rarity.toUpperCase()); cp.push(rarity.toUpperCase()); }
+      if (userId) { conds.push('user_id = ?'); p.push(parseInt(userId)); cp.push(parseInt(userId)); }
+      if (conds.length) { q += ' WHERE ' + conds.join(' AND '); cq += ' WHERE ' + conds.join(' AND '); }
       const [items, count] = await Promise.all([
         env.DB.prepare(`${q} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...p, limit, offset).all(),
         env.DB.prepare(cq).bind(...cp).first(),

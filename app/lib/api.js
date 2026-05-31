@@ -56,7 +56,7 @@ export const api = {
   shopBuy: (targetRarity) => apiFetch('/api/shop/buy', { method: 'POST', body: JSON.stringify({ targetRarity }) }),
 
   // Public
-  getLibrary: (page = 1, limit = 20, rarity) => apiFetch(`/api/library/items?page=${page}&limit=${limit}${rarity ? `&rarity=${rarity}` : ''}`),
+  getLibrary: (page = 1, limit = 20, rarity, userId) => apiFetch(`/api/library/items?page=${page}&limit=${limit}${rarity ? `&rarity=${rarity}` : ''}${userId ? `&userId=${userId}` : ''}`),
   getShowcase: () => apiFetch('/api/showcase'),
   getAnnouncement: () => apiFetch('/api/announcement'),
   getChangelog: () => apiFetch('/api/changelog'),
