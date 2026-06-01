@@ -99,18 +99,17 @@ export async function loader({ request, context }) {
 
 export default function Library() {
   const { items, total, page, totalPages, rarity, mode, sort, search, period, rarityCounts, globalRarityCounts, globalTotal } = useLoaderData();
-  const [, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [selectedCard, setSelectedCard] = useState(null);
   const [searchInput, setSearchInput] = useState(search);
   const [likedIds, setLikedIds] = useState(new Set());
   const [bookmarkedIds, setBookmarkedIds] = useState(new Set());
   const [likeCounts, setLikeCounts] = useState({});
-  const [tabMode, setTabMode] = useState(mode || 'all');
 
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
-  const isMine = tabMode === 'mine';
-  const isBookmarks = tabMode === 'bookmarks';
+  const isMine = mode === 'mine';
+  const isBookmarks = mode === 'bookmarks';
 
   // 获取当前用户的点赞和书签列表
   useEffect(() => {
@@ -133,27 +132,14 @@ export default function Library() {
     }).catch(() => {});
   }, [items.map(i => i.id).join(',')]);
 
-  // 切换 Tab 并重新加载数据
-  function switchTab(newMode) {
-    setTabMode(newMode);
-    const p = new URLSearchParams();
-    p.set('page', '1');
-    p.set('sort', sort);
-    if (newMode !== 'all') p.set('mode', newMode);
-    if (rarity) p.set('rarity', rarity);
-    window.location.search = p.toString();
-  }
-
-  // 构建 URL 参数（保持当前筛选状态）
+  // 构建 URL 参数：以当前筛选为基础，overrides 覆盖特定字段
   function buildParams(overrides = {}) {
-    return {
-      page: '1',
-      ...(tabMode !== 'all' && { mode: tabMode }),
-      ...(rarity && { rarity }),
-      ...(search && { search }),
-      ...(period && period !== 'all' && { period }),
-      ...overrides,
-    };
+    const base = {};
+    if (mode && mode !== 'all') base.mode = mode;
+    if (rarity) base.rarity = rarity;
+    if (search) base.search = search;
+    if (period && period !== 'all') base.period = period;
+    return { page: '1', ...base, ...overrides };
   }
 
   function handleSearch(e) {
@@ -211,7 +197,7 @@ export default function Library() {
               {/* Tab 切换 */}
               <div className="flex gap-1 bg-surface-container p-0.5 rounded-full border border-outline-variant">
                 <button
-                  onClick={() => switchTab('all')}
+                  onClick={() => { const p = buildParams({ sort }); delete p.mode; setSearchParams(p); }}
                   className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${!isMine && !isBookmarks ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                 >
                   全服
@@ -219,13 +205,13 @@ export default function Library() {
                 {user && (
                   <>
                     <button
-                      onClick={() => switchTab('mine')}
+                      onClick={() => setSearchParams(buildParams({ mode: 'mine', sort }))}
                       className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                     >
                       我的
                     </button>
                     <button
-                      onClick={() => switchTab('bookmarks')}
+                      onClick={() => setSearchParams(buildParams({ mode: 'bookmarks', sort }))}
                       className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isBookmarks ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                     >
                       书签
@@ -281,7 +267,11 @@ export default function Library() {
                 {['', 'UR', 'SSR', 'SR', 'R', 'N'].map(r => (
                   <button
                     key={r || 'all'}
-                    onClick={() => setSearchParams(buildParams(r ? { rarity: r, sort } : { sort }))}
+                    onClick={() => {
+                      const p = buildParams({ sort });
+                      if (r) p.rarity = r; else delete p.rarity;
+                      setSearchParams(p);
+                    }}
                     className={`font-label-bold text-[10px] md:text-label-bold px-2 md:px-md py-1 md:py-xs rounded-full border-2 transition-all duration-200 hover:-translate-y-1 active:translate-y-0 ${
                       rarity === r
                         ? 'bg-tertiary text-on-tertiary border-on-tertiary-container shadow-[2px_2px_0px_0px_#473a00]'
