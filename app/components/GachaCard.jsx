@@ -47,6 +47,7 @@ export default function GachaCard({ card, onClick, onLikeToggle, onBookmarkToggl
           alt={card.rarity}
           className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           loading="lazy"
+          decoding="async"
         />
       ) : (
         <div className="absolute inset-0 bg-surface-container flex items-center justify-center">

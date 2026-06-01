@@ -67,6 +67,7 @@ export const api = {
   bookmarkCard: (galleryId) => apiFetch('/api/library/bookmark', { method: 'POST', body: JSON.stringify({ galleryId }) }),
   unbookmarkCard: (galleryId) => apiFetch('/api/library/bookmark', { method: 'DELETE', body: JSON.stringify({ galleryId }) }),
   getMyBookmarks: () => apiFetch('/api/library/my-bookmarks'),
+  getMyInteractions: () => apiFetch('/api/library/my-interactions'),
 
   // Admin
   adminVerify: (password) => apiFetch('/api/admin/verify', { method: 'POST', body: JSON.stringify({ password }) }),

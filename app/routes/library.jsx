@@ -62,22 +62,23 @@ export async function loader({ request, context }) {
   const ORDER = { newest: 'g.created_at DESC', oldest: 'g.created_at ASC', rarity: "CASE g.rarity WHEN 'UR' THEN 1 WHEN 'SSR' THEN 2 WHEN 'SR' THEN 3 WHEN 'R' THEN 4 ELSE 5 END, g.created_at DESC" };
   const orderBy = ORDER[sort] || ORDER.newest;
 
-  const globalRarityQuery = 'SELECT rarity, COUNT(*) as count FROM gallery GROUP BY rarity';
-
-  const [itemsResult, countResult, rarityCountsResult, globalRarityResult] = await Promise.all([
+  // 非"我的"模式下，globalRarityCounts 就是 rarityCounts，跳过额外查询
+  const queries = [
     env.DB.prepare(`${query} ORDER BY ${orderBy} LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
     env.DB.prepare(countQuery).bind(...countParams).first(),
     env.DB.prepare(`${rarityCountQuery} GROUP BY rarity`).bind(...countParams).all(),
-    env.DB.prepare(globalRarityQuery).all(),
-  ]);
+  ];
+  if (isMine) queries.push(env.DB.prepare('SELECT rarity, COUNT(*) as count FROM gallery GROUP BY rarity').all());
+
+  const [itemsResult, countResult, rarityCountsResult, globalRarityResult] = await Promise.all(queries);
 
   const rarityCounts = {};
   if (rarityCountsResult.results) {
     rarityCountsResult.results.forEach(r => { rarityCounts[r.rarity] = r.count; });
   }
-  const globalRarityCounts = {};
-  let globalTotal = 0;
-  if (globalRarityResult.results) {
+  const globalRarityCounts = isMine ? {} : { ...rarityCounts };
+  let globalTotal = isMine ? 0 : Object.values(rarityCounts).reduce((s, n) => s + n, 0);
+  if (isMine && globalRarityResult?.results) {
     globalRarityResult.results.forEach(r => { globalRarityCounts[r.rarity] = r.count; globalTotal += r.count; });
   }
 
@@ -111,26 +112,24 @@ export default function Library() {
   const isMine = mode === 'mine';
   const isBookmarks = mode === 'bookmarks';
 
-  // 获取当前用户的点赞和书签列表
+  // 获取当前用户的点赞和书签列表（合并请求）
   useEffect(() => {
     if (!user) { setLikedIds(new Set()); setBookmarkedIds(new Set()); return; }
-    Promise.all([
-      api.getMyLikes().catch(() => ({ likedIds: [] })),
-      api.getMyBookmarks().catch(() => ({ bookmarkedIds: [] })),
-    ]).then(([likes, bookmarks]) => {
-      setLikedIds(new Set(likes?.likedIds || []));
-      setBookmarkedIds(new Set(bookmarks?.bookmarkedIds || []));
-    });
+    api.getMyInteractions().then(res => {
+      setLikedIds(new Set(res?.likedIds || []));
+      setBookmarkedIds(new Set(res?.bookmarkedIds || []));
+    }).catch(() => {});
   }, [user?.id]);
 
   // 获取当前页卡片的点赞数（边缘缓存）
+  const itemIds = items.map(i => i.id);
   useEffect(() => {
-    const ids = items.map(i => i.id).filter(Boolean);
+    const ids = itemIds.filter(Boolean);
     if (ids.length === 0) return;
     api.getLikeCounts(ids).then(res => {
       if (res?.counts) setLikeCounts(prev => ({ ...prev, ...res.counts }));
     }).catch(() => {});
-  }, [items.map(i => i.id).join(',')]);
+  }, [itemIds.join(',')]);
 
   // 构建 URL 参数：以当前筛选为基础，overrides 覆盖特定字段
   function buildParams(overrides = {}) {

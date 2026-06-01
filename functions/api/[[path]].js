@@ -192,7 +192,19 @@ async function onRequest(context) {
       return jsonResponse({ success: true, liked: false, likeCount: count?.c || 0 });
     }
 
-    // ─── 我的点赞列表 ───
+    // ─── 我的点赞/书签列表（合并查询） ───
+    if (path === '/library/my-interactions' && method === 'GET') {
+      if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+      const [likes, bookmarks] = await Promise.all([
+        env.DB.prepare('SELECT gallery_id FROM card_likes WHERE user_id = ?').bind(currentUser.id).all(),
+        env.DB.prepare('SELECT gallery_id FROM card_bookmarks WHERE user_id = ?').bind(currentUser.id).all(),
+      ]);
+      return jsonResponse({
+        likedIds: (likes.results || []).map(r => r.gallery_id),
+        bookmarkedIds: (bookmarks.results || []).map(r => r.gallery_id),
+      });
+    }
+    // 兼容旧接口
     if (path === '/library/my-likes' && method === 'GET') {
       if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
       const likes = await env.DB.prepare('SELECT gallery_id FROM card_likes WHERE user_id = ?').bind(currentUser.id).all();
