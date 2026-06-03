@@ -31,6 +31,7 @@ export const api = {
 
   // User
   getUserInfo: () => apiFetch('/api/user/info'),
+  getProfileData: () => apiFetch('/api/user/profile-data'),
   getInventory: () => apiFetch('/api/user/inventory'),
   checkIn: () => apiFetch('/api/user/check-in', { method: 'POST' }),
   getTitles: () => apiFetch('/api/user/titles'),

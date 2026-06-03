@@ -49,6 +49,17 @@ async function onRequest(context) {
       if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
       return await userService.getInfo(currentUser);
     }
+    if (path === '/user/profile-data' && method === 'GET') {
+      if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+      const [inventory, titles] = await Promise.all([
+        userService.getInventory(currentUser),
+        userService.getTitles(currentUser),
+      ]);
+      return jsonResponse({
+        inventory: inventory.data || inventory,
+        titles: titles.titles || [],
+      });
+    }
     if (path === '/user/inventory' && method === 'GET') {
       if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
       return await userService.getInventory(currentUser);

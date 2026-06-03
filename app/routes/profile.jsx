@@ -1,10 +1,10 @@
-import { useNavigate } from '@remix-run/react';
+import { useNavigate, useLoaderData } from '@remix-run/react';
 import { useAuth } from '~/hooks/useAuth';
 import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
 import Toast from '~/components/Toast';
 import { api } from '~/lib/api';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RARITY_COLORS, RARITY_ORDER } from '~/lib/rarity';
 
 const MILESTONES = [
@@ -21,27 +21,44 @@ const PITY_COLORS = {
   red: { bar: 'bg-gradient-to-r from-red-400 to-rose-500', text: 'text-red-600', bg: 'bg-red-100', border: 'border-red-300' },
 };
 
-export function loader() {
-  return null;
+export async function loader({ context }) {
+  const currentUser = context?.data?.currentUser;
+  if (!currentUser) return { initialInventory: null, initialTitles: [] };
+  const env = context?.cloudflare?.env;
+  if (!env?.DB) return { initialInventory: null, initialTitles: [] };
+  try {
+    const [invResult, titlesResult] = await Promise.all([
+      env.DB.prepare('SELECT rarity, count FROM inventory WHERE user_id = ?').bind(currentUser.id).all(),
+      env.DB.prepare('SELECT title_id, is_equipped, unlocked_at FROM user_titles WHERE user_id = ? ORDER BY unlocked_at DESC').bind(currentUser.id).all(),
+    ]);
+    const inventory = {};
+    ['N', 'R', 'SR', 'SSR', 'UR'].forEach(r => inventory[r] = 0);
+    (invResult.results || []).forEach(row => { inventory[row.rarity] = row.count; });
+    return { initialInventory: inventory, initialTitles: titlesResult.results || [] };
+  } catch {
+    return { initialInventory: null, initialTitles: [] };
+  }
 }
 
 export default function Profile() {
+  const { initialInventory, initialTitles } = useLoaderData();
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [toast, setToast] = useState(null);
   const [checkingIn, setCheckingIn] = useState(false);
-  const [inventory, setInventory] = useState(null);
-  const [titles, setTitles] = useState([]);
+  const [inventory, setInventory] = useState(initialInventory);
+  const [titles, setTitles] = useState(initialTitles);
   const [claiming, setClaiming] = useState(null);
   const [editingNick, setEditingNick] = useState(false);
   const [newNickname, setNewNickname] = useState('');
   const [savingNick, setSavingNick] = useState(false);
   const [equipping, setEquipping] = useState(false);
 
+  // SSR 预取失败时 fallback 到客户端获取
   useEffect(() => {
     if (!user) return;
-    api.getInventory().then(res => setInventory(res.data || res)).catch(() => {});
-    api.getTitles().then(res => setTitles(res.titles || [])).catch(() => {});
+    if (!inventory) api.getInventory().then(res => setInventory(res.data || res)).catch(() => {});
+    if (titles.length === 0) api.getTitles().then(res => setTitles(res.titles || [])).catch(() => {});
   }, [user?.id]);
 
   const showToast = useCallback((message, type = 'success') => {
@@ -94,6 +111,15 @@ export default function Profile() {
       setSavingNick(false);
     }
   }, [newNickname, refreshUser, showToast]);
+
+  // 签到状态判断（memoize）
+  const todayIsChecked = useMemo(() => {
+    if (!user?.lastLoginDate) return false;
+    const lastDate = user.lastLoginDate.split('T')[0];
+    const beijingNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
+    const todayStr = beijingNow.toISOString().split('T')[0];
+    return lastDate === todayStr;
+  }, [user?.lastLoginDate]);
 
   if (!user) {
     return (
@@ -314,7 +340,7 @@ export default function Profile() {
         <section className="mt-3 md:mt-4">
           <button
             onClick={async () => {
-              if (checkingIn) return;
+              if (checkingIn || todayIsChecked) return;
               setCheckingIn(true);
               try {
                 const res = await api.checkIn();
@@ -328,18 +354,18 @@ export default function Profile() {
                 setCheckingIn(false);
               }
             }}
-            disabled={checkingIn}
+            disabled={checkingIn || todayIsChecked}
             className={`w-full font-button-text text-sm md:text-button-text text-[24px] py-3 md:py-md rounded-full border-4 transition-all relative overflow-hidden group ${
-              checkingIn
-                ? 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-60'
+              checkingIn || todayIsChecked
+                ? 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-default opacity-60'
                 : 'bg-tertiary-fixed text-on-tertiary-fixed-variant border-on-tertiary-fixed shadow-[0px_6px_0px_0px_#221b00] md:shadow-[0px_8px_0px_0px_#221b00] hover:translate-y-[3px] hover:shadow-[0px_3px_0px_0px_#221b00] active:translate-y-[6px] active:shadow-none'
             }`}
           >
             <span className="relative z-10 flex items-center justify-center gap-1 md:gap-xs">
               <span className="material-symbols-outlined text-xl md:text-[28px] symbol-filled">
-                {checkingIn ? 'hourglass_empty' : 'calendar_today'}
+                {todayIsChecked ? 'check_circle' : checkingIn ? 'hourglass_empty' : 'calendar_today'}
               </span>
-              {checkingIn ? '签到中...' : '每日签到'}
+              {todayIsChecked ? '已签到' : checkingIn ? '签到中...' : '每日签到'}
             </span>
           </button>
         </section>
