@@ -941,6 +941,40 @@ export class GachaService {
     });
   }
 
+  // ==================== 卡片分解 ====================
+  async decompose(currentUser, request) {
+    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+    const { rarity, count: rawCount } = await request.json();
+    const decomposeConfig = CONFIG.GAME.DECOMPOSE;
+    if (!rarity || !decomposeConfig[rarity]) return jsonResponse({ error: '无效的稀有度' }, 400);
+    const count = Math.min(Math.max(parseInt(rawCount) || 1, 1), 100);
+    const coinsPerCard = decomposeConfig[rarity];
+
+    // 查询库存
+    const inv = await this.env.DB.prepare(
+      'SELECT count FROM inventory WHERE user_id = ? AND rarity = ?'
+    ).bind(currentUser.id, rarity).first();
+    if (!inv || inv.count < count) return jsonResponse({ error: `${rarity} 卡片不足（拥有 ${inv?.count || 0} 张）` }, 400);
+
+    const totalCoins = coinsPerCard * count;
+    await this.env.DB.batch([
+      this.env.DB.prepare('UPDATE inventory SET count = count - ? WHERE user_id = ? AND rarity = ?').bind(count, currentUser.id, rarity),
+      this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(totalCoins, currentUser.id),
+    ]);
+
+    currentUser.coins = (currentUser.coins || 0) + totalCoins;
+    await this.userService.invalidateUserCache(currentUser.id);
+
+    return jsonResponse({
+      success: true,
+      decomposed: count,
+      rarity,
+      coinsPerCard,
+      totalCoins,
+      userCoins: currentUser.coins,
+    });
+  }
+
   // ==================== 骰子游戏 ====================
   async playDice(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);

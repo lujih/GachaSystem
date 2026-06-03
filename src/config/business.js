@@ -83,7 +83,8 @@ export const BUSINESS_CONFIG = {
     MULTI_DRAW_MAX: 10,
     CRAFT_COST: 5,
     SHOP: { 'R': 150, 'SR': 600, 'SSR': 2500, 'UR': 10000 },
-    DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2, COOLDOWN_MS: 3000 }
+    DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2, COOLDOWN_MS: 3000 },
+    DECOMPOSE: { 'N': 50, 'R': 30, 'SR': 80, 'SSR': 250, 'UR': 1000 }, // 分解返还金币
   },
 
   // 等级系统配置
@@ -99,8 +100,8 @@ export const BUSINESS_CONFIG = {
     EXP_MULTIPLIER: 1.5,
     MAX_LEVEL: 100,
     CHECK_IN: {
-      BASE_COINS: 150,
-      STREAK_BONUS: [0, 30, 80, 150, 250, 350, 500]
+      BASE_COINS: 300,
+      STREAK_BONUS: [0, 50, 100, 200, 300, 400, 600]
     },
     REWARDS: {
       COINS_PER_LEVEL: 50,

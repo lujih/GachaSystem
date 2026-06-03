@@ -52,6 +52,7 @@ export const api = {
   getDrawHistory: (page = 1, rarity) => apiFetch(`/api/draw/draw-history?page=${page}${rarity ? `&rarity=${rarity}` : ''}`),
 
   // Game
+  decompose: (rarity, count = 1) => apiFetch('/api/decompose', { method: 'POST', body: JSON.stringify({ rarity, count }) }),
   playDice: (betAmount) => apiFetch('/api/game/dice', { method: 'POST', body: JSON.stringify({ betAmount }) }),
   craft: (targetRarity) => apiFetch('/api/user/craft', { method: 'POST', body: JSON.stringify({ targetRarity }) }),
   shopBuy: (targetRarity) => apiFetch('/api/shop/buy', { method: 'POST', body: JSON.stringify({ targetRarity }) }),

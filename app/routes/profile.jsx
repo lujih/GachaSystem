@@ -7,6 +7,8 @@ import { api } from '~/lib/api';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RARITY_COLORS, RARITY_ORDER } from '~/lib/rarity';
 
+const CONFIG_DECOMPOSE = { 'N': 50, 'R': 30, 'SR': 80, 'SSR': 250, 'UR': 1000 };
+
 const MILESTONES = [
   { level: 5, coins: 500, title: '新手收藏家' },
   { level: 10, coins: 1000, title: '初级收藏家' },
@@ -53,6 +55,7 @@ export default function Profile() {
   const [newNickname, setNewNickname] = useState('');
   const [savingNick, setSavingNick] = useState(false);
   const [equipping, setEquipping] = useState(false);
+  const [decomposing, setDecomposing] = useState(null);
 
   // SSR 预取失败时 fallback 到客户端获取
   useEffect(() => {
@@ -95,6 +98,22 @@ export default function Profile() {
       setEquipping(false);
     }
   }, [equipping, refreshUser, showToast]);
+
+  const handleDecompose = useCallback(async (rarity, count = 1) => {
+    if (decomposing) return;
+    setDecomposing(rarity);
+    try {
+      const res = await api.decompose(rarity, count);
+      await refreshUser();
+      // 更新本地库存
+      setInventory(prev => prev ? { ...prev, [rarity]: Math.max(0, (prev[rarity] || 0) - count) } : prev);
+      showToast(`分解 ${count} 张 ${rarity} → +${res.totalCoins} 金币`);
+    } catch (e) {
+      showToast(e?.message || '分解失败', 'error');
+    } finally {
+      setDecomposing(null);
+    }
+  }, [decomposing, refreshUser, showToast]);
 
   const handleSaveNickname = useCallback(async () => {
     const nick = newNickname.trim();
@@ -251,15 +270,50 @@ export default function Profile() {
           </div>
         </section>
 
-        {/* 背包统计 */}
-        <section className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-4 mt-2 md:mt-4">
-          {RARITY_ORDER.map(r => (
-            <StatCard
-              key={r}
-              rarity={r}
-              value={inventory?.[r]?.toLocaleString() || '—'}
-            />
-          ))}
+        {/* 背包统计 + 分解 */}
+        <section className="mt-2 md:mt-4">
+          <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-4 mb-3">
+            {RARITY_ORDER.map(r => (
+              <StatCard
+                key={r}
+                rarity={r}
+                value={inventory?.[r]?.toLocaleString() || '—'}
+              />
+            ))}
+          </div>
+          {/* 分解区域 */}
+          <div className="bg-white/40 backdrop-blur-xl border-2 border-outline-variant rounded-2xl md:rounded-[32px] p-3 md:p-5">
+            <h3 className="font-label-bold text-xs md:text-sm text-on-surface-variant mb-2 md:mb-3 flex items-center gap-1">
+              <span className="material-symbols-outlined text-sm md:text-base">recycling</span>
+              分解卡片换取金币
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+              {RARITY_ORDER.map(r => {
+                const owned = inventory?.[r] || 0;
+                const coins = CONFIG_DECOMPOSE[r] || 0;
+                const canDecompose = owned > 0;
+                return (
+                  <div key={r} className="flex items-center gap-2 bg-surface-container-lowest rounded-xl p-2 border border-outline-variant">
+                    <span className={`inline-block text-[10px] md:text-xs font-black text-white px-1.5 py-0.5 rounded ${rarityBg(r)}`}>{r}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] md:text-xs text-on-surface-variant truncate">{coins} 金/张</p>
+                    </div>
+                    <button
+                      onClick={() => handleDecompose(r, 1)}
+                      disabled={!canDecompose || decomposing === r}
+                      className={`text-[10px] md:text-xs px-2 py-0.5 rounded-full border transition-all ${
+                        canDecompose
+                          ? 'bg-error-container text-on-error-container border-error hover:scale-105'
+                          : 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-50'
+                      }`}
+                    >
+                      {decomposing === r ? '...' : '分解'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </section>
 
         {/* 称号系统 */}

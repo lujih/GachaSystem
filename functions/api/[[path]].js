@@ -128,6 +128,10 @@ async function onRequest(context) {
       if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
       return await gachaService.shopBuy(currentUser, request);
     }
+    if (path === '/decompose' && method === 'POST') {
+      if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+      return await gachaService.decompose(currentUser, request);
+    }
 
     // ─── Public (edge-cached) ───
     const CACHE_1M = { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' };
