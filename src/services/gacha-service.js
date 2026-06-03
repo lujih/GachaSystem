@@ -293,6 +293,17 @@ export class GachaService {
     return selectedSlot.asset;
   }
 
+  // 十连抽专用：从预读 slots 中取一个，无 blacklist 检查，最小 KV 开销
+  consumeSlot(slots, sourceList) {
+    if (slots.length > 0) {
+      slots.sort((a, b) => a.lastUsed - b.lastUsed);
+      const slot = slots.shift(); // 取出并移除，避免同批次重复
+      return { ...slot.asset, success: true };
+    }
+    // buffer 为空，不触发慢 HTTP，返回占位
+    return { success: true, imageUrl: null, rarity: sourceList[0]?.rarity || 'N', sourceName: 'Buffer' };
+  }
+
   async hashString(str) {
     const encoder = new TextEncoder();
     const data = encoder.encode(str);
@@ -544,7 +555,7 @@ export class GachaService {
     const failedSlots = [];
     let levelUpResult = null;
 
-    // ③ 按预抽计划逐张执行（跳过 rarity roll 和 buffer slot 读取）
+    // ③ 按预抽计划逐张执行 — 跳过 blacklist 检查，最小化 KV 操作
     for (const plan of drawPlan) {
       const { index: i, rarity, isPity, ssrPity: sp, urPity: up } = plan;
       try {
@@ -552,21 +563,8 @@ export class GachaService {
         const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
         const netCoins = coinsReward - drawCost;
         const { slots, sourceList } = bufferCache[rarity];
-        let asset = await this.consumeGlobalBufferFast(rarity, sourceList, slots);
+        let asset = this.consumeSlot(slots, sourceList);
         if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
-
-        // 同批次图片去重：如果抽到重复图，尝试重新抽一次
-        let finalAsset = asset;
-        if (asset.success && drawnUrls.has(asset.imageUrl)) {
-          try {
-            const retrySources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
-            const retry = await this.fetchAndUploadWithFallback(retrySources[Math.floor(Math.random() * retrySources.length)]);
-            if (retry.success && !drawnUrls.has(retry.imageUrl)) {
-              finalAsset = retry;
-            }
-          } catch {}
-        }
-        if (finalAsset.success) drawnUrls.add(finalAsset.imageUrl);
 
         currentUser.coins = (currentUser.coins || 0) + netCoins;
         currentUser.draw_count = (currentUser.draw_count || 0) + 1;
