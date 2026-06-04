@@ -183,58 +183,58 @@ export default function Library() {
       <Header activeTab="图鉴" />
 
       <main className="relative z-10 max-w-7xl mx-auto px-4 md:px-margin pt-[72px] md:pt-[88px] pb-[100px] md:pb-12">
-        <section className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 md:mb-6 gap-2 md:gap-sm pt-4 md:pt-md">
-          <div>
-            <h1 className="font-headline-lg md:text-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#dbbfc7] mb-1 md:mb-xs">
-              {isBookmarks ? '我的书签' : isMine ? '我的收藏' : '全服图鉴'}
-            </h1>
-            <div className="flex items-center gap-2 md:gap-3">
-              <div className="inline-flex items-center gap-1 md:gap-xs bg-primary-container text-on-primary-container font-label-bold text-[10px] md:text-label-bold px-2 md:px-sm py-1 md:py-xs rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_#770143]">
-                <span className="material-symbols-outlined text-sm md:text-[18px] symbol-filled">style</span>
-                {allCount} 张{isBookmarks ? '已书签' : isMine ? '已收集' : '总图鉴'}
-              </div>
-              {/* Tab 切换 */}
-              <div className="flex gap-1 bg-surface-container p-0.5 rounded-full border border-outline-variant">
+        {/* 标题 + Tab 切换 */}
+        <section className="pt-4 md:pt-md mb-4 md:mb-6">
+          <h1 className="font-headline-lg md:text-display-lg text-display-lg text-on-surface drop-shadow-[2px_2px_0px_#dbbfc7] mb-3">
+            {isBookmarks ? '我的书签' : isMine ? '我的收藏' : '全服图鉴'}
+          </h1>
+          {/* Tab 切换 — 醒目 */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex gap-1 bg-surface-container p-1 rounded-full border-2 border-outline-variant shadow-[2px_2px_0px_0px_#dad9de]">
+              {[
+                { key: 'all', label: '全服', icon: 'public' },
+                ...(user ? [
+                  { key: 'mine', label: '我的', icon: 'person' },
+                  { key: 'bookmarks', label: '书签', icon: 'bookmark' },
+                ] : []),
+              ].map(t => (
                 <button
-                  onClick={() => { const p = buildParams({ sort }); delete p.mode; setSearchParams(p); }}
-                  className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${!isMine && !isBookmarks ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                  key={t.key}
+                  onClick={() => {
+                    const p = buildParams({ sort });
+                    if (t.key === 'all') delete p.mode; else p.mode = t.key;
+                    setSearchParams(p);
+                  }}
+                  className={`flex items-center gap-1 font-label-bold text-xs md:text-sm px-3 md:px-4 py-1.5 rounded-full transition-all ${
+                    mode === t.key || (t.key === 'all' && !isMine && !isBookmarks)
+                      ? 'bg-primary text-on-primary shadow-[2px_2px_0px_0px_#770143]'
+                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant'
+                  }`}
                 >
-                  全服
+                  <span className="material-symbols-outlined text-sm">{t.icon}</span>
+                  {t.label}
                 </button>
-                {user && (
-                  <>
-                    <button
-                      onClick={() => setSearchParams(buildParams({ mode: 'mine', sort }))}
-                      className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isMine ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
-                    >
-                      我的
-                    </button>
-                    <button
-                      onClick={() => setSearchParams(buildParams({ mode: 'bookmarks', sort }))}
-                      className={`font-label-bold text-[10px] md:text-xs px-2.5 py-1 rounded-full transition-all ${isBookmarks ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
-                    >
-                      书签
-                    </button>
-                  </>
-                )}
-              </div>
+              ))}
+            </div>
+            <div className="inline-flex items-center gap-1 bg-primary-container text-on-primary-container font-label-bold text-xs md:text-sm px-3 py-1.5 rounded-full border-2 border-on-primary-container shadow-[2px_2px_0px_0px_#770143]">
+              <span className="material-symbols-outlined text-sm symbol-filled">style</span>
+              {allCount}
             </div>
           </div>
-
-          {/* 稀有度统计 */}
-          <div className="flex gap-1.5 md:gap-2">
+          {/* 稀有度统计条 */}
+          <div className="flex gap-2 md:gap-3 flex-wrap">
             {RARITY_ORDER.map(r => {
               const my = rarityCounts[r] || 0;
               const global = globalRarityCounts[r] || 0;
               const pct = global > 0 ? Math.min(Math.round((my / global) * 100), 100) : 0;
               return (
-                <div key={r} className="text-center min-w-[40px]">
-                  <span className={`inline-block text-[9px] md:text-[10px] font-black text-white px-1.5 py-0.5 rounded ${rarityBg(r)}`}>{r}</span>
-                  <p className="text-[10px] md:text-xs font-bold text-on-surface-variant mt-0.5">
+                <div key={r} className="flex items-center gap-1.5">
+                  <span className={`inline-block text-[10px] font-black text-white px-1.5 py-0.5 rounded ${rarityBg(r)}`}>{r}</span>
+                  <span className="text-xs font-bold text-on-surface-variant">
                     {isMine ? `${my}/${global}` : my}
-                  </p>
+                  </span>
                   {isMine && global > 0 && (
-                    <div className="w-full h-1 bg-surface-variant rounded-full mt-0.5 overflow-hidden">
+                    <div className="w-12 h-1.5 bg-surface-variant rounded-full overflow-hidden">
                       <div className={`h-full ${rarityBg(r)} rounded-full transition-all`} style={{ width: `${pct}%` }} />
                     </div>
                   )}
@@ -242,97 +242,89 @@ export default function Library() {
               );
             })}
           </div>
-          {/* 收集进度总览（我的收藏模式） */}
+          {/* 收集进度条（我的收藏模式） */}
           {isMine && globalTotal > 0 && (
-            <div className="mt-2 md:mt-3">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] md:text-xs text-on-surface-variant">收集进度</span>
-                <span className="text-[10px] md:text-xs font-bold text-primary">{allCount} / {globalTotal}</span>
-                <span className="text-[10px] md:text-xs text-outline">({globalTotal > 0 ? Math.round((allCount / globalTotal) * 100) : 0}%)</span>
+            <div className="mt-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs text-on-surface-variant">收集进度</span>
+                <span className="text-xs font-bold text-primary">{allCount} / {globalTotal}</span>
+                <span className="text-xs text-outline">({Math.round((allCount / globalTotal) * 100)}%)</span>
               </div>
-              <div className="w-full h-1.5 md:h-2 bg-surface-variant rounded-full mt-1 overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all" style={{ width: `${globalTotal > 0 ? Math.min((allCount / globalTotal) * 100, 100) : 0}%` }} />
+              <div className="w-full h-2 bg-surface-variant rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all" style={{ width: `${Math.min((allCount / globalTotal) * 100, 100)}%` }} />
               </div>
             </div>
           )}
         </section>
 
-        {/* 筛选栏 */}
-        <section className="flex flex-col gap-2 md:gap-sm mb-4 md:mb-6">
-          <div className="flex flex-wrap gap-2 md:gap-md items-center justify-between">
-            {/* 稀有度筛选 */}
-            <div className="flex flex-wrap gap-2 md:gap-md items-center">
-              <div className="flex gap-1 md:gap-xs bg-surface-container p-1 md:p-xs rounded-full border-2 border-surface-variant shadow-[2px_2px_0px_0px_#dad9de]">
-                {['', 'UR', 'SSR', 'SR', 'R', 'N'].map(r => (
-                  <button
-                    key={r || 'all'}
-                    onClick={() => {
-                      const p = buildParams({ sort });
-                      if (r) p.rarity = r; else delete p.rarity;
-                      setSearchParams(p);
-                    }}
-                    className={`font-label-bold text-[10px] md:text-label-bold px-2 md:px-md py-1 md:py-xs rounded-full border-2 transition-all duration-200 hover:-translate-y-1 active:translate-y-0 ${
-                      rarity === r
-                        ? 'bg-tertiary text-on-tertiary border-on-tertiary-container shadow-[2px_2px_0px_0px_#473a00]'
-                        : 'bg-surface-bright text-on-surface border-outline-variant hover:bg-surface-variant'
-                    }`}
-                  >
-                    {r || '全部'}
-                  </button>
-                ))}
-              </div>
-              {rarity && (
-                <span className="text-xs text-on-surface-variant">
-                  {total} 张
-                </span>
-              )}
-            </div>
-            {/* 排序 */}
-            <select
-              value={sort}
-              onChange={e => setSearchParams(buildParams({ sort: e.target.value, ...(rarity && { rarity }) }))}
-              className="text-xs font-label-bold bg-surface-container text-on-surface border-2 border-outline-variant rounded-full px-3 py-1.5 outline-none cursor-pointer"
-            >
-              <option value="newest">最新获得</option>
-              <option value="oldest">最早获得</option>
-              <option value="rarity">稀有度优先</option>
-              <option value="hot">最热门</option>
-            </select>
-          </div>
-          {/* 搜索 + 时间筛选 */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <form onSubmit={handleSearch} className="flex items-center gap-1">
-              <input
-                type="text"
-                value={searchInput}
-                onChange={e => setSearchInput(e.target.value)}
-                placeholder="搜索用户名..."
-                className="text-xs bg-surface-container text-on-surface border-2 border-outline-variant rounded-full px-3 py-1.5 outline-none w-32 md:w-40 focus:border-primary transition-colors"
-              />
-              <button type="submit" className="text-xs bg-surface-container text-on-surface border-2 border-outline-variant rounded-full px-2.5 py-1.5 hover:bg-surface-variant transition-colors">
-                <span className="material-symbols-outlined text-sm">search</span>
+        {/* 筛选栏 — 一行紧凑布局 */}
+        <section className="flex flex-wrap items-center gap-2 mb-4 md:mb-6">
+          {/* 稀有度筛选 */}
+          <div className="flex gap-0.5 bg-surface-container p-0.5 rounded-full border border-outline-variant">
+            {['', 'UR', 'SSR', 'SR', 'R', 'N'].map(r => (
+              <button
+                key={r || 'all'}
+                onClick={() => {
+                  const p = buildParams({ sort });
+                  if (r) p.rarity = r; else delete p.rarity;
+                  setSearchParams(p);
+                }}
+                className={`text-[10px] md:text-xs font-label-bold px-2 py-1 rounded-full transition-all ${
+                  rarity === r
+                    ? 'bg-tertiary text-on-tertiary shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                {r || '全部'}
               </button>
-              {search && (
-                <button type="button" onClick={() => { setSearchInput(''); setSearchParams(buildParams({ sort, ...(rarity && { rarity }) })); }} className="text-xs text-on-surface-variant hover:text-on-surface">
-                  ✕
-                </button>
-              )}
-            </form>
-            <select
-              value={period}
-              onChange={e => setSearchParams(buildParams({ period: e.target.value, sort, ...(rarity && { rarity }) }))}
-              className="text-xs font-label-bold bg-surface-container text-on-surface border-2 border-outline-variant rounded-full px-3 py-1.5 outline-none cursor-pointer"
-            >
-              <option value="all">全部时间</option>
-              <option value="today">今天</option>
-              <option value="week">本周</option>
-              <option value="month">本月</option>
-            </select>
+            ))}
           </div>
-          {rarity && (
-            <span className="text-xs text-on-surface-variant">
-              筛选 {rarity}：{total} 张
-            </span>
+          {/* 排序 */}
+          <select
+            value={sort}
+            onChange={e => setSearchParams(buildParams({ sort: e.target.value, ...(rarity && { rarity }) }))}
+            className="text-xs font-label-bold bg-surface-container text-on-surface border border-outline-variant rounded-full px-3 py-1 outline-none cursor-pointer"
+          >
+            <option value="newest">最新</option>
+            <option value="oldest">最早</option>
+            <option value="rarity">稀有度</option>
+          </select>
+          {/* 时间 */}
+          <select
+            value={period}
+            onChange={e => setSearchParams(buildParams({ period: e.target.value, sort, ...(rarity && { rarity }) }))}
+            className="text-xs font-label-bold bg-surface-container text-on-surface border border-outline-variant rounded-full px-3 py-1 outline-none cursor-pointer"
+          >
+            <option value="all">全部时间</option>
+            <option value="today">今天</option>
+            <option value="week">本周</option>
+            <option value="month">本月</option>
+          </select>
+          {/* 搜索 */}
+          <form onSubmit={handleSearch} className="flex items-center gap-1 ml-auto">
+            <input
+              type="text"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder="搜索用户..."
+              className="text-xs bg-surface-container text-on-surface border border-outline-variant rounded-full px-3 py-1 outline-none w-28 md:w-40 focus:border-primary transition-colors"
+            />
+            <button type="submit" className="text-xs bg-surface-container text-on-surface border border-outline-variant rounded-full px-2 py-1 hover:bg-surface-variant transition-colors">
+              <span className="material-symbols-outlined text-sm">search</span>
+            </button>
+            {search && (
+              <button type="button" onClick={() => { setSearchInput(''); setSearchParams(buildParams({ sort, ...(rarity && { rarity }) })); }} className="text-xs text-on-surface-variant hover:text-on-surface px-1">
+                ✕
+              </button>
+            )}
+          </form>
+          {/* 活动筛选指示 */}
+          {(rarity || search || period !== 'all') && (
+            <div className="w-full flex items-center gap-2 text-[10px] md:text-xs text-on-surface-variant">
+              {rarity && <span className="bg-tertiary-container text-on-tertiary-container px-2 py-0.5 rounded-full">{rarity} · {total} 张</span>}
+              {search && <span className="bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full">"{search}"</span>}
+              {period !== 'all' && <span className="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full">{{ today: '今天', week: '本周', month: '本月' }[period]}</span>}
+            </div>
           )}
         </section>
 
@@ -377,23 +369,40 @@ export default function Library() {
 
         {/* 分页 */}
         {totalPages > 1 && (
-          <div className="mt-6 md:mt-xl flex justify-center items-center gap-3 pb-6 md:pb-xl">
+          <div className="mt-6 md:mt-xl flex justify-center items-center gap-1.5 md:gap-2 pb-6 md:pb-xl">
             <button
               onClick={() => setSearchParams(buildParams({ page: String(page - 1), sort, ...(rarity && { rarity }) }))}
               disabled={page <= 1}
-              className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
+              className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-full border border-outline-variant bg-surface-container text-on-surface disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
             >
-              上一页
+              <span className="material-symbols-outlined text-sm">chevron_left</span>
             </button>
-            <span className="text-xs text-on-surface-variant font-label-bold">
-              {page} / {totalPages}
-            </span>
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              let p;
+              if (totalPages <= 7) p = i + 1;
+              else if (page <= 4) p = i + 1;
+              else if (page >= totalPages - 3) p = totalPages - 6 + i;
+              else p = page - 3 + i;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setSearchParams(buildParams({ page: String(p), sort, ...(rarity && { rarity }) }))}
+                  className={`w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-full text-xs font-label-bold transition-all ${
+                    p === page
+                      ? 'bg-primary text-on-primary shadow-[2px_2px_0px_0px_#770143]'
+                      : 'border border-outline-variant bg-surface-container text-on-surface hover:bg-surface-variant'
+                  }`}
+                >
+                  {p}
+                </button>
+              );
+            })}
             <button
               onClick={() => setSearchParams(buildParams({ page: String(page + 1), sort, ...(rarity && { rarity }) }))}
               disabled={page >= totalPages}
-              className="font-button-text text-xs md:text-sm px-4 py-2 rounded-full border-2 border-outline-variant bg-surface-container text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant active:bg-surface-container-high transition-colors"
+              className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-full border border-outline-variant bg-surface-container text-on-surface disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
             >
-              下一页
+              <span className="material-symbols-outlined text-sm">chevron_right</span>
             </button>
           </div>
         )}
