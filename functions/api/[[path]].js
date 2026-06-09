@@ -272,7 +272,8 @@ async function onRequest(context) {
       if (path === '/admin/verify' && method === 'POST') return jsonResponse({ success: true });
 
       if (path === '/admin/users' && method === 'POST') {
-        const { limit = 100, offset = 0 } = await request.clone().json();
+        const { limit = 100, page = 1 } = await request.clone().json();
+        const offset = (page - 1) * limit;
         const users = await env.DB.prepare(
           'SELECT id, username, nickname, coins, level, exp, total_exp, created_at FROM users ORDER BY id DESC LIMIT ? OFFSET ?'
         ).bind(limit, offset).all();

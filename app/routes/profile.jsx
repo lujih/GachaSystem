@@ -102,13 +102,15 @@ export default function Profile() {
   const handleDecompose = useCallback(async (rarity, count = 1) => {
     if (decomposing) return;
     setDecomposing(rarity);
+    // 乐观更新：先扣库存
+    setInventory(prev => prev ? { ...prev, [rarity]: Math.max(0, (prev[rarity] || 0) - count) } : prev);
     try {
       const res = await api.decompose(rarity, count);
       await refreshUser();
-      // 更新本地库存
-      setInventory(prev => prev ? { ...prev, [rarity]: Math.max(0, (prev[rarity] || 0) - count) } : prev);
       showToast(`分解 ${count} 张 ${rarity} → +${res.totalCoins} 金币`);
     } catch (e) {
+      // 回滚乐观更新
+      setInventory(prev => prev ? { ...prev, [rarity]: (prev[rarity] || 0) + count } : prev);
       showToast(e?.message || '分解失败', 'error');
     } finally {
       setDecomposing(null);
@@ -178,7 +180,7 @@ export default function Profile() {
               <div className="absolute inset-0 bg-secondary rounded-full translate-x-1 md:translate-x-2 translate-y-1 md:translate-y-2 group-hover:translate-x-2 group-hover:translate-y-2 md:group-hover:translate-x-3 md:group-hover:translate-y-3 transition-transform" />
               <div className="relative w-full h-full rounded-full border-4 border-secondary overflow-hidden bg-surface-variant flex items-center justify-center z-10">
                 <div className="text-3xl md:text-8xl font-black text-primary-container">
-                  {(user.nickname || user.username || '?')[0].toUpperCase()}
+                  {(user.nickname || user.username || '?').charAt(0).toUpperCase()}
                 </div>
               </div>
               <div className="absolute -bottom-2 right-2 md:right-4 z-20">

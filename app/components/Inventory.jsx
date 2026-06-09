@@ -1,17 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '~/hooks/useAuth';
 import { api } from '~/lib/api';
+import { rarityBg, RARITY_ORDER } from '~/lib/rarity';
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
 import { Button } from '~/components/ui/button';
 import { Badge } from '~/components/ui/badge';
-
-const RARITY_CONFIG = {
-  N: { color: 'bg-gray-500', label: 'N' },
-  R: { color: 'bg-blue-500', label: 'R' },
-  SR: { color: 'bg-purple-500', label: 'SR' },
-  SSR: { color: 'bg-amber-500', label: 'SSR' },
-  UR: { color: 'bg-red-500', label: 'UR' },
-};
 
 export default function Inventory() {
   const { user } = useAuth();
@@ -52,9 +45,9 @@ export default function Inventory() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-5 gap-2">
-          {Object.entries(RARITY_CONFIG).map(([rarity, config]) => (
+          {RARITY_ORDER.map(rarity => (
             <div key={rarity} className="text-center p-3 rounded-lg bg-white/50 border border-white/20">
-              <Badge className={`${config.color} text-white mb-2`}>{config.label}</Badge>
+              <Badge className={`${rarityBg(rarity)} text-white mb-2`}>{rarity}</Badge>
               <p className="text-2xl font-bold text-gray-800">{inventory[rarity] || 0}</p>
             </div>
           ))}

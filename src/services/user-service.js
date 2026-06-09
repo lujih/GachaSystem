@@ -6,7 +6,7 @@
 import { CONFIG } from '../config/index.js';
 import { getBeijingTime, getBeijingISOString, getBeijingDateStr, toDateStr, utcToBeijing } from '../utils/time.js';
 import { jsonResponse } from '../utils/response.js';
-import { validateUsername, validatePassword } from '../utils/validation.js';
+import { validateUsername, validatePassword, validateNickname } from '../utils/validation.js';
 
 export class UserService {
   constructor(env, ctx = null) {
@@ -411,9 +411,11 @@ export class UserService {
       urPityAt: CONFIG.PITY.UR.at,
     };
 
-    this.safeWaitUntil(
-      this.env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: CONFIG.TTL.USER_INFO })
-    );
+    if (this.env.KV_CACHE) {
+      this.safeWaitUntil(
+        this.env.KV_CACHE.put(cacheKey, JSON.stringify(responseData), { expirationTtl: CONFIG.TTL.USER_INFO })
+      );
+    }
 
     return jsonResponse(responseData, 200, { 'X-Cache-Status': 'MISS' });
   }
@@ -490,9 +492,8 @@ export class UserService {
     if (!currentUser) return jsonResponse({ error: '未授权' }, 401);
     const { nickname } = await request.json();
     
-    if (!nickname || nickname.length > 20) {
-      return jsonResponse({ error: '无效的昵称' }, 400);
-    }
+    const nickError = validateNickname(nickname);
+    if (nickError) return jsonResponse({ error: nickError }, 400);
 
     try {
       await this.env.DB.prepare('UPDATE users SET nickname = ? WHERE id = ?')
