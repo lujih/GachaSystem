@@ -5,7 +5,7 @@ import BottomNav from '~/components/BottomNav';
 import Toast from '~/components/Toast';
 import { api } from '~/lib/api';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { RARITY_COLORS, RARITY_ORDER } from '~/lib/rarity';
+import { RARITY_COLORS, RARITY_ORDER, rarityBg } from '~/lib/rarity';
 
 const CONFIG_DECOMPOSE = { 'N': 50, 'R': 30, 'SR': 80, 'SSR': 250, 'UR': 1000 };
 
