@@ -106,10 +106,10 @@ export default function Profile() {
     setInventory(prev => prev ? { ...prev, [rarity]: Math.max(0, (prev[rarity] || 0) - count) } : prev);
     try {
       const res = await api.decompose(rarity, count);
-      await refreshUser();
+      if (!res) throw new Error('分解失败');
       showToast(`分解 ${count} 张 ${rarity} → +${res.totalCoins} 金币`);
+      await refreshUser();
     } catch (e) {
-      // 回滚乐观更新
       setInventory(prev => prev ? { ...prev, [rarity]: (prev[rarity] || 0) + count } : prev);
       showToast(e?.message || '分解失败', 'error');
     } finally {

@@ -3,6 +3,7 @@ import BottomNav from '~/components/BottomNav';
 import Toast from '~/components/Toast';
 import { useAuth } from '~/hooks/useAuth';
 import { api } from '~/lib/api';
+import { useRouteError } from '@remix-run/react';
 import { rarityBg, rarityBorder, rarityText, rarityGlow } from '~/lib/rarity';
 import { useState, useEffect } from 'react';
 
@@ -47,12 +48,13 @@ export default function Synthesis() {
         setResultAnim(true);
         setTimeout(() => setResultAnim(false), 800);
         showToast(`合成成功！消耗 ${res.consumed}，+${res.expGained} 经验`, 'success');
-        // 刷新库存和用户数据
         const [inv] = await Promise.all([api.getInventory(), refreshUser()]);
         setInventory(inv.data || inv || { N: 0, R: 0, SR: 0, SSR: 0, UR: 0 });
         if (res.levelUp) {
           setTimeout(() => showToast(`🎉 升级！Lv.${res.levelUp.newLevel}，+${res.levelUp.reward} 金币`, 'success'), 1500);
         }
+      } else {
+        showToast('合成失败', 'error');
       }
     } catch (e) {
       showToast(e?.message || '合成失败', 'error');
@@ -205,6 +207,20 @@ export default function Synthesis() {
           onClose={() => setToast(null)}
         />
       )}
+    </div>
+  );
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="text-center">
+        <span className="material-symbols-outlined text-4xl text-error mb-4">error</span>
+        <h1 className="text-xl font-bold mb-2">合成页面加载失败</h1>
+        <p className="text-on-surface-variant mb-4">{error?.message || '未知错误'}</p>
+        <a href="/" className="text-primary underline">返回首页</a>
+      </div>
     </div>
   );
 }

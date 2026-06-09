@@ -169,8 +169,8 @@ export class GachaService {
   applyPity(rarity, ssrPity, urPity) {
     const ssrAt = CONFIG.PITY.SSR.at;
     const urAt = CONFIG.PITY.UR.at;
-    if (urAt > 0 && urPity >= urAt) return { rarity: 'UR', isPity: true };
-    if (ssrAt > 0 && ssrPity >= ssrAt) return { rarity: 'SSR', isPity: true };
+    if (urAt > 0 && urPity >= urAt - 1) return { rarity: 'UR', isPity: true };
+    if (ssrAt > 0 && ssrPity >= ssrAt - 1) return { rarity: 'SSR', isPity: true };
     return { rarity, isPity: false };
   }
 
@@ -801,8 +801,6 @@ export class GachaService {
       currentUser.exp = levelUpResult.newExp;
     }
 
-    const netCoinsDB = (levelUpResult?.coinsReward || 0) - cost;
-    const levelUpCoins = levelUpResult ? levelUpResult.coinsReward : 0;
     const levelUpCoins = levelUpResult ? levelUpResult.coinsReward : 0;
     const userStatements = [
       this.env.DB.prepare('UPDATE users SET coins = coins - ? + ?, draw_count = draw_count + ?, total_exp = total_exp + ? WHERE id = ?').bind(cost, levelUpCoins, count, totalExp, currentUser.id)
@@ -875,15 +873,7 @@ export class GachaService {
     const targetSources = CONFIG.SOURCES.filter(s => s.rarity === targetRarity);
     if (targetSources.length === 0) return jsonResponse({ error: `找不到 ${targetRarity} 图源` }, 500);
     const asset = await this.consumeGlobalBuffer(targetRarity, targetSources);
-    // batch 事务：扣除材料 + 增加成品 + 等级奖励金币
-    const coinsReward = levelUpResult?.coinsReward || 0;
-    const stmts = [
-      this.env.DB.prepare('UPDATE inventory SET count = count - ? WHERE user_id = ? AND rarity = ?').bind(cost, currentUser.id, sourceRarity),
-      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, targetRarity)
-    ];
-    if (coinsReward > 0) stmts.push(this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(coinsReward, currentUser.id));
-    if (levelUpResult) stmts.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, currentUser.exp, currentUser.id));
-    await this.env.DB.batch(stmts);
+    // 先计算等级和金币奖励，再写入 DB
     const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT || 50;
     currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
     const levelUpInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
@@ -896,6 +886,15 @@ export class GachaService {
       currentUser.level = levelUpResult.newLevel;
       currentUser.exp = levelUpInfo.currentExp;
     }
+    // batch 事务：扣除材料 + 增加成品 + 升级金币和经验
+    const levelUpCoins = levelUpResult ? levelUpResult.coinsReward : 0;
+    const craftStmts = [
+      this.env.DB.prepare('UPDATE inventory SET count = count - ? WHERE user_id = ? AND rarity = ?').bind(cost, currentUser.id, sourceRarity),
+      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, targetRarity)
+    ];
+    if (levelUpCoins > 0) craftStmts.push(this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(levelUpCoins, currentUser.id));
+    if (levelUpResult) craftStmts.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, currentUser.exp, currentUser.id));
+    await this.env.DB.batch(craftStmts);
     if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
     return jsonResponse({

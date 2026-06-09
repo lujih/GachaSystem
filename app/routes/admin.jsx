@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Header from '~/components/Header';
 import { api } from '~/lib/api';
+import { useRouteError } from '@remix-run/react';
 
 export default function Admin() {
   const [password, setPassword] = useState('');
@@ -16,10 +17,10 @@ export default function Admin() {
       const res = await api.adminVerify(password);
       if (res.success) {
         setAuthed(true);
-        handleLoadUsers();
+        await handleLoadUsers();
       }
     } catch (e) {
-      setError('Invalid password');
+      setError('认证失败');
     }
   }
 
@@ -27,14 +28,18 @@ export default function Admin() {
     try {
       const res = await api.adminUsers(password, page);
       setUsers(res.users || []);
-    } catch (e) {}
+    } catch (e) {
+      setError('加载用户列表失败');
+    }
   }
 
   async function handleLoadUploads(status = 'pending') {
     try {
       const res = await api.adminUploads(password, status);
       setUploads(res.uploads || []);
-    } catch (e) {}
+    } catch (e) {
+      setError('加载上传列表失败');
+    }
   }
 
   if (!authed) {
@@ -76,8 +81,22 @@ export default function Admin() {
           </div>
         </div>
       </div>
-    );
-  }
+  );
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  return (
+    <div className="min-h-screen bg-surface-container-low bg-grid-pattern flex items-center justify-center p-4">
+      <div className="text-center">
+        <span className="material-symbols-outlined text-4xl text-error mb-4">error</span>
+        <h1 className="text-xl font-bold mb-2">管理面板加载失败</h1>
+        <p className="text-on-surface-variant mb-4">{error?.message || '未知错误'}</p>
+        <a href="/" className="text-primary underline">返回首页</a>
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="min-h-screen bg-surface-container-low bg-grid-pattern flex">
@@ -130,26 +149,25 @@ export default function Admin() {
             </div>
           </div>
 
-          {/* Metrics Grid */}
+           {/* Metrics Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-margin">
             <MetricCard
               icon="groups"
-              label="Active Users"
-              value="1,204,592"
-              trend="+12%"
+              label="Total Users"
+              value={users.length}
               color="primary"
             />
             <MetricCard
-              icon="paid"
-              label="Points Circulation"
-              value="84.5B"
+              icon="upload"
+              label="Pending Uploads"
+              value={uploads.filter(u => u.status === 'pending').length}
               color="secondary"
             />
             <MetricCard
-              icon="dns"
-              label="Server Health"
-              value="Optimal"
-              subtitle="All 14 clusters online"
+              icon="inventory_2"
+              label="Data Tables"
+              value="8"
+              subtitle="users, gallery, inventory, logs, rewards, titles, uploads, draw_history"
               color="tertiary"
             />
           </div>
@@ -215,8 +233,12 @@ export default function Admin() {
               />
               <button
                 onClick={async () => {
-                  await api.adminSaveAnnouncement(password, { ...announcement, enabled: true });
-                  alert('Saved!');
+                  try {
+                    await api.adminSaveAnnouncement(password, { ...announcement, enabled: true });
+                    setAnnouncement({ title: '', content: '' });
+                  } catch (e) {
+                    console.error('Publish failed:', e);
+                  }
                 }}
                 className="bg-primary text-on-primary font-button-text text-button-text px-8 py-3 rounded-full border-2 border-on-primary-container shadow-[4px_4px_0px_0px_#770143] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all"
               >

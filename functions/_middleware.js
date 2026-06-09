@@ -20,18 +20,17 @@ export async function onRequest(context) {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-ID, X-Session-Token',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-ID, X-Session-Token, X-Admin-Mode',
         'Access-Control-Max-Age': '86400',
       },
     });
   }
 
-  // Skip session lookup for public API paths and non-API static asset requests
+  // Skip session lookup for public API paths — resolve session for all other requests
   const pathname = url.pathname;
   const isPublicApi = PUBLIC_PATHS.has(pathname);
-  const isStaticAsset = !pathname.startsWith('/api') && !pathname.startsWith('/auth') && request.method === 'GET';
 
-  if (!isPublicApi && !isStaticAsset) {
+  if (!isPublicApi) {
     const token = request.headers.get('X-Session-Token');
     if (token) {
       try {

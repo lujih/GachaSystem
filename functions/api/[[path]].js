@@ -38,9 +38,19 @@ async function onRequest(context) {
   try {
     // ─── Auth ───
     if (path === '/auth/register' && method === 'POST') {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const rlKey = `rl:register:${ip}`;
+      const rl = await env.KV_CACHE.get(rlKey);
+      if (rl && parseInt(rl) >= 5) return jsonResponse({ error: '操作过于频繁，请稍后重试' }, 429);
+      await env.KV_CACHE.put(rlKey, String((parseInt(rl) || 0) + 1), { expirationTtl: 600 });
       return await userService.register(request);
     }
     if (path === '/auth/login' && method === 'POST') {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const rlKey = `rl:login:${ip}`;
+      const rl = await env.KV_CACHE.get(rlKey);
+      if (rl && parseInt(rl) >= 10) return jsonResponse({ error: '操作过于频繁，请稍后重试' }, 429);
+      await env.KV_CACHE.put(rlKey, String((parseInt(rl) || 0) + 1), { expirationTtl: 600 });
       return await userService.login(request);
     }
 
