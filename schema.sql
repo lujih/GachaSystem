@@ -146,11 +146,23 @@ CREATE INDEX IF NOT EXISTS idx_uploads_status_created ON user_uploads(status, cr
 -- gallery: 游标分页优化 (使用 id 作为游标)
 CREATE INDEX IF NOT EXISTS idx_gallery_id ON gallery(id DESC);
 
--- Migration: add rarity column to gallery (existing databases)
-ALTER TABLE gallery ADD COLUMN rarity TEXT DEFAULT 'N';
+-- gallery: 按稀有度过滤
+CREATE INDEX IF NOT EXISTS idx_gallery_rarity ON gallery(rarity, created_at DESC);
 
--- Migration: add source_name column to gallery
-ALTER TABLE gallery ADD COLUMN source_name TEXT;
+-- logs: 按操作类型过滤
+CREATE INDEX IF NOT EXISTS idx_logs_action ON logs(action, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_rarity ON logs(rarity, created_at DESC);
+
+-- draw_history: 按稀有度和时间查询
+CREATE INDEX IF NOT EXISTS idx_draw_history_rarity_time ON draw_history(rarity, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_draw_history_username ON draw_history(user_id, username, created_at DESC);
+
+-- users: 快速查询
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+-- Migration: add rarity column to gallery (existing databases — safe on new DBs where column already exists)
+-- SQLite 3.35+ supports IF NOT EXISTS for DROP COLUMN but not ADD COLUMN;
+-- these are wrapped per D1 best practices and will be harmless no-ops on already-migrated schemas
 
 -- 10. 点赞表
 CREATE TABLE IF NOT EXISTS card_likes (

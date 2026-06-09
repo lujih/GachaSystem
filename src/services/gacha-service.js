@@ -574,18 +574,16 @@ export class GachaService {
 
         const lvlInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
         if (lvlInfo.level > currentUser.level) {
-          levelUpResult = {
-            fromLevel: currentUser.level,
-            toLevel: lvlInfo.level,
-            coinsReward: (lvlInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL
-          };
+          if (!levelUpResult) levelUpResult = { fromLevel: currentUser.level, toLevel: lvlInfo.level, coinsReward: 0 };
+          levelUpResult.toLevel = lvlInfo.level;
+          levelUpResult.coinsReward += (lvlInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL;
           currentUser.level = lvlInfo.level;
           currentUser.exp = lvlInfo.currentExp;
         }
 
         cards.push({
           rarity,
-          asset: finalAsset.success ? { url: finalAsset.imageUrl, sourceName: finalAsset.sourceName } : null,
+          asset: asset.success ? { url: asset.imageUrl, sourceName: asset.sourceName } : null,
           isPity,
           pityInfo: { ssrPity: sp, urPity: up, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at }
         });
@@ -593,14 +591,14 @@ export class GachaService {
         // 收集 DB statements（不立即执行）
         dbStatements.push(
           this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity),
-          this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, finalAsset.sourceName || '常驻池', Date.now() + i)
+          this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, asset.sourceName || '常驻池', Date.now() + i)
         );
 
         // 异步更新图库和排行榜
-        if (finalAsset.success) {
-          this.safeWaitUntil(updateGalleryIndex(this.env, { url: finalAsset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: finalAsset.sourceName, ts: getBeijingISOString() }));
+        if (asset.success) {
+          this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
           if (rarity === 'UR') {
-            this.safeWaitUntil(updateLeaderboard(this.env, { username: currentUser.username, rarity, imageUrl: finalAsset.imageUrl, ts: Date.now() + i }));
+            this.safeWaitUntil(updateLeaderboard(this.env, { username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() + i }));
           }
         }
       } catch (e) {
@@ -978,7 +976,7 @@ export class GachaService {
   // ==================== 骰子游戏 ====================
   async playDice(currentUser, request) {
     if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const { poolId, betAmount } = await request.json() || {};
+    const { betAmount } = await request.json() || {};
     const diceConfig = CONFIG.GAME.DICE;
     const bet = Math.min(Math.max(parseInt(betAmount) || 1, diceConfig.MIN_BET || 1), diceConfig.MAX_BET || 5);
     const cost = bet;

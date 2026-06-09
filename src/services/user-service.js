@@ -6,6 +6,7 @@
 import { CONFIG } from '../config/index.js';
 import { getBeijingTime, getBeijingISOString, getBeijingDateStr, toDateStr, utcToBeijing } from '../utils/time.js';
 import { jsonResponse } from '../utils/response.js';
+import { validateUsername, validatePassword } from '../utils/validation.js';
 
 export class UserService {
   constructor(env, ctx = null) {
@@ -115,6 +116,11 @@ export class UserService {
     const { username, nickname, password } = await request.json();
     if (!username || !password) return jsonResponse({ error: '缺少必要字段' }, 400);
 
+    const usernameError = validateUsername(username);
+    if (usernameError) return jsonResponse({ error: usernameError }, 400);
+    const passwordError = validatePassword(password);
+    if (passwordError) return jsonResponse({ error: passwordError }, 400);
+
     try {
       const hashedPassword = await this.hashPassword(password);
       
@@ -136,7 +142,10 @@ export class UserService {
       return jsonResponse({ success: true });
     } catch (e) {
       console.error(e);
-      return jsonResponse({ error: '用户名已被占用' }, 409);
+      if (e.message?.includes('UNIQUE constraint')) {
+        return jsonResponse({ error: '用户名已被占用' }, 409);
+      }
+      return jsonResponse({ error: '注册失败，请稍后重试' }, 500);
     }
   }
 
@@ -317,7 +326,7 @@ export class UserService {
     tomorrowBeijing.setUTCHours(16, 0, 0, 0);
 
     const secondsUntilMidnight = Math.floor((tomorrowBeijing - beijingNow) / 1000);
-    const ttl = secondsUntilMidnight + CONFIG.TTL.SESSION;
+    const ttl = Math.max(secondsUntilMidnight, 0) + CONFIG.TTL.SESSION;
 
     await this.env.KV_CACHE.put(`session:${token}`, JSON.stringify(sessionData), { expirationTtl: ttl });
 

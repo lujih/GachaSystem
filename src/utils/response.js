@@ -19,10 +19,10 @@ import { AppError } from './AppError.js';
  * return jsonResponse({ success: false, error: '错误消息' }, 400);
  */
 export function jsonResponse(data, status = 200, extraHeaders = {}) {
-  // 确保响应数据格式统一
-  const responseData = data.success !== undefined 
-    ? data 
-    : { success: true, data };
+  if (data.success === undefined) {
+    data.success = status < 400;
+  }
+  const responseData = data;
   
   const headers = { 
     'Content-Type': 'application/json', 
@@ -96,7 +96,7 @@ export async function requireAdmin(request, env) {
     
     return { authorized: true, password: body.password };
   } catch (error) {
-    throw AppError.validationError('请求体必须是有效的JSON格式');
+    return { authorized: false, error: '请求体必须是有效的JSON格式' };
   }
 }
 

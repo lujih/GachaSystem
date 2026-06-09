@@ -2,25 +2,24 @@
 
 ## Overview
 
-Remix v2 SPA-like app on Cloudflare Pages. React 18 + TypeScript + Tailwind CSS v4 + shadcn/ui (base-nova style). D1 (SQLite), KV, R2 for data/caching/images.
+Remix v2 SPA on Cloudflare Pages. React 18 + TypeScript + Tailwind CSS v4 + shadcn/ui (base-nova style). D1 (SQLite), KV, R2.
 
-Behavioral conventions in `CLAUDE.md` — read that too.
+Behavioral conventions in `CLAUDE.md`.
 
 ## Commands
 
 ```bash
-npm run dev          # remix vite:dev (Vite HMR dev server)
+npm run dev          # remix vite:dev (Vite HMR)
 npm run build        # remix vite:build → build/server/ + build/client/
 npm run deploy       # npm run build && wrangler deploy
-npm run typecheck    # tsc (noEmit, just type checking)
-npm run start        # wrangler pages dev ./build/client (local preview with Functions)
+npm run typecheck    # tsc --noEmit (only static check — no tests, no linter)
+npm run start        # wrangler pages dev ./build/client
+npm run preview      # npm run build && wrangler dev
 ```
 
-- No test framework. No linting configured.
-- D1 binding: `DB`, KV bindings: `KV_CACHE` / `RECENT_REQUESTS`, R2: `R2_BUCKET`.
 - D1 migration: `npx wrangler d1 execute chouka --remote --file=./schema.sql`
-- `.dev.vars` stores local secrets (`admin`, `GITHUB_TOKEN`, etc.) — gitignored.
-- `.npmrc`: `legacy-peer-deps=true` (shadcn dependency resolution).
+- `.npmrc`: `legacy-peer-deps=true` (shadcn compatibility)
+- `.dev.vars` — local secrets (`admin`, `GITHUB_TOKEN`), gitignored
 
 ## Architecture
 
@@ -28,57 +27,60 @@ npm run start        # wrangler pages dev ./build/client (local preview with Fun
 
 ```
 Browser → Cloudflare Pages
-  /api/* → functions/_middleware.js (session + CORS) → functions/api/[[path]].js (API dispatch)
-  /*     → functions/_middleware.js → functions/[[path]].js (Remix SSR via server build)
+  /api/* → functions/_middleware.js (session + CORS) → functions/api/[[path]].js
+  /*     → functions/_middleware.js → functions/[[path]].js (Remix SSR)
 ```
 
-- **`functions/_middleware.js`**: global middleware — CORS preflight + parses `X-Session-Token` header, loads user from `KV_CACHE(session:{token})`, attaches to `context.data.currentUser`.
-- **`functions/api/[[path]].js`**: monolithic API router. Routes matched by `path.startsWith()` + string compare. Services instantiated per-request: `new UserService(env, ctx)`, `new GachaService(env, ctx, userService)`.
-- **`functions/[[path]].js`**: Remix server entry — imports `build/server/index.js`, calls `createPagesFunctionHandler()`.
-- **`load-context.ts`**: injects `env`/`ctx` into Remix `AppLoadContext` for server `loader` functions.
-- **Dead code warning**: `functions/api/admin.js`, `showcase.js`, `library.js`, `changelog.js`, `announcement.js` are **not used** — `[[path]].js` catches all `/api/*` routes first.
+- `functions/_middleware.js`: CORS preflight, reads `X-Session-Token` → `KV_CACHE(session:{token})` → `context.data.currentUser`. Skips auth for public API paths and static assets.
+- `functions/api/[[path]].js`: monolithic API router. Routes matched by `path.startsWith()` + string compare. Instantiates `UserService` + `GachaService` per-request.
+- **Dead code**: `functions/api/admin.js`, `showcase.js`, `library.js`, `changelog.js`, `announcement.js` exist but `[[path]].js` catches all `/api/*` first — these files are **never routed**.
 
 ### Frontend
 
-- Remix file-based routing under `app/routes/`: `_index.jsx` (home), `login.jsx`, `library.jsx`, `profile.jsx`, `games.jsx`, `shop.jsx`, `synthesis.jsx`, `admin.jsx`.
-- Path alias `~` → `app/` (configured in both `tsconfig.json` and `vite.config.ts`).
-- `AuthProvider` (React Context) wraps entire app in `app/root.jsx`. Exposes `user`, `login`, `register`, `logout`, `refreshUser`.
-- `app/lib/api.js` — client-side API client. Auto-attaches `X-Session-Token` from `localStorage('sessionToken')`. Throws on non-2xx responses.
-- Tailwind v4 (not v3) with `@tailwindcss/vite` plugin. No `tailwind.config.js`.
-- shadcn/ui components in `app/components/ui/` (button, badge, card, dialog, input, tabs).
-- No `remix.config.js` — all config in `vite.config.ts`: `serverBuildPath: "functions/[[path]].js"`.
+- Routes: `_index.jsx`, `login.jsx`, `library.jsx`, `profile.jsx`, `games.jsx`, `shop.jsx`, `synthesis.jsx`, `admin.jsx`
+- Path alias `~` → `app/` (tsconfig + vite)
+- `AuthProvider` from `~/hooks/useAuth` wraps entire app. Exposes `{ user, loading, login, register, logout, refreshUser }`
+- `app/lib/api.js`: client API. Auto-attaches `X-Session-Token`. Throws on non-2xx.
+- `app/lib/rarity.js`: **frontend shared rarity config** — color classes (bg/border/text/dot), gradients, glow shadows. All UI rarity styling imports from here.
+- Tailwind v4 (`@tailwindcss/vite` plugin). No `tailwind.config.js`.
+- shadcn/ui config in `components.json`. Components in `app/components/ui/`.
 
-## Auth & Sessions
+### Backend
 
-- Login: `POST /api/auth/login` → `UserService.login()` generates `crypto.randomUUID()` token, stores full user row JSON in `KV_CACHE(session:{token})`.
-- Subsequent requests: `X-Session-Token` header → `_middleware.js` reads KV → `context.data.currentUser`.
-- Client: token in `localStorage('sessionToken')`, sent by `app/lib/api.js` on every request.
-- Session TTL: midnight Beijing time + CONFIG.TTL.SESSION.
-- Password storage: PBKDF2 (SHA-256, 100k iterations, 16-byte salt), format `saltBase64:hashBase64`. Legacy plaintext passwords auto-migrated on login.
-- Debug mode: `X-User-ID` header bypass — **disabled** (`DEBUG_MODE_ENABLED` is `false`).
+- `src/services/user-service.js`: auth, profile, inventory, check-in, titles, uploads
+- `src/services/gacha-service.js`: draw, multi-draw, limited pools, craft, shop buy, dice, decompose, draw history
+- `src/config/`: business (probabilities, pity, pool costs), technical (KV keys, TTLs), constants (HTTP statuses, rarity enums), index (merged `CONFIG` + `getEnvironmentAwareConfig(env)`)
 
-## Admin Auth
+### Database (D1)
 
-- Password compared against `env.admin` (**lowercase `a`**).
-- `requireAdmin(request, env)` from `src/utils/response.js` — reads `body.password` from request JSON, compares to `env.admin`.
-- **Critical**: `requireAdmin()` returns `{authorized, error}`, does NOT throw. Must explicitly check `auth.authorized`:
-  ```js
-  const auth = await requireAdmin(request, env);
-  if (!auth.authorized) return jsonResponse({ error: '认证失败' }, 403);
-  ```
+- Direct SQL: `.prepare(...).bind(...).first()` / `.all()` / `.run()` / `.batch(...)`. No ORM.
+- Tables use `STRICT` mode, foreign keys cascade on delete. `users.id` INTEGER AUTOINCREMENT.
+- Timestamps are integer milliseconds (`Date.now()`).
+- Tables: `users`, `gallery`, `inventory`, `logs`, `level_rewards`, `user_titles`, `user_uploads`, `draw_history`, `card_likes`, `card_bookmarks`
 
-## Database (D1)
+## Admin Auth (critical)
 
-- Direct parameterized SQL: `.prepare(...).bind(...).first()` / `.all()` / `.run()` / `.batch(...)`.
-- No ORM.
-- Tables use `STRICT` mode, foreign keys cascade on delete.
-- `users.id` is INTEGER AUTOINCREMENT.
-- Timestamps stored as integer milliseconds (`Date.now()`).
-- `gallery` INSERT uses `ON CONFLICT(url) DO UPDATE`.
+`requireAdmin(request, env)` from `src/utils/response.js` **consumes the request body** to read `body.password`. Returns `{ authorized, error }` — does NOT throw.
+
+```js
+const auth = await requireAdmin(request, env);
+if (!auth.authorized) return jsonResponse({ error: '认证失败' }, 403);
+```
+
+**Admin routes that need additional body fields must use `request.clone().json()`** because `requireAdmin` already consumed the original body:
+
+```js
+const { password, targetId, amount } = await request.clone().json();
+// or call requireAdmin first, then parse:
+const auth = await requireAdmin(request, env);
+const body = await request.clone().json();
+```
+
+Password compared against `env.admin` (lowercase `a`).
 
 ## Error Handling
 
-Two coexisting patterns — **do not mix in one handler**:
+Two patterns coexist — **do not mix in one handler**:
 1. Direct return: `return jsonResponse({ error: 'msg' }, 400);`
 2. Throw: `throw AppError.validationError('msg');`
 
@@ -86,25 +88,26 @@ User-facing messages in Chinese.
 
 ## Validation
 
-- `src/utils/validation.js` — functions return `null` on success or error string.
-- `validateAndThrow(obj, fields)` throws `AppError` for you.
+- `src/utils/validation.js`: functions return `null` (ok) or error string.
+- `validateAndThrow(obj, fields)` wraps validators and throws `AppError`.
 - **Gotcha**: `validatePrediction()` checks `'odd'`/`'even'`, but dice endpoint (`/api/game/dice`) uses `'small'`/`'big'`. Don't use `validatePrediction` for dice.
 
-## Environment Variables
+## Rarity Configs (two sources — don't mix)
+
+| Source | Location | Shape |
+|--------|----------|-------|
+| Frontend | `app/lib/rarity.js` | Tailwind classes: `bg`, `border`, `text`, `dot`, `hex`, `gradient`, `glow` + helper functions |
+| Backend | `src/config/constants.js` | Hex strings only: `RARITY_COLORS = { N: '#64748B', ... }` |
+
+## Gotchas
+
+- No `Buffer` global. Use `crypto.subtle.digest` for hashing.
+- `ctx.waitUntil()` for background work; `safeWaitUntil()` wraps with try/catch fallback (defined on both `UserService` and `GachaService` as instance methods).
+- `btoa`/`atob` available (Web APIs).
+- `nodejs_compat` compatibility flag in `wrangler.jsonc`.
+- D1 binding: `DB`. KV: `KV_CACHE`, `RECENT_REQUESTS`. R2: `R2_BUCKET`.
+
+## Environment
 
 Secrets: `admin`, `GITHUB_TOKEN`. Vars: `GITHUB_OWNER`, `GITHUB_REPO`, `R2_DOMAIN`.
 Local: `.dev.vars` (gitignored).
-
-## CF Workers / Pages Gotchas
-
-- No `Buffer` global. Use `crypto.subtle.digest` for image processing.
-- `ctx.waitUntil()` for background work; `UserService.safeWaitUntil()` wraps with fallback to `await`.
-- `btoa`/`atob` available (Web APIs).
-- `nodejs_compat` compatibility flag in `wrangler.jsonc`.
-
-## Configuration
-
-- `src/config/business.js` — game balance: probabilities, pity thresholds, pool costs, level curves, titles.
-- `src/config/technical.js` — KV key namespaces, TTLs, R2/GitHub URLs, session durations.
-- `src/config/constants.js` — enums: HTTP statuses, rarity order/colors, game action types.
-- `src/config/index.js` — merges all config modules. `CONFIG` exported at module level; `getEnvironmentAwareConfig(env)` for env-specific overrides.

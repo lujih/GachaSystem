@@ -266,8 +266,8 @@ async function onRequest(context) {
 
     // ─── Admin ───
     if (path.startsWith('/admin/')) {
-      const auth = await requireAdmin(request, env);
-      if (!auth.authorized) return jsonResponse({ error: '认证失败' }, 403);
+      const auth = await requireAdmin(request.clone(), env);
+      if (!auth.authorized) return jsonResponse({ error: auth.error || '认证失败' }, 403);
 
       if (path === '/admin/verify' && method === 'POST') return jsonResponse({ success: true });
 
@@ -280,7 +280,7 @@ async function onRequest(context) {
       }
       if (path === '/admin/update-points' && method === 'POST') {
         const { targetId, amount } = await request.clone().json();
-        if (!targetId || !amount) return jsonResponse({ error: '参数不完整' }, 400);
+        if (!targetId || amount == null || typeof amount !== 'number') return jsonResponse({ error: '参数不完整' }, 400);
         await env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(amount, targetId).run();
         return jsonResponse({ success: true });
       }
