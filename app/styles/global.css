@@ -505,3 +505,87 @@ a:focus-visible {
    ========================================= */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* =========================================
+   ✿ Sakura Dream — 二次元 Enhancements
+   ========================================= */
+
+/* --- Sakura Petals --- */
+@keyframes sakuraFall {
+  0% { transform: translateY(-10vh) rotate(0deg) translateX(0); opacity: 0.7; }
+  25% { transform: translateY(25vh) rotate(90deg) translateX(18px); opacity: 0.6; }
+  50% { transform: translateY(50vh) rotate(180deg) translateX(-12px); opacity: 0.4; }
+  75% { transform: translateY(75vh) rotate(270deg) translateX(22px); opacity: 0.25; }
+  100% { transform: translateY(110vh) rotate(360deg) translateX(-8px); opacity: 0; }
+}
+.sakura-container {
+  position: fixed; inset: 0; pointer-events: none; z-index: 9999; overflow: hidden;
+}
+.sakura-petal {
+  position: absolute; top: -20px;
+  width: 14px; height: 14px;
+  border-radius: 50% 0 50% 50%;
+  animation: sakuraFall linear infinite;
+}
+.sakura-petal:nth-child(1) { left: 5%; animation-duration: 9s; animation-delay: 0s; background: #ffb7c5; width: 12px; height: 12px; }
+.sakura-petal:nth-child(2) { left: 20%; animation-duration: 11s; animation-delay: 2s; background: #ffd1dc; width: 10px; height: 10px; }
+.sakura-petal:nth-child(3) { left: 40%; animation-duration: 8s; animation-delay: 4s; background: #f8c8d4; width: 15px; height: 15px; }
+.sakura-petal:nth-child(4) { left: 60%; animation-duration: 12s; animation-delay: 1s; background: #ffc0cb; width: 11px; height: 11px; }
+.sakura-petal:nth-child(5) { left: 80%; animation-duration: 10s; animation-delay: 3s; background: #ffe4e9; width: 13px; height: 13px; }
+
+/* --- Anime Sky Background --- */
+.bg-anime-sky {
+  background: linear-gradient(175deg, #faf5ff 0%, #fce7f3 25%, #ede9fe 55%, #e0f2fe 100%);
+}
+
+/* --- Star Field Overlay --- */
+.bg-stars {
+  background-image:
+    radial-gradient(1.5px 1.5px at 15% 20%, rgba(255,255,255,0.8), transparent),
+    radial-gradient(1px 1px at 35% 50%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(2px 2px at 55% 15%, rgba(255,255,255,0.7), transparent),
+    radial-gradient(1px 1px at 75% 45%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1.5px 1.5px at 90% 75%, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1px 1px at 25% 80%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(2px 2px at 65% 65%, rgba(255,255,255,0.5), transparent);
+}
+
+/* --- Gacha Border Glow --- */
+@keyframes gachaBorderGlow {
+  0%, 100% { border-color: rgba(255, 119, 175, 0.4); box-shadow: 0 0 20px rgba(255, 119, 175, 0.12); }
+  50% { border-color: rgba(168, 85, 247, 0.45); box-shadow: 0 0 30px rgba(168, 85, 247, 0.2); }
+}
+.gacha-border-glow {
+  animation: gachaBorderGlow 3s ease-in-out infinite;
+}
+
+/* --- Magic Pity Bar --- */
+@keyframes magicCharge {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.magic-bar {
+  background: linear-gradient(270deg, #f59e0b, #ec4899, #a855f7, #f59e0b);
+  background-size: 300% 100%;
+  animation: magicCharge 3s ease infinite;
+}
+
+/* --- Pity Near Glow --- */
+@keyframes pitySparkle {
+  0%, 100% { box-shadow: 0 0 6px rgba(245,158,11,0.3), 0 0 12px rgba(245,158,11,0.1); }
+  50% { box-shadow: 0 0 16px rgba(245,158,11,0.6), 0 0 30px rgba(245,158,11,0.2); }
+}
+.pity-near-glow {
+  animation: pitySparkle 2s ease-in-out infinite;
+}
+
+/* --- Loading KiraKira --- */
+@keyframes kirakira {
+  0% { transform: scale(1) rotate(0deg); opacity: 0.6; }
+  50% { transform: scale(1.3) rotate(180deg); opacity: 1; }
+  100% { transform: scale(1) rotate(360deg); opacity: 0.6; }
+}
+.kirakira-star {
+  animation: kirakira 1.5s ease-in-out infinite;
+}

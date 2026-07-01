@@ -25,8 +25,16 @@ export const RARITY_GLOW = {
   N: '',
   R: '',
   SR: 'shadow-[0_0_15px_rgba(139,92,246,0.4)]',
-  SSR: 'shadow-[0_0_25px_rgba(245,158,11,0.5)]',
-  UR: 'shadow-[0_0_35px_rgba(239,68,68,0.5)]',
+  SSR: 'shadow-[0_0_25px_rgba(245,158,11,0.5)] ring-2 ring-amber-400/30',
+  UR: 'shadow-[0_0_35px_rgba(239,68,68,0.5)] ring-2 ring-red-400/30',
+};
+
+export const RARITY_JAPANESE = {
+  N: 'ノーマル',
+  R: 'レア',
+  SR: 'Sレア',
+  SSR: 'SSレア',
+  UR: 'ウルトラレア',
 };
 
 export function rarityBg(r) { return RARITY_COLORS[r]?.bg || RARITY_COLORS.N.bg; }
@@ -34,3 +42,4 @@ export function rarityBorder(r) { return RARITY_COLORS[r]?.border || RARITY_COLO
 export function rarityText(r) { return RARITY_COLORS[r]?.text || RARITY_COLORS.N.text; }
 export function rarityGradient(r) { return RARITY_GRADIENT[r] || RARITY_GRADIENT.N; }
 export function rarityGlow(r) { return RARITY_GLOW[r] || ''; }
+export function rarityJapanese(r) { return RARITY_JAPANESE[r] || RARITY_JAPANESE.N; }

@@ -7,7 +7,7 @@ import { useGacha } from '~/hooks/useGacha';
 import DrawResultDialog from '~/components/DrawResultDialog';
 import Toast from '~/components/Toast';
 import { api } from '~/lib/api';
-import { rarityBg, rarityBorder } from '~/lib/rarity';
+import { rarityBg, rarityBorder, rarityGlow } from '~/lib/rarity';
 
 const POOL_CONFIG = {
   limited: { name: '限定池', cost: 500, multiCost: 4500, desc: '概率 UP! · 当期角色精选 · 十连9折', tag: '概率 UP!' },
@@ -133,7 +133,16 @@ export default function Index() {
   const showAnnouncement = announcement?.title && dismissedAnnId !== announcement.refreshId;
 
   return (
-    <div className="min-h-screen bg-background bg-halftone relative">
+    <div className="min-h-screen bg-anime-sky relative">
+      {/* 桜の花びら */}
+      <div className="sakura-container" aria-hidden="true">
+        <span className="sakura-petal" />
+        <span className="sakura-petal" />
+        <span className="sakura-petal" />
+        <span className="sakura-petal" />
+        <span className="sakura-petal" />
+      </div>
+
       <Header activeTab="大厅" />
 
       <main className="max-w-[1440px] mx-auto w-full px-3 md:px-8 py-4 md:py-12 pt-[72px] md:pt-[88px] pb-[100px] md:pb-8">
@@ -205,49 +214,54 @@ export default function Index() {
         )}
 
         {/* ③ 池切换 + 抽卡主区域 */}
-        <div className="rise-in rise-in-3 relative w-full rounded-2xl md:rounded-[32px] border-4 border-primary-fixed overflow-hidden shadow-[4px_4px_0px_0px_rgba(255,119,175,0.2)] md:shadow-[8px_8px_0px_0px_rgba(255,119,175,0.2)] bg-surface-bright flex flex-col md:flex-row mb-4 md:mb-8">
-          <div className="absolute inset-0 opacity-10 bg-halftone" />
+        <div className="rise-in rise-in-3 relative w-full rounded-2xl md:rounded-[32px] border-4 gacha-border-glow overflow-hidden bg-surface-bright flex flex-col md:flex-row mb-4 md:mb-8">
 
           {/* 左侧立绘展示区 */}
-          <div className="relative w-full md:w-2/3 min-h-[180px] md:min-h-[300px] overflow-hidden">
-            <div className={`absolute inset-0 transition-colors duration-500 ${
+          <div className="relative w-full md:w-2/3 min-h-[200px] md:min-h-[320px] overflow-hidden">
+            <div className={`absolute inset-0 transition-all duration-700 ${
               poolType === 'limited'
-                ? 'bg-gradient-to-br from-primary-container/30 to-secondary-container/30'
-                : 'bg-gradient-to-br from-surface-container/50 to-surface-variant/30'
+                ? 'bg-gradient-to-br from-indigo-900/60 via-purple-700/40 to-pink-500/30'
+                : 'bg-gradient-to-br from-sky-900/40 via-indigo-600/30 to-rose-400/30'
             }`} />
-            {/* 浮动光球 */}
-            <div className="orb orb-1" />
-            <div className="orb orb-2" />
-            <div className="orb orb-3" />
-            <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-surface-bright via-surface-bright/50 to-transparent md:w-3/4" />
+            <div className="absolute inset-0 bg-stars opacity-60" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.25)_0%,transparent_60%)]" />
+            <div className="absolute inset-0 overflow-hidden">
+              <span className="absolute top-[12%] left-[18%] text-2xl md:text-3xl animate-[sparkle_2.5s_ease-in-out_infinite] opacity-60 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">✨</span>
+              <span className="absolute top-[25%] right-[22%] text-xl md:text-2xl animate-[sparkle_3s_ease-in-out_infinite_0.5s] opacity-40 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">⭐</span>
+              <span className="absolute bottom-[35%] left-[30%] text-lg md:text-xl animate-[sparkle_2s_ease-in-out_infinite_1s] opacity-50">💫</span>
+              <span className="absolute top-[55%] right-[12%] text-sm md:text-base animate-[sparkle_3.5s_ease-in-out_infinite_0.3s] opacity-50">✨</span>
+              <span className="absolute bottom-[20%] right-[35%] text-lg md:text-xl animate-[sparkle_2.8s_ease-in-out_infinite_1.5s] opacity-40">🌟</span>
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-surface-bright via-surface-bright/40 to-transparent md:w-2/3" />
 
-            <div className="absolute bottom-0 left-0 p-4 md:p-8 w-full md:w-auto">
+            <div className="absolute bottom-0 left-0 p-5 md:p-10 w-full md:w-auto z-10">
               {pool.tag && (
-                <div className="inline-block bg-secondary text-on-secondary font-label-bold text-[10px] md:text-label-bold px-2 md:px-4 py-1 rounded-full mb-2 md:mb-4 border-2 border-secondary-fixed shadow-[2px_2px_0px_0px_rgba(0,103,131,0.5)]">
+                <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-label-bold text-[10px] md:text-label-bold px-3 md:px-5 py-1.5 rounded-full mb-2 md:mb-4 border border-white/30 shadow-lg shadow-pink-500/20">
+                  <span>⛩️</span>
                   {pool.tag}
                 </div>
               )}
-              <h2 className="font-headline-md md:text-display-lg text-display-lg text-primary drop-shadow-[2px_2px_0px_rgba(255,255,255,1)] mb-1 md:mb-2">
+              <h2 className="font-headline-md md:text-display-lg text-display-lg text-white [text-shadow:0_2px_8px_rgba(0,0,0,0.5),0_0_30px_rgba(255,255,255,0.2)] mb-1 md:mb-2">
                 {pool.name}
               </h2>
-              <p className="font-body-md text-sm md:text-body-md text-on-surface-variant">
+              <p className="font-body-md text-sm md:text-body-md text-white/80 [text-shadow:0_1px_4px_rgba(0,0,0,0.4)]">
                 {pool.desc}
               </p>
             </div>
           </div>
 
           {/* 右侧抽卡操作区 */}
-          <div className="relative w-full md:w-1/3 bg-white/80 backdrop-blur-md border-t-4 md:border-t-0 md:border-l-4 border-outline-variant p-4 md:p-6 flex flex-col justify-between z-10">
+          <div className="relative w-full md:w-1/3 bg-white/85 backdrop-blur-md border-t-4 md:border-t-0 md:border-l-4 border-primary-fixed/30 p-4 md:p-6 flex flex-col justify-between z-10">
             {/* 池切换标签 */}
             <div className="flex gap-2 mb-4">
               {['limited', 'permanent'].map(type => (
                 <button
                   key={type}
                   onClick={() => setPoolType(type)}
-                  className={`font-label-bold text-xs px-4 py-1.5 rounded-full border-2 transition-transform hover:-translate-y-1 ${
+                  className={`font-label-bold text-xs px-4 py-1.5 rounded-full border-2 transition-all duration-300 hover:scale-105 active:scale-95 ${
                     poolType === type
-                      ? 'bg-primary text-on-primary border-primary-container shadow-[2px_2px_0px_0px_rgba(255,119,175,0.4)]'
-                      : 'bg-surface-container text-on-surface border-outline-variant hover:bg-surface-variant'
+                      ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white border-pink-300 shadow-[0_3px_10px_rgba(219,39,119,0.3)]'
+                      : 'bg-white/60 text-on-surface border-outline-variant hover:bg-primary-fixed/30'
                   }`}
                 >
                   {POOL_CONFIG[type].name}
@@ -256,28 +270,31 @@ export default function Index() {
             </div>
 
             {/* 保底进度 */}
-            <div className="bg-surface-container-low rounded-2xl p-3 md:p-4 border-2 border-outline-variant mb-4 space-y-3">
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-3 md:p-4 border border-primary-fixed/30 mb-4 space-y-3">
               {[
-                { label: 'SSR', cur: ssrPity, at: ssrAt, gradient: 'from-amber-400 to-yellow-500', color: 'text-amber-500' },
-                { label: 'UR', cur: urPity, at: urAt, gradient: 'from-red-400 to-rose-500', color: 'text-red-500' },
-              ].map(({ label, cur, at, gradient, color }) => {
+                { label: 'SSR', cur: ssrPity, at: ssrAt, gradient: 'from-amber-400 via-yellow-400 to-amber-500', color: 'text-amber-500', icon: '🌟' },
+                { label: 'UR', cur: urPity, at: urAt, gradient: 'from-pink-500 via-red-400 to-rose-500', color: 'text-red-500', icon: '💎' },
+              ].map(({ label, cur, at, gradient, color, icon }) => {
                 const pct = Math.min((cur / at) * 100, 100);
                 const isNear = pct >= 80;
                 return (
                   <div key={label}>
                     <div className="flex justify-between items-center mb-1.5">
-                      <span className="font-label-bold text-[10px] md:text-label-bold text-on-surface-variant uppercase tracking-widest">{label} 保底</span>
-                      <span className={`font-button-text text-xs ${isNear ? color : 'text-primary'}`}>{cur}/{at}</span>
+                      <span className="font-label-bold text-[10px] md:text-label-bold text-on-surface-variant tracking-widest flex items-center gap-1">
+                        <span>{icon}</span>
+                        {label} 確定
+                      </span>
+                      <span className={`font-button-text text-xs ${isNear ? color : 'text-on-surface'}`}>{cur}/{at}</span>
                     </div>
-                    <div className={`h-3 md:h-4 w-full bg-surface-variant rounded-full overflow-hidden border border-outline-variant ${isNear ? 'pity-near' : ''}`}>
-                      <div className={`h-full bg-gradient-to-r ${gradient} rounded-full transition-all duration-500 relative overflow-hidden`} style={{ width: `${pct}%` }}>
+                    <div className={`h-3 md:h-4 w-full bg-surface-variant/60 rounded-full overflow-hidden border border-outline-variant/50 ${isNear ? 'pity-near-glow' : ''}`}>
+                      <div className={`h-full rounded-full transition-all duration-500 relative overflow-hidden ${isNear ? 'magic-bar' : `bg-gradient-to-r ${gradient}`}`} style={{ width: `${pct}%` }}>
                         {isNear && <div className="absolute inset-0 animate-shimmer" />}
                       </div>
                     </div>
-                    <p className={`font-body-md text-[10px] mt-0.5 ${isNear ? `font-bold ${color}` : 'text-on-surface-variant'}`}>
-                      {cur >= at ? `✦ 下次必出 ${label}!` :
-                       pct >= 50 ? `软保底加成中 · 再抽 ${at - cur} 次必出` :
-                       `再抽 ${at - cur} 次必出 ${label}`}
+                    <p className={`font-body-md text-[10px] mt-0.5 ${isNear ? `font-bold ${color}` : 'text-on-surface-variant/70'}`}>
+                      {cur >= at ? `✦ 次回確定 ${label}!` :
+                       pct >= 50 ? `⚡ 確率UP · 残り ${at - cur} 回` :
+                       `あと ${at - cur} 回で ${label} 確定`}
                     </p>
                   </div>
                 );
@@ -290,41 +307,42 @@ export default function Index() {
                 <button
                   onClick={() => handleDraw('multi')}
                   disabled={drawing}
-                  className="relative group font-button-text text-sm md:text-button-text py-3 md:py-4 px-4 rounded-full border-4 transition-all flex justify-between items-center overflow-hidden bg-tertiary-fixed-dim text-on-tertiary-fixed border-tertiary-container shadow-[4px_4px_0px_0px_#705d00] md:shadow-[6px_6px_0px_0px_#705d00] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="relative group font-button-text text-sm md:text-button-text py-3.5 md:py-4 px-4 rounded-full transition-all duration-200 flex justify-between items-center overflow-hidden bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-white border-2 border-yellow-300 shadow-[0_6px_0_0_#b8860b,0_8px_20px_rgba(255,215,0,0.25)] hover:shadow-[0_2px_0_0_#b8860b,0_4px_12px_rgba(255,215,0,0.35)] hover:translate-y-1 active:translate-y-[5px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-[0_6px_0_0_#b8860b]"
                 >
-                  <div className="absolute inset-0 w-1/4 h-full bg-white/40 -skew-x-12 -translate-x-full group-hover:animate-[sheen_1s_ease-in-out]" />
-                  <span className="flex items-center gap-2">
-                    <span className="material-symbols-outlined symbol-filled">diamond</span>
+                  <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.35),transparent)] -skew-x-12 -translate-x-full group-hover:animate-[sheen_1.2s_ease-in-out]" />
+                  <span className="flex items-center gap-2 drop-shadow-sm">
+                    <span className="material-symbols-outlined symbol-filled">auto_awesome</span>
                     {pool.multiCost}
                   </span>
-                  <span className="uppercase tracking-wider">十连抽</span>
+                  <span className="font-bold tracking-wider">10連ガチャ</span>
                 </button>
                 <button
                   onClick={() => handleDraw('single')}
                   disabled={drawing}
-                  className="bg-surface-container text-on-surface font-button-text text-sm py-3 px-4 rounded-full border-4 border-outline-variant shadow-[3px_3px_0px_0px_#887178] md:shadow-[4px_4px_0px_0px_#887178] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] transition-all flex justify-between items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="relative group font-button-text text-sm md:text-button-text py-3 md:py-3.5 px-4 rounded-full transition-all duration-200 flex justify-between items-center overflow-hidden bg-gradient-to-r from-pink-400 to-rose-400 text-white border-2 border-pink-300 shadow-[0_5px_0_0_#be185d,0_6px_15px_rgba(219,39,119,0.2)] hover:shadow-[0_2px_0_0_#be185d,0_3px_10px_rgba(219,39,119,0.3)] hover:translate-y-[3px] active:translate-y-[4px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-[0_5px_0_0_#be185d]"
                 >
-                  <span className="flex items-center gap-2">
-                    <span className="material-symbols-outlined symbol-filled text-tertiary">diamond</span>
+                  <span className="flex items-center gap-2 drop-shadow-sm">
+                    <span className="material-symbols-outlined symbol-filled">spa</span>
                     {pool.cost}
                   </span>
-                  <span className="uppercase tracking-wider text-on-surface-variant">单抽</span>
+                  <span className="font-bold tracking-wider">単発ガチャ</span>
                 </button>
               </div>
             ) : (
               <div className="text-center py-4">
-                <p className="text-on-surface-variant text-sm mb-3">登录后开启抽卡</p>
-                <a href="/login" className="inline-block bg-primary text-on-primary font-button-text text-sm px-6 py-2 rounded-full border-2 border-on-primary-container shadow-[3px_3px_0px_0px_rgba(119,1,67,0.4)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] transition-all no-underline">
+                <p className="text-on-surface-variant text-sm mb-3">ログインしてガチャを引こう！</p>
+                <a href="/login" className="inline-block bg-gradient-to-r from-pink-500 to-purple-500 text-white font-button-text text-sm px-6 py-2 rounded-full border-2 border-white/30 shadow-[0_4px_0_0_#770143,0_6px_15px_rgba(219,39,119,0.25)] hover:shadow-[0_2px_0_0_#770143,0_3px_10px_rgba(219,39,119,0.3)] hover:translate-y-[2px] active:translate-y-[4px] active:shadow-none transition-all no-underline">
                   登录
                 </a>
               </div>
             )}
           </div>
 
-          {/* 装饰星点 */}
-          <span className="material-symbols-outlined symbol-filled text-tertiary-fixed-dim absolute top-8 left-8 md:top-12 md:left-12 text-2xl md:text-4xl animate-sparkle">star</span>
-          <span className="material-symbols-outlined symbol-filled text-primary-container absolute bottom-20 left-1/2 md:bottom-32 text-lg md:text-2xl animate-sparkle" style={{ animationDelay: '0.5s' }}>star</span>
-          <span className="material-symbols-outlined symbol-filled text-secondary-container absolute top-1/4 right-1/2 text-2xl md:text-3xl animate-sparkle" style={{ animationDelay: '1s' }}>star</span>
+          <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+            <span className="material-symbols-outlined symbol-filled text-pink-300 absolute top-6 left-6 md:top-10 md:left-10 text-xl md:text-2xl animate-[sparkle_2.5s_ease-in-out_infinite] opacity-60">star</span>
+            <span className="material-symbols-outlined symbol-filled text-purple-300 absolute bottom-16 left-1/3 text-lg animate-[sparkle_3s_ease-in-out_infinite_0.8s] opacity-50">star</span>
+            <span className="material-symbols-outlined symbol-filled text-amber-300 absolute top-1/4 right-1/3 text-xl animate-[sparkle_2s_ease-in-out_infinite_1.5s] opacity-40">star</span>
+          </div>
         </div>
 
         {/* ④ 最新掉落 */}
@@ -341,7 +359,7 @@ export default function Index() {
           ) : (
             <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
               {showcase.map((item, i) => (
-                <div key={i} className={`group relative aspect-[3/4] rounded-lg overflow-hidden border-2 ${rarityBorder(item.rarity)} shadow-[2px_2px_0px_0px_rgba(136,113,120,0.2)] hover:scale-105 hover:shadow-lg transition-all`}>
+                <div key={i} className={`group relative aspect-[3/4] rounded-lg overflow-hidden border-2 ${rarityBorder(item.rarity)} ${item.rarity === 'UR' || item.rarity === 'SSR' ? rarityGlow(item.rarity) : ''} shadow-[2px_2px_0px_0px_rgba(136,113,120,0.2)] hover:scale-105 hover:shadow-lg transition-all`}>
                   {item.url ? (
                     <img src={item.url} alt="" className="w-full h-full object-cover" loading="lazy" />
                   ) : (
@@ -405,12 +423,17 @@ export default function Index() {
       {/* 抽卡加载动画 */}
       {drawing && (
         <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-20 h-20 mb-6">
-            <div className="absolute inset-0 rounded-full border-4 border-primary/30" />
-            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary animate-spin" />
-            <span className="absolute inset-0 flex items-center justify-center material-symbols-outlined text-3xl text-primary symbol-filled animate-pulse">auto_awesome</span>
+          <div className="relative mb-6">
+            <div className="w-24 h-24 rounded-full border-4 border-pink-400/30 border-t-pink-400 animate-spin [animation-duration:1.2s]" />
+            <div className="absolute inset-2 rounded-full border-4 border-transparent border-r-purple-400 animate-spin [animation-duration:1.8s] [animation-direction:reverse]" />
+            <div className="absolute inset-6 rounded-full border-3 border-transparent border-t-amber-400 animate-spin [animation-duration:2.5s]" />
+            <span className="absolute inset-0 flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl text-pink-400 symbol-filled animate-ping">auto_awesome</span>
+            </span>
           </div>
-          <p className="text-white font-headline-md text-lg animate-pulse">正在抽取...</p>
+          <p className="text-white font-headline-md text-lg tracking-wider">
+            キラキラ<span className="animate-pulse">...</span>
+          </p>
         </div>
       )}
 

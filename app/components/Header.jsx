@@ -20,6 +20,7 @@ export default function Header({ activeTab = '大厅' }) {
           <h1 className="font-headline-lg text-lg md:text-display-lg italic text-primary-container drop-shadow-[2px_2px_0px_rgba(255,119,175,0.4)] truncate max-w-[130px] md:max-w-none">
             KiraKira Gacha
           </h1>
+          <span className="hidden md:inline text-[10px] text-on-surface-variant/50 font-label-bold -ml-1 mt-2 tracking-widest">〜カードコレクション〜</span>
         </Link>
       </div>
 
