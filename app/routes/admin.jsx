@@ -44,7 +44,7 @@ export default function Admin() {
 
   if (!authed) {
     return (
-      <div className="min-h-screen bg-surface-container-low bg-grid-pattern flex items-center justify-center p-4">
+      <div className="min-h-screen bg-anime-sky flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="relative">
             <div className="absolute inset-0 bg-primary translate-x-2 translate-y-2 rounded-[32px]" />
@@ -85,7 +85,7 @@ export default function Admin() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-container-low bg-grid-pattern flex">
+    <div className="min-h-screen bg-anime-sky flex">
       {/* Side Navigation */}
       <nav className="hidden lg:flex flex-col w-64 fixed left-0 top-0 h-full z-40 bg-slate-50 border-r-4 border-cyan-100">
         <div className="p-md border-b-2 border-slate-200">
@@ -241,7 +241,7 @@ export default function Admin() {
 export function ErrorBoundary() {
   const error = useRouteError();
   return (
-    <div className="min-h-screen bg-surface-container-low bg-grid-pattern flex items-center justify-center p-4">
+    <div className="min-h-screen bg-anime-sky flex items-center justify-center p-4">
       <div className="text-center">
         <span className="material-symbols-outlined text-4xl text-error mb-4">error</span>
         <h1 className="text-xl font-bold mb-2">管理面板加载失败</h1>

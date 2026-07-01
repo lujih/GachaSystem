@@ -175,10 +175,13 @@ export default function Library() {
   }, [user, bookmarkedIds]);
 
   return (
-    <div className="min-h-screen bg-surface-bright bg-halftone relative">
+    <div className="min-h-screen bg-anime-sky relative">
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <span className="material-symbols-outlined absolute top-20 left-10 text-primary-container/20 symbol-filled" style={{ fontSize: 64 }}>stars</span>
-        <span className="material-symbols-outlined absolute bottom-40 right-20 text-tertiary-fixed/30 symbol-filled" style={{ fontSize: 96 }}>stars</span>
+        <div className="absolute top-[-8%] right-[-3%] w-[35vw] h-[35vw] rounded-full bg-primary-fixed-dim/20 blur-3xl" />
+        <div className="absolute bottom-[-5%] left-[-8%] w-[28vw] h-[28vw] rounded-full bg-secondary-fixed-dim/15 blur-3xl" />
+        <span className="absolute top-[25%] left-[5%] text-xl animate-float">📖</span>
+        <span className="absolute top-[45%] right-[5%] text-lg animate-float" style={{ animationDelay: '1.8s' }}>⭐</span>
+        <span className="absolute bottom-[15%] left-[20%] text-base animate-float" style={{ animationDelay: '3.5s' }}>✨</span>
       </div>
 
       <Header activeTab="图鉴" />
@@ -208,7 +211,7 @@ export default function Library() {
                   }}
                   className={`flex items-center gap-1 font-label-bold text-xs md:text-sm px-3 md:px-4 py-1.5 rounded-full transition-all ${
                     mode === t.key || (t.key === 'all' && !isMine && !isBookmarks)
-                      ? 'bg-primary text-on-primary shadow-[2px_2px_0px_0px_#770143]'
+                      ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white shadow-[2px_2px_0px_0px_#770143]'
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant'
                   }`}
                 >
@@ -271,8 +274,8 @@ export default function Library() {
                   setSearchParams(p);
                 }}
                 className={`text-[10px] md:text-xs font-label-bold px-2 py-1 rounded-full transition-all ${
-                  rarity === r
-                    ? 'bg-tertiary text-on-tertiary shadow-sm'
+                    rarity === r
+                      ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white shadow-sm'
                     : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
@@ -390,7 +393,7 @@ export default function Library() {
                   onClick={() => setSearchParams(buildParams({ page: String(p), sort, ...(rarity && { rarity }) }))}
                   className={`w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-full text-xs font-label-bold transition-all ${
                     p === page
-                      ? 'bg-primary text-on-primary shadow-[2px_2px_0px_0px_#770143]'
+                      ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white shadow-[2px_2px_0px_0px_#770143]'
                       : 'border border-outline-variant bg-surface-container text-on-surface hover:bg-surface-variant'
                   }`}
                 >

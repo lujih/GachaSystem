@@ -30,7 +30,7 @@ export default function LoginForm() {
   const inputClass = "w-full px-4 py-3 rounded-full bg-primary-fixed border-2 border-primary-fixed-dim focus:border-secondary focus:ring-0 focus:outline-none font-body-md text-base text-on-primary-fixed placeholder-primary/60 transition-all shadow-[2px_2px_0px_0px_#ffb0cb] focus:shadow-[3px_3px_0px_0px_#006783]";
 
   return (
-    <div className="min-h-screen bg-surface px-4 py-12">
+    <div className="min-h-screen bg-anime-sky px-4 py-12">
       <div className="mx-auto max-w-[420px]">
         <div className="bg-surface-container-lowest border-2 border-primary rounded-2xl overflow-hidden">
           <div className="pt-8 pb-2 px-6 text-center">
@@ -102,7 +102,7 @@ export default function LoginForm() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-primary text-on-primary font-bold text-base py-4 rounded-full border-4 border-on-primary-container shadow-[4px_4px_0px_0px_#770143] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all"
+                className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold text-base py-4 rounded-full border-4 border-pink-300 shadow-[4px_4px_0px_0px_#770143] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all"
               >
                 <span className="flex items-center justify-center gap-2">
                   {submitting ? (

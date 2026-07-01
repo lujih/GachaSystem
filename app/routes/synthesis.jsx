@@ -63,8 +63,13 @@ export default function Synthesis() {
   }
 
   return (
-    <div className="min-h-screen bg-surface font-body-md text-body-md text-on-surface antialiased overflow-x-hidden">
-      <div className="absolute inset-0 pointer-events-none opacity-20 bg-halftone" />
+    <div className="min-h-screen bg-anime-sky font-body-md text-body-md text-on-surface antialiased overflow-x-hidden">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-5%] right-[-5%] w-[30vw] h-[30vw] rounded-full bg-primary-fixed-dim/20 blur-3xl" />
+        <div className="absolute bottom-[-5%] left-[-5%] w-[25vw] h-[25vw] rounded-full bg-secondary-fixed-dim/15 blur-3xl" />
+        <span className="absolute top-[10%] left-[15%] text-lg animate-float">✨</span>
+        <span className="absolute top-[70%] right-[10%] text-base animate-float" style={{ animationDelay: '2.5s' }}>💫</span>
+      </div>
       <div className="absolute top-20 left-10 text-tertiary-fixed opacity-50 animate-sparkle">
         <span className="material-symbols-outlined text-[40px]">colors_spark</span>
       </div>
@@ -181,7 +186,7 @@ export default function Synthesis() {
               disabled={!canCraft}
               className={`animate-sheen w-full py-3 md:py-md mt-2 md:mt-sm font-button-text text-base md:text-[24px] rounded-full border-4 transition-all relative overflow-hidden group ${
                 canCraft
-                  ? 'bg-tertiary-fixed text-on-tertiary-fixed-variant border-on-tertiary-fixed shadow-[0px_5px_0px_0px_#221b00] md:shadow-[0px_8px_0px_0px_#221b00] hover:translate-y-[3px] hover:shadow-[0px_2px_0px_0px_#221b00] active:translate-y-[5px] active:shadow-none'
+                  ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-amber-900 border-amber-300 shadow-[0px_5px_0px_0px_#b8860b] md:shadow-[0px_8px_0px_0px_#b8860b] hover:translate-y-[3px] hover:shadow-[0px_2px_0px_0px_#b8860b] active:translate-y-[5px] active:shadow-none'
                   : 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-60'
               }`}
             >

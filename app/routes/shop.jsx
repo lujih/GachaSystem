@@ -59,10 +59,13 @@ export default function Shop() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-x-hidden font-body-md text-body-md">
+    <div className="min-h-screen bg-anime-sky relative overflow-x-hidden font-body-md text-body-md">
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute top-[-10%] right-[-5%] w-[40vw] h-[40vw] rounded-full bg-primary-fixed-dim/30 blur-3xl" />
-        <div className="absolute bottom-[20%] left-[-10%] w-[30vw] h-[30vw] rounded-full bg-secondary-fixed-dim/20 blur-3xl" />
+        <div className="absolute top-[-10%] right-[-5%] w-[40vw] h-[40vw] rounded-full bg-primary-fixed-dim/20 blur-3xl" />
+        <div className="absolute bottom-[20%] left-[-10%] w-[30vw] h-[30vw] rounded-full bg-secondary-fixed-dim/15 blur-3xl" />
+        <span className="absolute top-[15%] left-[8%] text-lg animate-float">✨</span>
+        <span className="absolute top-[60%] right-[3%] text-base animate-float" style={{ animationDelay: '1.5s' }}>⭐</span>
+        <span className="absolute bottom-[10%] left-[30%] text-sm animate-float" style={{ animationDelay: '3s' }}>💫</span>
       </div>
 
       <Header activeTab="商店" />
@@ -78,9 +81,9 @@ export default function Shop() {
             </p>
           </div>
 
-          <div className="bg-tertiary-fixed border-2 border-on-tertiary-fixed rounded-xl px-4 md:px-6 py-2 md:py-3 flex items-center gap-1 md:gap-sm shadow-[3px_3px_0px_0px_#221b00] md:shadow-[4px_4px_0px_0px_#221b00] transform hover:-translate-y-1 transition-transform self-start">
-            <div className="bg-surface-container-lowest rounded-full p-1 border-2 border-on-tertiary-fixed">
-              <span className="material-symbols-outlined text-tertiary symbol-filled text-sm md:text-base">stars</span>
+          <div className="bg-gradient-to-r from-amber-300 to-yellow-300 border-2 border-amber-500 rounded-xl px-4 md:px-6 py-2 md:py-3 flex items-center gap-1 md:gap-sm shadow-[3px_3px_0px_0px_#b8860b] md:shadow-[4px_4px_0px_0px_#b8860b] transform hover:-translate-y-1 transition-transform self-start">
+            <div className="bg-surface-container-lowest rounded-full p-1 border-2 border-amber-500">
+              <span className="material-symbols-outlined text-amber-700 symbol-filled text-sm md:text-base">stars</span>
             </div>
             <div className="flex flex-col">
               <span className="font-label-bold text-[8px] md:text-label-bold text-on-tertiary-fixed-variant uppercase tracking-wider">余额</span>
@@ -140,7 +143,7 @@ export default function Shop() {
                     disabled={!canAfford || isBuying}
                     className={`font-button-text text-xs md:text-sm px-4 py-1.5 rounded-full border-2 transition-all ${
                       canAfford && !isBuying
-                        ? 'bg-tertiary-fixed text-on-tertiary-fixed border-on-tertiary-fixed shadow-[2px_2px_0px_0px_#221b00] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]'
+                        ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white border-pink-300 shadow-[2px_2px_0px_0px_#770143] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]'
                         : 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-60'
                     }`}
                   >

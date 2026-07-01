@@ -144,7 +144,7 @@ export default function Profile() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-surface relative">
+      <div className="min-h-screen bg-anime-sky relative">
         <Header />
         <main className="max-w-7xl mx-auto px-4 md:px-margin pt-[72px] md:pt-[100px] pb-[100px] md:pb-12">
           <div className="text-center py-12 md:py-20">
@@ -152,7 +152,7 @@ export default function Profile() {
             <p className="text-on-surface-variant mb-4">请先登录</p>
             <button
               onClick={() => navigate('/login')}
-              className="bg-primary text-on-primary font-button-text text-sm md:text-button-text px-6 md:px-8 py-2 md:py-3 rounded-full border-2 border-on-primary-container shadow-[4px_4px_0px_0px_rgba(119,1,67,0.4)]"
+              className="bg-gradient-to-r from-pink-500 to-purple-500 text-white font-button-text text-sm md:text-button-text px-6 md:px-8 py-2 md:py-3 rounded-full border-2 border-pink-300 shadow-[4px_4px_0px_0px_#770143]"
             >
               登录
             </button>
@@ -164,8 +164,7 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-surface relative overflow-x-hidden">
-      <div className="fixed inset-0 bg-halftone opacity-30 pointer-events-none z-0" />
+    <div className="min-h-screen bg-anime-sky relative overflow-x-hidden">
       <div className="fixed top-[-10%] right-[-5%] w-48 md:w-96 h-48 md:h-96 bg-primary-fixed rounded-full blur-[60px] md:blur-[100px] opacity-60 pointer-events-none z-0" />
       <div className="fixed bottom-[-10%] left-[-5%] w-48 md:w-96 h-48 md:h-96 bg-secondary-fixed rounded-full blur-[60px] md:blur-[100px] opacity-60 pointer-events-none z-0" />
 
@@ -414,7 +413,7 @@ export default function Profile() {
             className={`w-full font-button-text text-sm md:text-button-text text-[24px] py-3 md:py-md rounded-full border-4 transition-all relative overflow-hidden group ${
               checkingIn || todayIsChecked
                 ? 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-default opacity-60'
-                : 'bg-tertiary-fixed text-on-tertiary-fixed-variant border-on-tertiary-fixed shadow-[0px_6px_0px_0px_#221b00] md:shadow-[0px_8px_0px_0px_#221b00] hover:translate-y-[3px] hover:shadow-[0px_3px_0px_0px_#221b00] active:translate-y-[6px] active:shadow-none'
+                : 'bg-gradient-to-r from-pink-400 to-rose-400 text-white border-pink-300 shadow-[0px_6px_0px_0px_#be185d] md:shadow-[0px_8px_0px_0px_#be185d] hover:translate-y-[3px] hover:shadow-[0px_3px_0px_0px_#be185d] active:translate-y-[6px] active:shadow-none'
             }`}
           >
             <span className="relative z-10 flex items-center justify-center gap-1 md:gap-xs">

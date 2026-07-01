@@ -24,6 +24,13 @@ export default function App() {
           <AuthProvider>
             <Outlet />
           </AuthProvider>
+          <div className="sakura-container" aria-hidden="true">
+            <div className="sakura-petal" />
+            <div className="sakura-petal" />
+            <div className="sakura-petal" />
+            <div className="sakura-petal" />
+            <div className="sakura-petal" />
+          </div>
         </div>
         <ScrollRestoration />
         <Scripts />

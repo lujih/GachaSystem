@@ -73,8 +73,13 @@ export default function Games() {
   const isDisabled = playing || cooldown > 0 || !user;
 
   return (
-    <div className="min-h-screen relative pb-[100px] md:pb-0 pt-[72px] md:pt-[80px]">
-      <div className="fixed inset-0 bg-background bg-grid-pattern pointer-events-none" />
+    <div className="min-h-screen bg-anime-sky relative pb-[100px] md:pb-0 pt-[72px] md:pt-[80px]">
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="absolute top-[-5%] right-[-5%] w-[30vw] h-[30vw] rounded-full bg-primary-fixed-dim/20 blur-3xl" />
+        <div className="absolute bottom-[10%] left-[-10%] w-[25vw] h-[25vw] rounded-full bg-secondary-fixed-dim/15 blur-3xl" />
+        <span className="absolute top-[20%] left-[5%] text-lg animate-float">🎲</span>
+        <span className="absolute top-[55%] right-[8%] text-base animate-float" style={{ animationDelay: '2s' }}>⭐</span>
+      </div>
 
       <Header activeTab="游戏" />
 
@@ -116,7 +121,7 @@ export default function Games() {
                       onClick={() => setBetAmount(val)}
                       className={`flex-1 py-1.5 rounded-full border-2 font-label-bold text-xs transition-all ${
                         betAmount === val
-                          ? 'bg-primary text-on-primary border-on-primary-container shadow-[2px_2px_0px_0px_#770143]'
+                          ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white border-pink-300 shadow-[2px_2px_0px_0px_#770143]'
                           : 'bg-surface-container text-on-surface border-outline-variant hover:bg-surface-variant'
                       }`}
                     >
@@ -150,9 +155,9 @@ export default function Games() {
                 onClick={handlePlayDice}
                 disabled={isDisabled}
                 className={`w-full font-button-text text-sm md:text-button-text py-3 md:py-4 rounded-full border-[3px] transition-all flex items-center justify-center gap-1 md:gap-xs ${
-                  isDisabled
+                   isDisabled
                     ? 'bg-surface-variant text-on-surface-variant border-outline-variant cursor-not-allowed opacity-60'
-                    : 'bg-tertiary-fixed text-on-tertiary-fixed-variant border-on-surface shadow-[4px_4px_0px_0px_#1a1b1f] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px]'
+                    : 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-amber-900 border-amber-300 shadow-[4px_4px_0px_0px_#b8860b] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px]'
                 }`}
               >
                 {playing ? (
