@@ -1,113 +1,82 @@
-# AGENTS.md — Chouka (KiraKira) Gacha System
+# AGENTS.md — Chouka Gacha System
 
-## Overview
-
-Remix v2 SPA on Cloudflare Pages. React 18 + TypeScript + Tailwind CSS v4 + shadcn/ui (base-nova style). D1 (SQLite), KV, R2.
-
-Behavioral conventions in `CLAUDE.md`.
+Remix v2 SPA on Cloudflare Pages. React 18 + TypeScript + Tailwind CSS v4 + shadcn/ui (base-nova). D1 (SQLite), KV, R2.
 
 ## Commands
 
 ```bash
-npm run dev          # remix vite:dev (Vite HMR)
+npm run dev          # vite HMR
 npm run build        # remix vite:build → build/server/ + build/client/
-npm run deploy       # npm run build && wrangler deploy
 npm run typecheck    # tsc --noEmit (only static check — no tests, no linter)
-npm run start        # wrangler pages dev ./build/client
-npm run preview      # npm run build && wrangler dev
+npm run deploy       # npm run build && wrangler deploy
+npm run start        # wrangler pages dev ./build/client (SSR after build)
+npm run preview      # npm run build && wrangler dev (full preview)
 ```
 
 - D1 migration: `npx wrangler d1 execute chouka --remote --file=./schema.sql`
-- `.npmrc`: `legacy-peer-deps=true` (shadcn compatibility)
-- `.dev.vars` — local secrets (`admin`, `GITHUB_TOKEN`), gitignored
+- `.npmrc`: `legacy-peer-deps=true` (shadcn compat)
+- `.dev.vars` (gitignored): `admin`, `GITHUB_TOKEN`, `R2_DOMAIN`
+- `wrangler.jsonc`: `nodejs_compat` flag required
+- Known false‑positive: vite.config.ts:18 `'serverBuildPath' not in VitePluginConfig` (Remix type resolution)
 
 ## Architecture
 
-### Request flow
-
 ```
 Browser → Cloudflare Pages
-  /api/* → functions/_middleware.js (session + CORS) → functions/api/[[path]].js
+  /api/* → functions/_middleware.js → functions/api/[[path]].js
   /*     → functions/_middleware.js → functions/[[path]].js (Remix SSR)
 ```
 
-- `functions/_middleware.js`: CORS preflight, reads `X-Session-Token` → `KV_CACHE(session:{token})` → `context.data.currentUser`. Skips auth for public API paths and static assets.
-- `functions/api/[[path]].js`: monolithic API router. Routes matched by `path.startsWith()` + string compare. Instantiates `UserService` + `GachaService` per-request.
-- **Dead code**: `functions/api/admin.js`, `showcase.js`, `library.js`, `changelog.js`, `announcement.js` exist but `[[path]].js` catches all `/api/*` first — these files are **never routed**.
+- **Middleware** (`functions/_middleware.js`): CORS preflight, reads `X-Session-Token` → `KV_CACHE(session:{token})` → `context.data.currentUser`. Skips session for public API paths. CORS allows `X-Admin-Mode` header. Generates per-request CSP nonce, injects into `<script>` tags in HTML responses, sets security headers (CSP with `'strict-dynamic'` + nonce, HSTS, XFO, etc.).
+- **API Router** (`functions/api/[[path]].js`): Monolithic 345-line router. Matches by `path.startsWith()` + string compare. Instantiates `UserService` + `GachaService` per request. Rate-limit on login (10/10min) and register (5/10min) via KV with `CF-Connecting-IP`.
+- **Frontend**: 8 routes under `app/routes/`. Path alias `~` → `app/`. Tailwind v4 (`@tailwindcss/vite` plugin, no `tailwind.config.js`). shadcn components in `app/components/ui/`.
+- **Backend**: `src/services/user-service.js` (auth, profile, check-in, titles, uploads) and `src/services/gacha-service.js` (draw, multi-draw, limited, craft, shop buy, dice, decompose, draw history). Both have `safeWaitUntil()` instance method for `ctx.waitUntil()` with fallback.
+- **Config**: `src/config/index.js` merges `business.js` (probabilities, pity, costs) + `technichal.js` (KV keys, TTLs) + `constants.js` (HTTP statuses, RARITY_COLORS hex strings).
 
-### Frontend
+## Database (D1)
 
-- Routes: `_index.jsx`, `login.jsx`, `library.jsx`, `profile.jsx`, `games.jsx`, `shop.jsx`, `synthesis.jsx`, `admin.jsx`
-- Path alias `~` → `app/` (tsconfig + vite)
-- `AuthProvider` from `~/hooks/useAuth` wraps entire app. Exposes `{ user, loading, login, register, logout, refreshUser }`
-- `app/lib/api.js`: client API. Auto-attaches `X-Session-Token`. Throws on non-2xx.
-- `app/lib/rarity.js`: **frontend shared rarity config** — color classes (bg/border/text/dot), gradients, glow shadows. All UI rarity styling imports from here.
-- Tailwind v4 (`@tailwindcss/vite` plugin). No `tailwind.config.js`.
-- shadcn/ui config in `components.json`. Components in `app/components/ui/`.
+Direct SQL, no ORM. `STRICT` mode, foreign keys cascade on delete. Integer millisecond timestamps (`Date.now()`). 12 tables: `users`, `gallery`, `inventory`, `logs`, `level_rewards`, `user_titles`, `user_uploads`, `draw_history`, `card_likes`, `card_bookmarks`, `buffer_claims`.
 
-### Backend
+## Admin Auth
 
-- `src/services/user-service.js`: auth, profile, inventory, check-in, titles, uploads
-- `src/services/gacha-service.js`: draw, multi-draw, limited pools, craft, shop buy, dice, decompose, draw history
-- `src/config/`: business (probabilities, pity, pool costs), technical (KV keys, TTLs), constants (HTTP statuses, rarity enums), index (merged `CONFIG` + `getEnvironmentAwareConfig(env)`)
+`requireAdmin(request, env)` **consumes the request body** to parse `body.password`. Returns `{ authorized, error }` — does NOT throw.
 
-### Database (D1)
-
-- Direct SQL: `.prepare(...).bind(...).first()` / `.all()` / `.run()` / `.batch(...)`. No ORM.
-- Tables use `STRICT` mode, foreign keys cascade on delete. `users.id` INTEGER AUTOINCREMENT.
-- Timestamps are integer milliseconds (`Date.now()`).
-- Tables: `users`, `gallery`, `inventory`, `logs`, `level_rewards`, `user_titles`, `user_uploads`, `draw_history`, `card_likes`, `card_bookmarks`
-
-## Admin Auth (critical)
-
-`requireAdmin(request, env)` from `src/utils/response.js` **consumes the request body** to read `body.password`. Returns `{ authorized, error }` — does NOT throw.
+**Admin routes needing extra body fields must use `request.clone().json()`** because the original body was consumed:
 
 ```js
-const auth = await requireAdmin(request, env);
+const auth = await requireAdmin(request.clone(), env);
 if (!auth.authorized) return jsonResponse({ error: '认证失败' }, 403);
+const { targetId, amount } = await request.clone().json();
 ```
 
-**Admin routes that need additional body fields must use `request.clone().json()`** because `requireAdmin` already consumed the original body:
+Password compared against `env.admin` (lowercase `a`). The call in `[[path]].js` passes `request.clone()`.
 
-```js
-const { password, targetId, amount } = await request.clone().json();
-// or call requireAdmin first, then parse:
-const auth = await requireAdmin(request, env);
-const body = await request.clone().json();
-```
+## Error Handling & Validation
 
-Password compared against `env.admin` (lowercase `a`).
+- Two patterns (don't mix): `return jsonResponse({ error: 'msg' }, 400)` vs `throw AppError.validationError('msg')`
+- User-facing messages in Chinese.
+- `src/utils/validation.js`: validators return `null` (ok) or error string. Removed unused functions: `validateEmail`, `validateUrl`, `validateIntegerRange`, `validateFields`, `validateAndThrow` (round 4).
+- **Gotcha**: `validatePrediction()` checks `'odd'`/`'even'`, but dice uses `'small'`/`'big'`. Don't use it for dice.
+- Password: PBKDF2 SHA-256, 100k iterations, stored as `saltBase64:hashBase64`. Compat fallback for legacy plaintext.
 
-## Error Handling
-
-Two patterns coexist — **do not mix in one handler**:
-1. Direct return: `return jsonResponse({ error: 'msg' }, 400);`
-2. Throw: `throw AppError.validationError('msg');`
-
-User-facing messages in Chinese.
-
-## Validation
-
-- `src/utils/validation.js`: functions return `null` (ok) or error string.
-- `validateAndThrow(obj, fields)` wraps validators and throws `AppError`.
-- **Gotcha**: `validatePrediction()` checks `'odd'`/`'even'`, but dice endpoint (`/api/game/dice`) uses `'small'`/`'big'`. Don't use `validatePrediction` for dice.
-
-## Rarity Configs (two sources — don't mix)
+## Rarity Configs (two independent sources)
 
 | Source | Location | Shape |
 |--------|----------|-------|
-| Frontend | `app/lib/rarity.js` | Tailwind classes: `bg`, `border`, `text`, `dot`, `hex`, `gradient`, `glow` + helper functions |
+| Frontend | `app/lib/rarity.js` | Tailwind classes (`bg`, `border`, `text`, `dot`, `gradient`, `glow`) + helper functions (`rarityBg`, `rarityBorder`, etc.) |
 | Backend | `src/config/constants.js` | Hex strings only: `RARITY_COLORS = { N: '#64748B', ... }` |
-
-## Gotchas
-
-- No `Buffer` global. Use `crypto.subtle.digest` for hashing.
-- `ctx.waitUntil()` for background work; `safeWaitUntil()` wraps with try/catch fallback (defined on both `UserService` and `GachaService` as instance methods).
-- `btoa`/`atob` available (Web APIs).
-- `nodejs_compat` compatibility flag in `wrangler.jsonc`.
-- D1 binding: `DB`. KV: `KV_CACHE`, `RECENT_REQUESTS`. R2: `R2_BUCKET`.
 
 ## Environment
 
-Secrets: `admin`, `GITHUB_TOKEN`. Vars: `GITHUB_OWNER`, `GITHUB_REPO`, `R2_DOMAIN`.
-Local: `.dev.vars` (gitignored).
+Secrets: `admin`, `GITHUB_TOKEN`. Vars: `GITHUB_OWNER` (default `lujih`), `GITHUB_REPO` (default `chouka-images`), `R2_DOMAIN`.
+
+## Gotchas
+
+- No `Buffer` global — use `crypto.subtle.digest` for hashing, `btoa`/`atob` for base64.
+- API client (`app/lib/api.js`) auto-attaches `X-Session-Token` from `localStorage`. Throws on non-2xx.
+- Session token stored in `localStorage` — XSS risk known, no workaround yet.
+- Known race conditions: KV-based rate limiter (TOCTOU), decompose stock read-then-update.
+- `consumeGlobalBuffer` race condition mitigated via `buffer_claims` D1 table — `INSERT ON CONFLICT DO NOTHING` acts as atomic distributed lock per URL hash, preventing duplicate image distribution under concurrent requests. Added round 4.
+- Upload validation (`/user/upload`): dual MIME check (browser `file.type` + magic bytes), extension whitelist (`.jpg`, `.png`, `.gif`, `.webp`), `validateRarity` called. Added round 4.
+- `consumeGlobalBuffer` refill guard: `safeRefillGlobalBuffer` only called when `selectedSlot.index >= 0`, preventing KV key pollution (`sys:buffer:UR:-1`). Fixed round 4.
+- `jsonResponse()` sets `success` automatically (`true` if status < 400, `false` otherwise) if not already set.

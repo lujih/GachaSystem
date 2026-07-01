@@ -3,8 +3,6 @@
  * 优化版本：添加JSDoc注释、统一错误格式、增强验证逻辑
  */
 
-import { AppError } from './AppError.js';
-
 /**
  * 验证用户名
  * @param {string} username - 待验证的用户名
@@ -53,8 +51,8 @@ export function validatePassword(password) {
   }
   
   // 基本长度验证
-  if (password.length < 6) {
-    return '密码长度至少需要6位';
+  if (password.length < 8) {
+    return '密码长度至少需要8位';
   }
   if (password.length > 100) {
     return '密码长度不能超过100位';
@@ -66,13 +64,11 @@ export function validatePassword(password) {
     return '密码过于简单，请使用更复杂的密码';
   }
   
-  // 可选：密码强度检查
-  // const hasLetter = /[a-zA-Z]/.test(password);
-  // const hasNumber = /\d/.test(password);
-  // const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-  // if (!hasLetter || !hasNumber) {
-  //   return '密码应包含字母和数字';
-  // }
+  const hasLetter = /[a-zA-Z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  if (!hasLetter || !hasNumber) {
+    return '密码需同时包含字母和数字';
+  }
   
   return null;
 }
@@ -183,144 +179,4 @@ export function validatePrediction(prediction) {
   }
   
   return null;
-}
-
-/**
- * 验证邮箱地址
- * @param {string} email - 待验证的邮箱
- * @returns {string|null} 错误消息，null表示验证通过
- */
-export function validateEmail(email) {
-  if (!email || typeof email !== 'string') {
-    return '邮箱地址不能为空';
-  }
-  
-  const trimmed = email.trim();
-  
-  // 基本格式验证
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(trimmed)) {
-    return '邮箱地址格式不正确';
-  }
-  
-  // 长度验证
-  if (trimmed.length > 254) {
-    return '邮箱地址过长';
-  }
-  
-  return null;
-}
-
-/**
- * 验证URL地址
- * @param {string} url - 待验证的URL
- * @param {Object} [options] - 验证选项
- * @param {boolean} [options.requireHttps=true] - 是否要求HTTPS
- * @returns {string|null} 错误消息，null表示验证通过
- */
-export function validateUrl(url, options = {}) {
-  const { requireHttps = true } = options;
-  
-  if (!url || typeof url !== 'string') {
-    return 'URL地址不能为空';
-  }
-  
-  const trimmed = url.trim();
-  
-  try {
-    const urlObj = new URL(trimmed);
-    
-    // 协议验证
-    if (requireHttps && urlObj.protocol !== 'https:') {
-      return 'URL必须使用HTTPS协议';
-    }
-    
-    // 允许的协议
-    const allowedProtocols = ['http:', 'https:'];
-    if (!allowedProtocols.includes(urlObj.protocol)) {
-      return `不支持的协议，仅支持: ${allowedProtocols.join(', ')}`;
-    }
-    
-    // 主机名验证
-    if (!urlObj.hostname) {
-      return 'URL必须包含主机名';
-    }
-    
-  } catch (error) {
-    return 'URL格式不正确';
-  }
-  
-  return null;
-}
-
-/**
- * 验证整数范围
- * @param {number|string} value - 待验证的值
- * @param {Object} range - 范围配置
- * @param {number} range.min - 最小值
- * @param {number} range.max - 最大值
- * @returns {string|null} 错误消息，null表示验证通过
- */
-export function validateIntegerRange(value, range) {
-  if (value === undefined || value === null || value === '') {
-    return '值不能为空';
-  }
-  
-  const numValue = Number(value);
-  if (isNaN(numValue)) {
-    return '值必须是有效的数字';
-  }
-  
-  if (!Number.isInteger(numValue)) {
-    return '值必须是整数';
-  }
-  
-  if (numValue < range.min) {
-    return `值不能小于 ${range.min}`;
-  }
-  
-  if (numValue > range.max) {
-    return `值不能大于 ${range.max}`;
-  }
-  
-  return null;
-}
-
-/**
- * 批量验证字段
- * @param {Object} obj - 包含字段的对象
- * @param {Array<{field: string, validator: Function, options?: any}>} validations - 验证规则数组
- * @returns {Array<{field: string, error: string}>} 验证错误数组，空数组表示全部通过
- */
-export function validateFields(obj, validations) {
-  const errors = [];
-  
-  for (const validation of validations) {
-    const { field, validator, options } = validation;
-    const value = obj[field];
-    const error = validator(value, options);
-    
-    if (error) {
-      errors.push({ field, error });
-    }
-  }
-  
-  return errors;
-}
-
-/**
- * 验证并抛出AppError
- * @param {Object} obj - 包含字段的对象
- * @param {Array<{field: string, validator: Function, options?: any}>} validations - 验证规则数组
- * @throws {AppError} 当验证失败时
- */
-export function validateAndThrow(obj, validations) {
-  const errors = validateFields(obj, validations);
-  
-  if (errors.length > 0) {
-    throw AppError.validationError(
-      '输入验证失败',
-      { errors }
-    );
-  }
 }

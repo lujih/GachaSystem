@@ -1,9 +1,6 @@
 /**
  * HTTP 响应工具函数
- * 优化版本：添加JSDoc注释和错误处理
  */
-
-import { AppError } from './AppError.js';
 
 /**
  * 创建JSON格式的HTTP响应
@@ -101,23 +98,6 @@ export async function requireAdmin(request, env) {
 }
 
 /**
- * 计算数据的SHA-256哈希值（用于去重）
- * @param {ArrayBuffer|Uint8Array} buffer - 二进制数据
- * @returns {Promise<string>} 16位十六进制哈希值
- * @throws {AppError} 当计算失败时
- */
-export async function calculateHash(buffer) {
-  try {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
-  } catch (error) {
-    console.error('哈希计算失败:', error);
-    throw AppError.serverError('文件处理失败');
-  }
-}
-
-/**
  * 创建分页响应
  * @param {Array} data - 数据数组
  * @param {number} page - 当前页码（从1开始）
@@ -137,41 +117,6 @@ export function paginatedResponse(data, page, pageSize, total) {
       totalPages,
       hasNext: page < totalPages,
       hasPrev: page > 1
-    }
-  });
-}
-
-/**
- * 验证请求内容类型
- * @param {Request} request - HTTP请求对象
- * @param {string} expectedType - 期望的内容类型
- * @throws {AppError} 当内容类型不匹配时
- */
-export function validateContentType(request, expectedType = 'application/json') {
-  const contentType = request.headers.get('content-type');
-  
-  if (!contentType || !contentType.includes(expectedType)) {
-    throw AppError.validationError(
-      `请求内容类型必须是 ${expectedType}`,
-      { received: contentType, expected: expectedType }
-    );
-  }
-}
-
-/**
- * 处理OPTIONS请求（CORS预检）
- * @param {Request} request - HTTP请求对象
- * @returns {Response} CORS预检响应
- */
-export function handleOptions(request) {
-  const headers = request.headers;
-  
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': headers.get('Access-Control-Request-Headers') || 'Content-Type, Authorization, X-User-ID',
-      'Access-Control-Max-Age': '86400',
     }
   });
 }

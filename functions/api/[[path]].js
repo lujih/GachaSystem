@@ -4,7 +4,9 @@ import { CONFIG, DEFAULT_CHANGELOG } from '../../src/config/index.js';
 import { jsonResponse, safeJsonParse, requireAdmin } from '../../src/utils/response.js';
 
 function getCurrentUser(context) {
-  return context.data?.currentUser || null;
+  const user = context.data?.currentUser || null;
+  if (user && context.data?._sessionToken) user._sessionToken = context.data._sessionToken;
+  return user;
 }
 
 async function onRequest(context) {
@@ -276,6 +278,12 @@ async function onRequest(context) {
 
     // ─── Admin ───
     if (path.startsWith('/admin/')) {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const rlKey = `rl:admin:${ip}`;
+      const rl = await env.KV_CACHE.get(rlKey);
+      if (rl && parseInt(rl) >= 10) return jsonResponse({ error: '操作过于频繁，请稍后重试' }, 429);
+      await env.KV_CACHE.put(rlKey, String((parseInt(rl) || 0) + 1), { expirationTtl: 600 });
+
       const auth = await requireAdmin(request.clone(), env);
       if (!auth.authorized) return jsonResponse({ error: auth.error || '认证失败' }, 403);
 

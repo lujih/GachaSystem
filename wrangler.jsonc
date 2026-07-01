@@ -10,5 +10,33 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
-  ]
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "chouka",
+      "database_id": ""
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV_CACHE",
+      "id": ""
+    },
+    {
+      "binding": "RECENT_REQUESTS",
+      "id": ""
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2_BUCKET",
+      "bucket_name": "chouka-images"
+    }
+  ],
+  "vars": {
+    "R2_DOMAIN": "https://cft1.cszxorx.dpdns.org",
+    "GITHUB_OWNER": "lujih",
+    "GITHUB_REPO": "chouka-images"
+  }
 }

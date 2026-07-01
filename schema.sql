@@ -185,3 +185,16 @@ CREATE TABLE IF NOT EXISTS card_bookmarks (
 ) STRICT;
 CREATE INDEX IF NOT EXISTS idx_bookmarks_gallery ON card_bookmarks(gallery_id);
 CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON card_bookmarks(user_id, created_at DESC);
+
+-- 12. Buffer 声明表（并发防止重复发图）
+-- 用 D1 INSERT ON CONFLICT 做原子锁：
+-- 两个请求同时选中同一 slot → 只有一个能 INSERT 成功，另一个降级为直取
+CREATE TABLE IF NOT EXISTS buffer_claims (
+    url_hash TEXT NOT NULL PRIMARY KEY,
+    rarity TEXT NOT NULL,
+    slot_index INTEGER NOT NULL,
+    claimed_at INTEGER NOT NULL
+) STRICT;
+
+-- 清理超过 10 分钟的旧声明（通过定时任务或懒清理）
+CREATE INDEX IF NOT EXISTS idx_buffer_claims_claimed ON buffer_claims(claimed_at);

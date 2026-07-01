@@ -146,26 +146,8 @@ function validateConfig(config) {
   }
 }
 
-/**
- * 获取配置实例
- * 注意：在Cloudflare Workers中，env对象由平台提供
- * @param {EnvConfig} [env={}] - 环境变量
- * @returns {MergedConfig} 配置对象
- */
-export function getConfig(env = {}) {
-  return mergeConfig(env);
-}
-
-/**
- * 默认配置（使用空环境变量）
- * @type {MergedConfig}
- */
 export const CONFIG = mergeConfig();
 
-/**
- * 默认变更日志
- * @type {ChangelogEntry[]}
- */
 export const DEFAULT_CHANGELOG = [
   { 
     date: new Date().toISOString().split('T')[0] || '2026-04-07', 
@@ -181,46 +163,5 @@ export const DEFAULT_CHANGELOG = [
   }
 ];
 
-/**
- * 获取环境敏感的配置
- * 根据环境变量调整配置值
- * @param {EnvConfig} env - 环境变量
- * @returns {MergedConfig} 调整后的配置
- */
-export function getEnvironmentAwareConfig(env) {
-  const config = mergeConfig(env);
-  
-  // 生产环境禁用调试模式
-  if (env.NODE_ENV === 'production') {
-    config.DEBUG_MODE_ENABLED = false;
-  }
-  
-  // 开发环境调整缓存时间
-  if (env.NODE_ENV === 'development') {
-    config.TTL.CACHE = 10; // 开发环境缓存10秒
-    config.TTL.USER_INFO = 5;
-  }
-  
-  return config;
-}
-
-/**
- * 验证环境变量
- * @param {EnvConfig} env - 环境变量
- * @returns {Array<string>} 缺失的环境变量列表
- */
-export function validateEnvironment(env) {
-  const required = ['R2_DOMAIN'];
-  const missing = [];
-  
-  for (const key of required) {
-    if (!env[key]) {
-      missing.push(key);
-    }
-  }
-  
-  return missing;
-}
-
-// 导出原始配置（用于测试和特殊场景）
+// 导出原始配置
 export { BUSINESS_CONFIG, TECHNICAL_CONFIG, HTTP_STATUS, RARITY_ORDER, RARITY_LABELS, RARITY_COLORS, GAME_ACTIONS };

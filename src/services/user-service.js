@@ -22,6 +22,16 @@ export class UserService {
     }
   }
 
+  async updateSession(userData) {
+    if (!userData?._sessionToken || !this.env.KV_CACHE) return;
+    try {
+      const { _sessionToken, ...sessionData } = userData;
+      await this.env.KV_CACHE.put(`session:${_sessionToken}`, JSON.stringify(sessionData), { expirationTtl: CONFIG.TTL.SESSION });
+    } catch (e) {
+      console.warn('[Session] Update failed:', e.message);
+    }
+  }
+
   async hashPassword(password) {
     const encoder = new TextEncoder();
     const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -215,6 +225,7 @@ export class UserService {
     }
 
     await this.invalidateUserCache(currentUser.id);
+    this.safeWaitUntil(this.updateSession(currentUser));
 
     return jsonResponse({
       success: true,
@@ -280,6 +291,7 @@ export class UserService {
      
     currentUser.coins = (currentUser.coins || 0) + coinsToAdd;
     await this.invalidateUserCache(currentUser.id);
+    this.safeWaitUntil(this.updateSession(currentUser));
      
     return jsonResponse({ success: true, userCoins: currentUser.coins, reward: rewardConfig });
   }
@@ -323,7 +335,7 @@ export class UserService {
     const beijingNow = getBeijingTime(now);
     const tomorrowBeijing = new Date(beijingNow);
     tomorrowBeijing.setDate(tomorrowBeijing.getDate() + 1);
-    tomorrowBeijing.setUTCHours(16, 0, 0, 0);
+    tomorrowBeijing.setUTCHours(0, 0, 0, 0);
 
     const secondsUntilMidnight = Math.floor((tomorrowBeijing - beijingNow) / 1000);
     const ttl = Math.max(secondsUntilMidnight, 0) + CONFIG.TTL.SESSION;
@@ -467,6 +479,7 @@ export class UserService {
     if (!titleId) {
       await this.env.DB.prepare('UPDATE user_titles SET is_equipped = 0 WHERE user_id = ?').bind(currentUser.id).run();
       await this.invalidateUserCache(currentUser.id);
+    this.safeWaitUntil(this.updateSession(currentUser));
       return jsonResponse({ success: true, message: '称号已卸下' });
     }
 
@@ -484,6 +497,7 @@ export class UserService {
     await this.env.DB.batch(batch);
      
     await this.invalidateUserCache(currentUser.id);
+    this.safeWaitUntil(this.updateSession(currentUser));
      
     return jsonResponse({ success: true, message: '称号已佩戴', title: { name: titleId } });
   }
@@ -500,6 +514,7 @@ export class UserService {
         .bind(nickname, currentUser.id).run();
       
       await this.invalidateUserCache(currentUser.id);
+    this.safeWaitUntil(this.updateSession(currentUser));
       
       return jsonResponse({ success: true, nickname });
     } catch(e) {

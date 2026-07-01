@@ -12,18 +12,10 @@
 import { CONFIG, TECHNICAL_CONFIG } from '../config/index.js';
 import { jsonResponse } from '../utils/response.js';
 import { getBeijingISOString } from '../utils/time.js';
+import { validateRarity } from '../utils/validation.js';
 
 // 辅助函数
-export { arrayBufferToBase64, calculateHash, uploadToGithub, updateLeaderboard, updateGalleryIndex };
-function arrayBufferToBase64(buffer) {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
+export { updateLeaderboard, updateGalleryIndex };
 
 async function calculateHash(buffer) {
   const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
@@ -55,47 +47,6 @@ async function updateGalleryIndex(env, newItem) {
   }
 }
 
-async function uploadToGithub(env, path, content, extension, message) {
-  try {
-    const githubToken = env.GITHUB_TOKEN;
-    const repoOwner = env.GITHUB_OWNER || TECHNICAL_CONFIG.GITHUB.OWNER;
-    const repoName = env.GITHUB_REPO || TECHNICAL_CONFIG.GITHUB.REPO;
-    if (!githubToken) return { error: 'GitHub Token 未配置，请在 CF 后台环境变量中设置 GITHUB_TOKEN' };
-
-    let base64Content;
-    try { base64Content = arrayBufferToBase64(content); } catch (e) {
-      return { error: '图片编码处理失败，请更换其他图片' };
-    }
-
-    const apiUrl = `${TECHNICAL_CONFIG.GITHUB.API_BASE}/repos/${repoOwner}/${repoName}/contents/${path}`;
-    const requestBody = { message, content: base64Content, branch: TECHNICAL_CONFIG.GITHUB.BRANCH };
-    const response = await fetch(apiUrl, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `token ${githubToken}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'Gacha-System'
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('[GitHub Upload] API Error:', response.status, response.statusText, errText);
-      return { error: `GitHub API 错误: ${response.status}` };
-    }
-
-    const data = await response.json();
-    const cdnUrl = `${TECHNICAL_CONFIG.GITHUB.CDN_BASE}/${repoOwner}/${repoName}/${TECHNICAL_CONFIG.GITHUB.BRANCH}/${path}`;
-    console.log(`[GitHub Upload] Success: ${cdnUrl}`);
-    return { success: true, url: cdnUrl };
-  } catch (e) {
-    console.error('[GitHub Upload] Error:', e);
-    return { error: '上传失败，请稍后重试' };
-  }
-}
-
 export class GachaService {
   constructor(env, ctx = null, userService = null) {
     this.env = env;
@@ -106,6 +57,16 @@ export class GachaService {
   async safeWaitUntil(promise) {
     if (this.ctx && typeof this.ctx.waitUntil === 'function') this.ctx.waitUntil(promise);
     else await promise;
+  }
+
+  async updateSession(userData) {
+    if (!userData?._sessionToken || !this.env.KV_CACHE) return;
+    try {
+      const { _sessionToken, ...sessionData } = userData;
+      await this.env.KV_CACHE.put(`session:${_sessionToken}`, JSON.stringify(sessionData), { expirationTtl: CONFIG.TTL.SESSION });
+    } catch (e) {
+      console.warn('[Session] Update failed:', e.message);
+    }
   }
 
   // ==================== Rate Limiting ====================
@@ -125,10 +86,6 @@ export class GachaService {
 
   async checkDiceCooldown(userId) {
     return this.checkRateLimit(`dice:${userId}`, 1, (CONFIG.GAME.DICE.COOLDOWN_MS || 3000) / 1000);
-  }
-
-  async checkRegisterRateLimit(ip) {
-    return this.checkRateLimit(`reg:${ip || 'unknown'}`, 3, 600);
   }
 
   // ==================== 保底计数器 ====================
@@ -181,7 +138,7 @@ export class GachaService {
     const fallbacks = (CONFIG.FALLBACK_SOURCES || []).filter(s => s.rarity === source.rarity);
     for (const fb of fallbacks) {
       try {
-        console.log(`[Fallback] Trying ${fb.url} for ${source.rarity}`);
+        console.warn(`[Fallback] Trying ${fb.url} for ${source.rarity}`);
         const result = await this.fetchAndUpload({ ...fb, name: 'Fallback' });
         if (result.success) return result;
       } catch (e) { console.warn(`[Fallback] ${fb.url} failed:`, e.message); }
@@ -198,6 +155,29 @@ export class GachaService {
         await this.env.KV_CACHE.put(`${CONFIG.KEYS.BUFFER_PREFIX}${rarity}:${idx}`, JSON.stringify(asset), { expirationTtl: CONFIG.TTL.STATIC_ASSET });
       }
     } catch (e) { console.error(`[Refill Error] ${rarity}:`, e); }
+  }
+
+  // 原子声明 buffer slot：D1 INSERT ON CONFLICT DO NOTHING 防并发重复发图
+  async tryClaimBufferSlot(urlHash, rarity, slotIndex, now) {
+    try {
+      const result = await this.env.DB.prepare(
+        'INSERT INTO buffer_claims (url_hash, rarity, slot_index, claimed_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING'
+      ).bind(urlHash, rarity, slotIndex, now).run();
+      return result.meta.changes > 0;
+    } catch (e) {
+      console.warn('[Buffer] D1 claim failed, proceeding without lock:', e.message);
+      return true;
+    }
+  }
+
+  // 后台清理超过 10 分钟的旧声明
+  async cleanupStaleClaims() {
+    try {
+      const cutoff = Date.now() - 600000;
+      await this.env.DB.prepare('DELETE FROM buffer_claims WHERE claimed_at < ?').bind(cutoff).run();
+    } catch (e) {
+      console.warn('[Buffer] Cleanup failed:', e.message);
+    }
   }
 
   async consumeGlobalBuffer(rarity, sourceList) {
@@ -236,12 +216,19 @@ export class GachaService {
 
     if (selectedSlot.asset.imageUrl && selectedSlot.index >= 0) {
       const urlHash = selectedSlot._urlHash || await this.hashString(selectedSlot.asset.imageUrl);
+      if (!(await this.tryClaimBufferSlot(urlHash, rarity, selectedSlot.index, now))) {
+        selectedSlot = { asset: await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]), index: -1 };
+        return selectedSlot.asset;
+      }
       await this.env.KV_CACHE.put(`${blacklistPrefix}${rarity}:${urlHash}`, now.toString(), { expirationTtl: CONFIG.TTL.BLACKLIST_TTL });
       selectedSlot.asset.lastUsed = now;
       await this.env.KV_CACHE.put(`${bufferPrefix}${rarity}:${selectedSlot.index}`, JSON.stringify(selectedSlot.asset), { expirationTtl: CONFIG.TTL.BUFFER });
     }
 
-    this.safeWaitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, selectedSlot.index));
+    if (selectedSlot.index >= 0) {
+      this.safeWaitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, selectedSlot.index));
+    }
+    this.safeWaitUntil(this.cleanupStaleClaims());
     return selectedSlot.asset;
   }
 
@@ -284,12 +271,18 @@ export class GachaService {
 
     if (selectedSlot.asset.imageUrl && selectedSlot.index >= 0) {
       const urlHash = selectedSlot._urlHash || await this.hashString(selectedSlot.asset.imageUrl);
+      if (!(await this.tryClaimBufferSlot(urlHash, rarity, selectedSlot.index, now))) {
+        selectedSlot = { asset: await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]), index: -1 };
+        return selectedSlot.asset;
+      }
       await this.env.KV_CACHE.put(`${blacklistPrefix}${rarity}:${urlHash}`, now.toString(), { expirationTtl: CONFIG.TTL.BLACKLIST_TTL });
       selectedSlot.asset.lastUsed = now;
       await this.env.KV_CACHE.put(`${bufferPrefix}${rarity}:${selectedSlot.index}`, JSON.stringify(selectedSlot.asset), { expirationTtl: CONFIG.TTL.BUFFER });
     }
 
-    this.safeWaitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, selectedSlot.index));
+    if (selectedSlot.index >= 0) {
+      this.safeWaitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, selectedSlot.index));
+    }
     return selectedSlot.asset;
   }
 
@@ -312,13 +305,9 @@ export class GachaService {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
   }
 
-  async fetchAndUploadRandom(sourceList) {
-    return await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]);
-  }
-
   async fetchAndUpload(source) {
     try {
-      console.log('[fetchAndUpload] Fetching from:', source.url);
+      // [fetchAndUpload] Fetching from:
       let requestUrl = source.url;
       try { new URL(source.url); } catch { requestUrl = encodeURI(source.url); }
 
@@ -334,7 +323,7 @@ export class GachaService {
                      (data.data && (data.data.url || data.data.img || data.data[0])) ||
                      (Array.isArray(data.data) && data.data[0]?.url) || source.url;
         } catch (e) {
-          console.log('[fetchAndUpload] JSON parse error:', e);
+          console.warn('[fetchAndUpload] JSON parse error:', e);
           finalUrl = initRes.url;
         }
       } else {
@@ -343,7 +332,7 @@ export class GachaService {
       if (!finalUrl || finalUrl === 'null' || finalUrl === 'undefined') {
         return { success: false, rarity: 'N', imageUrl: null };
       }
-      console.log('[fetchAndUpload] URL:', finalUrl);
+      // [fetchAndUpload] URL:
 
       const compressedUrl = `https://wsrv.nl/?url=${encodeURIComponent(finalUrl)}&output=webp&q=75&w=1200&il`;
       const controller = new AbortController();
@@ -370,19 +359,6 @@ export class GachaService {
       console.error('Fetch/Compress Error:', e);
     }
     return { success: false, rarity: 'N', imageUrl: null };
-  }
-
-  calculateLevelUpRaw(currentUser, expGained) {
-    const originalTotalExp = currentUser.total_exp || 0;
-    const newTotalExp = originalTotalExp + expGained;
-    const originalLevel = this.userService.calculateLevelFromTotalExp(originalTotalExp).level;
-    const newLevelInfo = this.userService.calculateLevelFromTotalExp(newTotalExp);
-    if (newLevelInfo.level > originalLevel) {
-      const levelsGained = newLevelInfo.level - originalLevel;
-      const coinsReward = levelsGained * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL;
-      return { hasLevelUp: true, newLevel: newLevelInfo.level, newExp: newLevelInfo.currentExp, coinsReward };
-    }
-    return { hasLevelUp: false, newExp: (currentUser.exp || 0) + expGained, coinsReward: 0 };
   }
 
   // 计算软保底概率（单抽/十连复用）
@@ -480,6 +456,7 @@ export class GachaService {
       }
 
       this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
+      this.safeWaitUntil(this.updateSession(currentUser));
 
       return jsonResponse({
         success: true,
@@ -552,7 +529,6 @@ export class GachaService {
     let totalExp = 0;
     const cards = [];
     const dbStatements = [];
-    const drawnUrls = new Set(); // 同批次去重
     const failedSlots = [];
     let levelUpResult = null;
 
@@ -625,6 +601,7 @@ export class GachaService {
     ]);
 
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
+      this.safeWaitUntil(this.updateSession(currentUser));
 
     return jsonResponse({
       success: true,
@@ -739,8 +716,17 @@ export class GachaService {
     const drawnUrls = new Set();
 
     for (let i = 0; i < count; i++) {
-      const pityResult = this.applyPity(baseRarity, tempPity.ssrPity, tempPity.urPity);
-      const rarity = pityResult.rarity;
+      const { urProb, ssrProb } = this.calcSoftPityProbs(tempPity.ssrPity, tempPity.urPity);
+      const rand = Math.random() * 100;
+      let rarity;
+      if (rand < urProb) rarity = 'UR';
+      else if (rand < urProb + ssrProb) rarity = 'SSR';
+      else if (rand < urProb + ssrProb + 15) rarity = 'SR';
+      else if (rand < urProb + ssrProb + 50) rarity = 'R';
+      else rarity = 'N';
+
+      const pityResult = this.applyPity(rarity, tempPity.ssrPity, tempPity.urPity);
+      rarity = pityResult.rarity;
 
       let asset;
       if (rarity === baseRarity) {
@@ -815,6 +801,7 @@ export class GachaService {
       this.env.KV_CACHE.put(`pity:limited:ur:${currentUser.id}`, String(tempPity.urPity), { expirationTtl: 86400 * 7 })
     ]);
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
+      this.safeWaitUntil(this.updateSession(currentUser));
 
     return jsonResponse({
       success: true,
@@ -897,6 +884,7 @@ export class GachaService {
     await this.env.DB.batch(craftStmts);
     if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
+      this.safeWaitUntil(this.updateSession(currentUser));
     return jsonResponse({
       success: true,
       card: asset,
@@ -938,6 +926,7 @@ export class GachaService {
     await this.env.DB.batch(shopStatements);
     if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
+      this.safeWaitUntil(this.updateSession(currentUser));
     return jsonResponse({
       success: true,
       message: `成功购买 ${targetRarity} 卡片`,
@@ -970,6 +959,7 @@ export class GachaService {
 
     currentUser.coins = (currentUser.coins || 0) + totalCoins;
     await this.userService.invalidateUserCache(currentUser.id);
+    this.safeWaitUntil(this.updateSession(currentUser));
 
     return jsonResponse({
       success: true,
@@ -1005,6 +995,7 @@ export class GachaService {
     const netChange = reward - cost;
     await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(netChange, currentUser.id).run();
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
+      this.safeWaitUntil(this.updateSession(currentUser));
     return jsonResponse({
       roll1, roll2, sum, reward, cost,
       message: `🎲 ${roll1} + ${roll2} = ${sum}, ${reward > cost ? '恭喜中奖！' : '下次好运！'}`,
@@ -1018,17 +1009,32 @@ export class GachaService {
     try {
       const formData = await request.formData();
       const file = formData.get('image');
-      const rarity = formData.get('rarity') || 'N';
+      const rarityRaw = formData.get('rarity') || 'N';
+      const rarityError = validateRarity(rarityRaw);
+      if (rarityError) return jsonResponse({ error: rarityError }, 400);
+      const rarity = rarityRaw.toUpperCase();
       if (!file) return jsonResponse({ error: '未提供图片' }, 400);
       const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
       if (!allowedTypes.includes(file.type)) return jsonResponse({ error: '无效的文件类型' }, 400);
+      const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+      const fileName = file.name || '';
+      const ext = fileName.includes('.') ? '.' + fileName.split('.').pop().toLowerCase() : '';
+      if (!allowedExts.includes(ext)) return jsonResponse({ error: '无效的文件扩展名' }, 400);
       const maxSize = 5 * 1024 * 1024;
       if (file.size > maxSize) return jsonResponse({ error: '文件过大，最大5MB' }, 400);
       const arrayBuffer = await file.arrayBuffer();
+
+      // Magic bytes validation
+      const bytes = new Uint8Array(arrayBuffer.slice(0, 4));
+      const magic = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+      const MAGIC_MAP = { 'FFD8FF': 'image/jpeg', '89504E47': 'image/png', '47494638': 'image/gif', '52494646': 'image/webp' };
+      const matchedMime = Object.entries(MAGIC_MAP).find(([magicPrefix]) => magic.startsWith(magicPrefix));
+      if (!matchedMime) return jsonResponse({ error: '文件内容不是有效的图片格式' }, 400);
+      if (matchedMime[1] !== file.type) return jsonResponse({ error: '文件扩展名与内容不匹配' }, 400);
+
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 8);
-      const ext = file.name.split('.').pop() || 'jpg';
-      const r2Key = `uploads/${currentUser.id}_${timestamp}_${random}.${ext}`;
+      const r2Key = `uploads/${currentUser.id}_${timestamp}_${random}${ext}`;
       const r2Url = `${CONFIG.R2_DOMAIN}/${r2Key}`;
       await this.env.R2_BUCKET.put(r2Key, arrayBuffer, {
         httpMetadata: { contentType: file.type, cacheControl: 'public, max-age=3600' }
