@@ -66,6 +66,11 @@ export class GachaService {
     return res.meta.changes > 0;
   }
 
+  async refundCoins(userId, amount) {
+    if (amount <= 0) return;
+    await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(amount, userId).run();
+  }
+
   // ==================== 单抽 ====================
 
   async draw(currentUser) {
@@ -80,8 +85,15 @@ export class GachaService {
 
     const sources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
     if (sources.length === 0) throw AppError.serverError(`配置错误: 无法找到 ${rarity} 的图源`);
-    const asset = await this.imagePipeline.consumeBuffer(rarity, sources);
+    let asset;
+    try {
+      asset = await this.imagePipeline.consumeBuffer(rarity, sources);
+    } catch {
+      await this.refundCoins(currentUser.id, cost);
+      throw AppError.serverError(`获取 ${rarity} 图片失败，请重试`);
+    }
     if (!asset || (!asset.success && !asset.imageUrl)) {
+      await this.refundCoins(currentUser.id, cost);
       throw AppError.serverError(`获取 ${rarity} 图片失败，请重试`);
     }
 
@@ -101,7 +113,7 @@ export class GachaService {
         .bind(currentUser.id, rarity),
       this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, asset.sourceName || '常驻池', Date.now()),
-      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = excluded.ssr, ur = excluded.ur')
+      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = MAX(ssr, excluded.ssr), ur = MAX(ur, excluded.ur)')
         .bind(currentUser.id, nextPity.ssr, nextPity.ur),
     ];
     await this.env.DB.batch(stmts);
@@ -141,6 +153,7 @@ export class GachaService {
 
     const pity = await this.getPity(currentUser.id);
     const plan = planMultiDraw(reqCount, pity);
+    const drawCost = Math.floor(cost / reqCount);
 
     // 预读 buffer（按稀有度分组一次）
     const bufferCache = {};
@@ -199,11 +212,12 @@ export class GachaService {
     const levelUp = levelInfo.level > currentUser.level
       ? { newLevel: levelInfo.level, reward: (levelInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL }
       : null;
+    const refund = failedSlots.length * drawCost;
 
     stmts.push(
       this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + ?, total_exp = total_exp + ?, level = ?, exp = ? WHERE id = ?')
-        .bind(totalCoins + (levelUp?.reward || 0), cards.length, totalExp, levelInfo.level, levelInfo.currentExp, currentUser.id),
-      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = excluded.ssr, ur = excluded.ur')
+        .bind(totalCoins + refund + (levelUp?.reward || 0), cards.length, totalExp, levelInfo.level, levelInfo.currentExp, currentUser.id),
+      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = MAX(ssr, excluded.ssr), ur = MAX(ur, excluded.ur)')
         .bind(currentUser.id, lastPlan.ssrPity, lastPlan.urPity),
     );
     await this.env.DB.batch(stmts);
@@ -249,51 +263,56 @@ export class GachaService {
     let totalExp = 0;
     const drawnUrls = new Set();
 
-    for (let i = 0; i < count; i++) {
-      const { rarity, isPity } = rollRarity(tempPity.ssr, tempPity.ur);
-      tempPity.ssr++;
-      tempPity.ur++;
-      if (rarity === 'SSR' || rarity === 'UR') tempPity.ssr = 0;
-      if (rarity === 'UR') tempPity.ur = 0;
+    try {
+      for (let i = 0; i < count; i++) {
+        const { rarity, isPity } = rollRarity(tempPity.ssr, tempPity.ur);
+        tempPity.ssr++;
+        tempPity.ur++;
+        if (rarity === 'SSR' || rarity === 'UR') tempPity.ssr = 0;
+        if (rarity === 'UR') tempPity.ur = 0;
 
-      let asset;
-      if (rarity === baseRarity) {
-        asset = await this.imagePipeline.fetchAndUploadWithFallback(sources[Math.floor(Math.random() * sources.length)]);
-      } else {
-        const fallbackSources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
-        asset = await this.imagePipeline.consumeBuffer(rarity, fallbackSources.length > 0 ? fallbackSources : sources);
+        let asset;
+        if (rarity === baseRarity) {
+          asset = await this.imagePipeline.fetchAndUploadWithFallback(sources[Math.floor(Math.random() * sources.length)]);
+        } else {
+          const fallbackSources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
+          asset = await this.imagePipeline.consumeBuffer(rarity, fallbackSources.length > 0 ? fallbackSources : sources);
+        }
+        if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
+
+        // 同批去重
+        let finalAsset = asset;
+        if (asset.success && drawnUrls.has(asset.imageUrl)) {
+          try {
+            const retrySrc = rarity === baseRarity ? sources : CONFIG.SOURCES.filter(s => s.rarity === rarity);
+            const retry = await this.imagePipeline.fetchAndUploadWithFallback(retrySrc[Math.floor(Math.random() * retrySrc.length)]);
+            if (retry.success && !drawnUrls.has(retry.imageUrl)) finalAsset = retry;
+          } catch {}
+        }
+        if (finalAsset.success) drawnUrls.add(finalAsset.imageUrl);
+
+        const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
+        totalExp += expGain;
+
+        cards.push({
+          rarity,
+          asset: finalAsset.success ? { url: finalAsset.imageUrl, sourceName: finalAsset.sourceName } : null,
+          isPity,
+          pityInfo: { ssrPity: tempPity.ssr, urPity: tempPity.ur, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
+        });
+
+        stmts.push(
+          this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity),
+          this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, finalAsset.sourceName || poolConfig.name || '限定池', Date.now() + i)
+        );
+
+        if (finalAsset.success) {
+          this.safeWaitUntil(this.galleryService.updateIndex({ url: finalAsset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: finalAsset.sourceName, ts: Date.now() + i }));
+        }
       }
-      if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
-
-      // 同批去重
-      let finalAsset = asset;
-      if (asset.success && drawnUrls.has(asset.imageUrl)) {
-        try {
-          const retrySrc = rarity === baseRarity ? sources : CONFIG.SOURCES.filter(s => s.rarity === rarity);
-          const retry = await this.imagePipeline.fetchAndUploadWithFallback(retrySrc[Math.floor(Math.random() * retrySrc.length)]);
-          if (retry.success && !drawnUrls.has(retry.imageUrl)) finalAsset = retry;
-        } catch {}
-      }
-      if (finalAsset.success) drawnUrls.add(finalAsset.imageUrl);
-
-      const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
-      totalExp += expGain;
-
-      cards.push({
-        rarity,
-        asset: finalAsset.success ? { url: finalAsset.imageUrl, sourceName: finalAsset.sourceName } : null,
-        isPity,
-        pityInfo: { ssrPity: tempPity.ssr, urPity: tempPity.ur, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
-      });
-
-      stmts.push(
-        this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity),
-        this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, finalAsset.sourceName || poolConfig.name || '限定池', Date.now() + i)
-      );
-
-      if (finalAsset.success) {
-        this.safeWaitUntil(this.galleryService.updateIndex({ url: finalAsset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: finalAsset.sourceName, ts: Date.now() + i }));
-      }
+    } catch (e) {
+      await this.refundCoins(currentUser.id, cost);
+      throw e;
     }
 
     const totalExpNew = (currentUser.total_exp || 0) + totalExp;
@@ -307,7 +326,7 @@ export class GachaService {
     stmts.push(
       this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + ?, total_exp = total_exp + ?, level = ?, exp = ? WHERE id = ?')
         .bind(levelUpCoins, count, totalExp, levelInfo.level, levelInfo.currentExp, currentUser.id),
-      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, 0, 0, ?, ?) ON CONFLICT(user_id) DO UPDATE SET limited_ssr = excluded.limited_ssr, limited_ur = excluded.limited_ur')
+      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, 0, 0, ?, ?) ON CONFLICT(user_id) DO UPDATE SET limited_ssr = MAX(limited_ssr, excluded.limited_ssr), limited_ur = MAX(limited_ur, excluded.limited_ur)')
         .bind(currentUser.id, tempPity.ssr, tempPity.ur),
     );
     await this.env.DB.batch(stmts);
@@ -440,7 +459,17 @@ export class GachaService {
       ? { newLevel: levelInfo.level, reward: (levelInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL }
       : null;
 
-    const asset = await this.imagePipeline.consumeBuffer(targetRarity, CONFIG.SOURCES.filter(s => s.rarity === targetRarity));
+    let asset;
+    try {
+      asset = await this.imagePipeline.consumeBuffer(targetRarity, CONFIG.SOURCES.filter(s => s.rarity === targetRarity));
+    } catch {
+      await this.refundCoins(currentUser.id, price);
+      throw AppError.serverError(`获取 ${targetRarity} 图片失败，请重试`);
+    }
+    if (!asset || (!asset.success && !asset.imageUrl)) {
+      await this.refundCoins(currentUser.id, price);
+      throw AppError.serverError(`获取 ${targetRarity} 图片失败，请重试`);
+    }
 
     await this.env.DB.batch([
       this.env.DB.prepare('UPDATE users SET total_exp = total_exp + ?, level = ?, exp = ?, coins = coins + ? WHERE id = ?')
