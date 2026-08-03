@@ -76,7 +76,7 @@ export class AuthService {
     const token = crypto.randomUUID();
     const tokenHash = await sha256Hex(token);
     const now = Date.now();
-    const expiresAt = now + CONFIG.TTL.SESSION;
+    const expiresAt = now + CONFIG.TTL.SESSION * 1000;
 
     await this.env.DB.prepare(
       'INSERT INTO sessions (token_hash, user_id, created_at, expires_at, last_seen_at) VALUES (?, ?, ?, ?, ?)'
