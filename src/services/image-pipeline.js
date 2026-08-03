@@ -84,14 +84,20 @@ export class ImagePipeline {
       if (!buffer) {
         // 降级：直传原图
         compressed = false;
-        const origRes = await fetch(finalUrl, { redirect: 'follow' });
-        if (!origRes.ok) throw new Error('Original fetch failed');
-        buffer = await origRes.arrayBuffer();
-        if (buffer.byteLength < 100) throw new Error('Image too small');
-        const ext = (origRes.headers.get('content-type') || 'image/jpeg').split('/')[1] || 'jpg';
-        r2ContentType = `image/${ext === 'jpeg' ? 'jpeg' : ext}`;
-        const hashStr = await calculateHash(buffer);
-        filename = `images/${source.rarity}_${hashStr}.${ext === 'jpeg' ? 'jpg' : ext}`;
+        const origController = new AbortController();
+        const origTimeout = setTimeout(() => origController.abort(), 8000);
+        try {
+          const origRes = await fetch(finalUrl, { redirect: 'follow', signal: origController.signal });
+          if (!origRes.ok) throw new Error('Original fetch failed');
+          buffer = await origRes.arrayBuffer();
+          if (buffer.byteLength < 100) throw new Error('Image too small');
+          const ext = (origRes.headers.get('content-type') || 'image/jpeg').split('/')[1] || 'jpg';
+          r2ContentType = `image/${ext === 'jpeg' ? 'jpeg' : ext}`;
+          const hashStr = await calculateHash(buffer);
+          filename = `images/${source.rarity}_${hashStr}.${ext === 'jpeg' ? 'jpg' : ext}`;
+        } finally {
+          clearTimeout(origTimeout);
+        }
       }
 
       await this.env.R2_BUCKET.put(filename, buffer, {
@@ -191,6 +197,7 @@ export class ImagePipeline {
       const urlHash = selectedSlot._urlHash || await this.hashString(selectedSlot.asset.imageUrl);
       if (!(await this.tryClaimBufferSlot(urlHash, rarity, selectedSlot.index, now))) {
         selectedSlot = { asset: await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]), index: -1 };
+        this.safeWaitUntil(this.cleanupStaleClaims());
         return selectedSlot.asset;
       }
       await this.env.KV_CACHE.put(`${CONFIG.KEYS.DRAW_BLACKLIST}${rarity}:${urlHash}`, now.toString(), { expirationTtl: CONFIG.TTL.BLACKLIST_TTL });

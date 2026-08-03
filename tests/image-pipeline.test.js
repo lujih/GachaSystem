@@ -36,6 +36,7 @@ describe('ImagePipeline.consumeBuffer', () => {
 
   it('从已缓存 slots 中消费一个 asset', async () => {
     const { env, kv } = makeEnv();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network')));
     kv.store.set('sys:buffer:N:0', JSON.stringify(slotAsset('https://cdn.test/a.png', 100)));
     kv.store.set('sys:buffer:N:1', JSON.stringify(slotAsset('https://cdn.test/b.png', 200)));
 
@@ -57,6 +58,7 @@ describe('ImagePipeline.consumeBuffer', () => {
     const asset = await pipe.consumeBuffer('N', [{ name: 'S', url: 'https://src.test', rarity: 'N' }]);
 
     expect(asset.imageUrl).not.toBe('https://cdn.test/blocked.png');
+    expect(asset.success).toBe(false);
   });
 
   it('D1 锁冲突（changes=0）时降级实时拉取', async () => {
@@ -64,8 +66,7 @@ describe('ImagePipeline.consumeBuffer', () => {
     kv.store.set('sys:buffer:N:0', JSON.stringify(slotAsset('https://cdn.test/taken.png')));
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ url: 'https://img.test/1.jpg' }), { headers: { 'content-type': 'application/json' } }))
-      .mockResolvedValueOnce(new Response(new Uint8Array(Array.from({ length: 1024 }, (_, i) => (i % 255) + 1)), { headers: { 'content-type': 'image/webp' } }))
-      .mockResolvedValueOnce(new Response('ok', { status: 200, headers: { 'content-type': 'text/plain' } }))); // waitUntil 清理的 DB 调用无碍
+      .mockResolvedValueOnce(new Response(new Uint8Array(Array.from({ length: 1024 }, (_, i) => (i % 255) + 1)), { headers: { 'content-type': 'image/webp' } })));
 
     const pipe = new ImagePipeline(env);
     const asset = await pipe.consumeBuffer('N', [{ name: 'S', url: 'https://src.test', rarity: 'N' }]);
