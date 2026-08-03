@@ -1,581 +1,192 @@
 /**
- * 抽卡服务类
- * 
- * 新增功能（2026-04-02）:
- * - 保底机制（SSR 50 抽保底、UR 500 抽保底）
- * - 多连抽（十连抽）
- * - 抽卡历史记录
- * - Rate Limiting（注册防刷 + 骰子冷却）
- * - 图片源 fallback（主源失败自动切换备用）
+ * 抽卡服务：编排 DrawEngine（概率）+ ImagePipeline（图片）+ D1（账务）
+ * 并发安全：先原子扣币（UPDATE ... WHERE coins >= ?），再 batch 写奖励/库存/历史
+ * 会话不再携带可变业务字段（删除了 updateSession 机制）
  */
-
-import { CONFIG, TECHNICAL_CONFIG } from '../config/index.js';
-import { jsonResponse } from '../utils/response.js';
+import { CONFIG } from '../config/index.js';
+import { AppError } from '../utils/AppError.js';
 import { getBeijingISOString } from '../utils/time.js';
-import { validateRarity } from '../utils/validation.js';
-
-// 辅助函数
-export { updateLeaderboard, updateGalleryIndex };
-
-async function calculateHash(buffer) {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
-}
-
-async function updateLeaderboard(env, newItem) {
-  if (!env.RECENT_REQUESTS) return;
-  const key = CONFIG.KEYS.LEADERBOARD;
-  let list = [];
-  try {
-    const cached = await env.RECENT_REQUESTS.get(key);
-    if (cached) list = JSON.parse(cached);
-  } catch (e) {}
-  list.unshift(newItem);
-  if (list.length > 50) list = list.slice(0, 50);
-  await env.RECENT_REQUESTS.put(key, JSON.stringify(list), { expirationTtl: CONFIG.TTL.LEADERBOARD });
-}
-
-async function updateGalleryIndex(env, newItem) {
-  try {
-    const ts = typeof newItem.ts === 'string' ? Date.parse(newItem.ts) : newItem.ts;
-    await env.DB.prepare(
-      'INSERT INTO gallery (url, user_id, username, rarity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET user_id = excluded.user_id, username = excluded.username, rarity = excluded.rarity, source_name = excluded.source_name, created_at = excluded.created_at'
-    ).bind(newItem.url, newItem.userId, newItem.username, newItem.rarity || 'N', newItem.sourceName || null, ts).run();
-  } catch (e) {
-    console.error('Gallery D1 error:', e);
-  }
-}
+import { rollRarity, advancePity, planMultiDraw } from './draw-engine.js';
 
 export class GachaService {
-  constructor(env, ctx = null, userService = null) {
+  constructor(env, ctx = null, deps = {}) {
     this.env = env;
     this.ctx = ctx;
-    this.userService = userService;
+    this.userService = deps.userService;
+    this.imagePipeline = deps.imagePipeline;
+    this.galleryService = deps.galleryService;
   }
 
-  async safeWaitUntil(promise) {
+  safeWaitUntil(promise) {
     if (this.ctx && typeof this.ctx.waitUntil === 'function') this.ctx.waitUntil(promise);
-    else await promise;
+    else promise.catch(() => {});
   }
 
-  async updateSession(userData) {
-    if (!userData?._sessionToken || !this.env.KV_CACHE) return;
-    try {
-      const { _sessionToken, ...sessionData } = userData;
-      await this.env.KV_CACHE.put(`session:${_sessionToken}`, JSON.stringify(sessionData), { expirationTtl: CONFIG.TTL.SESSION });
-    } catch (e) {
-      console.warn('[Session] Update failed:', e.message);
+  // ==================== 保底（D1 权威 + KV 60s 缓存） ====================
+
+  async getPity(userId) {
+    if (this.env.KV_CACHE) {
+      const cached = await this.env.KV_CACHE.get(`pity:${userId}`, { type: 'json' }).catch(() => null);
+      if (cached) return cached;
     }
+    const row = await this.env.DB.prepare('SELECT ssr, ur FROM pity_counters WHERE user_id = ?').bind(userId).first();
+    const pity = { ssr: row?.ssr || 0, ur: row?.ur || 0 };
+    if (this.env.KV_CACHE) {
+      this.safeWaitUntil(this.env.KV_CACHE.put(`pity:${userId}`, JSON.stringify(pity), { expirationTtl: 60 }));
+    }
+    return pity;
   }
 
-  // ==================== Rate Limiting ====================
-  async checkRateLimit(key, limit, windowSeconds) {
-    if (!this.env.KV_CACHE) return false;
-    try {
-      const value = await this.env.KV_CACHE.get(`rl:${key}`);
-      const now = Date.now();
-      if (value) {
-        const { count, resetAt } = JSON.parse(value);
-        if (now < resetAt) return count >= limit;
-      }
-      await this.env.KV_CACHE.put(`rl:${key}`, JSON.stringify({ count: 1, resetAt: now + windowSeconds * 1000 }), { expirationTtl: windowSeconds });
-      return false;
-    } catch { return false; }
+  async getLimitedPity(userId) {
+    if (this.env.KV_CACHE) {
+      const cached = await this.env.KV_CACHE.get(`pity:limited:${userId}`, { type: 'json' }).catch(() => null);
+      if (cached) return cached;
+    }
+    const row = await this.env.DB.prepare('SELECT limited_ssr, limited_ur FROM pity_counters WHERE user_id = ?').bind(userId).first();
+    const pity = { ssr: row?.limited_ssr || 0, ur: row?.limited_ur || 0 };
+    if (this.env.KV_CACHE) {
+      this.safeWaitUntil(this.env.KV_CACHE.put(`pity:limited:${userId}`, JSON.stringify(pity), { expirationTtl: 60 }));
+    }
+    return pity;
   }
 
-  async checkDiceCooldown(userId) {
-    return this.checkRateLimit(`dice:${userId}`, 1, (CONFIG.GAME.DICE.COOLDOWN_MS || 3000) / 1000);
-  }
-
-  // ==================== 保底计数器 ====================
-  async getPityCounters(userId) {
-    if (!this.env.KV_CACHE) return { ssrPity: 0, urPity: 0 };
-    try {
-      const [ssr, ur] = await Promise.all([
-        this.env.KV_CACHE.get(`pity:ssr:${userId}`),
-        this.env.KV_CACHE.get(`pity:ur:${userId}`)
-      ]);
-      return {
-        ssrPity: parseInt(ssr || '0', 10),
-        urPity: parseInt(ur || '0', 10)
-      };
-    } catch { return { ssrPity: 0, urPity: 0 }; }
-  }
-
-  async updatePityCounters(userId, rarity, current = null) {
+  async invalidatePityCache(userId) {
     if (!this.env.KV_CACHE) return;
-    try {
-      let ssrPity, urPity;
-      if (current) {
-        ssrPity = current.ssrPity + 1;
-        urPity = current.urPity + 1;
-      } else {
-        ssrPity = parseInt(await this.env.KV_CACHE.get(`pity:ssr:${userId}`) || '0', 10) + 1;
-        urPity = parseInt(await this.env.KV_CACHE.get(`pity:ur:${userId}`) || '0', 10) + 1;
-      }
-      if (rarity === 'SSR' || rarity === 'UR') ssrPity = 0;
-      if (rarity === 'UR') urPity = 0;
-      await Promise.all([
-        this.env.KV_CACHE.put(`pity:ssr:${userId}`, String(ssrPity), { expirationTtl: 86400 * 7 }),
-        this.env.KV_CACHE.put(`pity:ur:${userId}`, String(urPity), { expirationTtl: 86400 * 7 })
-      ]);
-    } catch (e) { console.error('[Pity] update counters failed:', e); }
+    await Promise.all([
+      this.env.KV_CACHE.delete(`pity:${userId}`).catch(() => {}),
+      this.env.KV_CACHE.delete(`pity:limited:${userId}`).catch(() => {}),
+    ]);
   }
 
-  applyPity(rarity, ssrPity, urPity) {
-    const ssrAt = CONFIG.PITY.SSR.at;
-    const urAt = CONFIG.PITY.UR.at;
-    if (urAt > 0 && urPity >= urAt - 1) return { rarity: 'UR', isPity: true };
-    if (ssrAt > 0 && ssrPity >= ssrAt - 1) return { rarity: 'SSR', isPity: true };
-    return { rarity, isPity: false };
+  // ==================== 原子扣币 ====================
+
+  async deductCoins(userId, amount) {
+    const res = await this.env.DB.prepare(
+      'UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?'
+    ).bind(amount, userId, amount).run();
+    return res.meta.changes > 0;
   }
 
-  // ==================== 图片源 Fallback ====================
-  async fetchAndUploadWithFallback(source) {
-    const result = await this.fetchAndUpload(source);
-    if (result.success) return result;
-    const fallbacks = (CONFIG.FALLBACK_SOURCES || []).filter(s => s.rarity === source.rarity);
-    for (const fb of fallbacks) {
-      try {
-        console.warn(`[Fallback] Trying ${fb.url} for ${source.rarity}`);
-        const result = await this.fetchAndUpload({ ...fb, name: 'Fallback' });
-        if (result.success) return result;
-      } catch (e) { console.warn(`[Fallback] ${fb.url} failed:`, e.message); }
-    }
-    return result;
-  }
+  // ==================== 单抽 ====================
 
-  // ==================== Global Buffer ====================
-  async safeRefillGlobalBuffer(rarity, sourceList, slotIndex) {
-    try {
-      const asset = await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]);
-      if (asset.success) {
-        const idx = slotIndex !== undefined ? slotIndex : Math.floor(Math.random() * CONFIG.TTL.BUFFER_SLOTS);
-        await this.env.KV_CACHE.put(`${CONFIG.KEYS.BUFFER_PREFIX}${rarity}:${idx}`, JSON.stringify(asset), { expirationTtl: CONFIG.TTL.STATIC_ASSET });
-      }
-    } catch (e) { console.error(`[Refill Error] ${rarity}:`, e); }
-  }
-
-  // 原子声明 buffer slot：D1 INSERT ON CONFLICT DO NOTHING 防并发重复发图
-  async tryClaimBufferSlot(urlHash, rarity, slotIndex, now) {
-    try {
-      const result = await this.env.DB.prepare(
-        'INSERT INTO buffer_claims (url_hash, rarity, slot_index, claimed_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING'
-      ).bind(urlHash, rarity, slotIndex, now).run();
-      return result.meta.changes > 0;
-    } catch (e) {
-      console.warn('[Buffer] D1 claim failed, proceeding without lock:', e.message);
-      return true;
-    }
-  }
-
-  // 后台清理超过 10 分钟的旧声明
-  async cleanupStaleClaims() {
-    try {
-      const cutoff = Date.now() - 600000;
-      await this.env.DB.prepare('DELETE FROM buffer_claims WHERE claimed_at < ?').bind(cutoff).run();
-    } catch (e) {
-      console.warn('[Buffer] Cleanup failed:', e.message);
-    }
-  }
-
-  async consumeGlobalBuffer(rarity, sourceList) {
-    const now = Date.now();
-    const slotCount = CONFIG.TTL.BUFFER_SLOTS;
-    const bufferPrefix = CONFIG.KEYS.BUFFER_PREFIX;
-    const blacklistPrefix = CONFIG.KEYS.DRAW_BLACKLIST;
-
-    // 并行读取所有 buffer slot
-    const slotReads = Array.from({ length: slotCount }, (_, i) =>
-      this.env.KV_CACHE.get(`${bufferPrefix}${rarity}:${i}`, { type: 'json' })
-        .then(cached => cached?.success ? { index: i, asset: cached, lastUsed: cached.lastUsed || 0 } : null)
-    );
-    const slots = (await Promise.all(slotReads)).filter(Boolean);
-
-    // 并行检查黑名单，缓存hash避免重复计算
-    const blacklistChecks = slots.map(async (slot) => {
-      if (!slot.asset.imageUrl) return null;
-      const urlHash = await this.hashString(slot.asset.imageUrl);
-      slot._urlHash = urlHash;
-      const blacklisted = await this.env.KV_CACHE.get(`${blacklistPrefix}${rarity}:${urlHash}`);
-      return blacklisted ? null : slot;
-    });
-    const filteredSlots = (await Promise.all(blacklistChecks)).filter(Boolean);
-
-    let selectedSlot;
-    if (filteredSlots.length > 0) {
-      filteredSlots.sort((a, b) => a.lastUsed - b.lastUsed);
-      const oldestSlots = filteredSlots.slice(0, Math.min(3, filteredSlots.length));
-      selectedSlot = oldestSlots[Math.floor(Math.random() * oldestSlots.length)];
+  async draw(currentUser) {
+    const cost = CONFIG.GAME.DRAW_COST || 0;
+    if (cost > 0 && !(await this.deductCoins(currentUser.id, cost))) {
+      throw AppError.validationError('积分不足');
     }
 
-    if (!selectedSlot || !selectedSlot.asset.success) {
-      selectedSlot = { asset: await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]), index: -1 };
+    const pity = await this.getPity(currentUser.id);
+    const { rarity, isPity } = rollRarity(pity.ssr, pity.ur);
+    const nextPity = advancePity(pity, rarity);
+
+    const sources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
+    if (sources.length === 0) throw AppError.serverError(`配置错误: 无法找到 ${rarity} 的图源`);
+    const asset = await this.imagePipeline.consumeBuffer(rarity, sources);
+    if (!asset || (!asset.success && !asset.imageUrl)) {
+      throw AppError.serverError(`获取 ${rarity} 图片失败，请重试`);
     }
-
-    if (selectedSlot.asset.imageUrl && selectedSlot.index >= 0) {
-      const urlHash = selectedSlot._urlHash || await this.hashString(selectedSlot.asset.imageUrl);
-      if (!(await this.tryClaimBufferSlot(urlHash, rarity, selectedSlot.index, now))) {
-        selectedSlot = { asset: await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]), index: -1 };
-        return selectedSlot.asset;
-      }
-      await this.env.KV_CACHE.put(`${blacklistPrefix}${rarity}:${urlHash}`, now.toString(), { expirationTtl: CONFIG.TTL.BLACKLIST_TTL });
-      selectedSlot.asset.lastUsed = now;
-      await this.env.KV_CACHE.put(`${bufferPrefix}${rarity}:${selectedSlot.index}`, JSON.stringify(selectedSlot.asset), { expirationTtl: CONFIG.TTL.BUFFER });
-    }
-
-    if (selectedSlot.index >= 0) {
-      this.safeWaitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, selectedSlot.index));
-    }
-    this.safeWaitUntil(this.cleanupStaleClaims());
-    return selectedSlot.asset;
-  }
-
-  // 预读指定稀有度的所有 buffer slots（十连抽优化：同稀有度只读一次）
-  async preReadBufferSlots(rarity) {
-    const slotCount = CONFIG.TTL.BUFFER_SLOTS;
-    const bufferPrefix = CONFIG.KEYS.BUFFER_PREFIX;
-    const reads = Array.from({ length: slotCount }, (_, i) =>
-      this.env.KV_CACHE.get(`${bufferPrefix}${rarity}:${i}`, { type: 'json' })
-        .then(cached => cached?.success ? { index: i, asset: cached, lastUsed: cached.lastUsed || 0 } : null)
-    );
-    return (await Promise.all(reads)).filter(Boolean);
-  }
-
-  // consumeGlobalBuffer 的快速路径：跳过 buffer slot 读取（十连抽优化）
-  async consumeGlobalBufferFast(rarity, sourceList, preReadSlots) {
-    const now = Date.now();
-    const blacklistPrefix = CONFIG.KEYS.DRAW_BLACKLIST;
-    const bufferPrefix = CONFIG.KEYS.BUFFER_PREFIX;
-
-    const blacklistChecks = preReadSlots.map(async (slot) => {
-      if (!slot.asset.imageUrl) return null;
-      const urlHash = await this.hashString(slot.asset.imageUrl);
-      slot._urlHash = urlHash;
-      const blacklisted = await this.env.KV_CACHE.get(`${blacklistPrefix}${rarity}:${urlHash}`);
-      return blacklisted ? null : slot;
-    });
-    const filteredSlots = (await Promise.all(blacklistChecks)).filter(Boolean);
-
-    let selectedSlot;
-    if (filteredSlots.length > 0) {
-      filteredSlots.sort((a, b) => a.lastUsed - b.lastUsed);
-      const oldestSlots = filteredSlots.slice(0, Math.min(3, filteredSlots.length));
-      selectedSlot = oldestSlots[Math.floor(Math.random() * oldestSlots.length)];
-    }
-
-    if (!selectedSlot || !selectedSlot.asset.success) {
-      selectedSlot = { asset: await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]), index: -1 };
-    }
-
-    if (selectedSlot.asset.imageUrl && selectedSlot.index >= 0) {
-      const urlHash = selectedSlot._urlHash || await this.hashString(selectedSlot.asset.imageUrl);
-      if (!(await this.tryClaimBufferSlot(urlHash, rarity, selectedSlot.index, now))) {
-        selectedSlot = { asset: await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]), index: -1 };
-        return selectedSlot.asset;
-      }
-      await this.env.KV_CACHE.put(`${blacklistPrefix}${rarity}:${urlHash}`, now.toString(), { expirationTtl: CONFIG.TTL.BLACKLIST_TTL });
-      selectedSlot.asset.lastUsed = now;
-      await this.env.KV_CACHE.put(`${bufferPrefix}${rarity}:${selectedSlot.index}`, JSON.stringify(selectedSlot.asset), { expirationTtl: CONFIG.TTL.BUFFER });
-    }
-
-    if (selectedSlot.index >= 0) {
-      this.safeWaitUntil(this.safeRefillGlobalBuffer(rarity, sourceList, selectedSlot.index));
-    }
-    return selectedSlot.asset;
-  }
-
-  // 十连抽专用：从预读 slots 中取一个，无 blacklist 检查，最小 KV 开销
-  consumeSlot(slots, sourceList) {
-    if (slots.length > 0) {
-      slots.sort((a, b) => a.lastUsed - b.lastUsed);
-      const slot = slots.shift(); // 取出并移除，避免同批次重复
-      return { ...slot.asset, success: true };
-    }
-    // buffer 为空，返回失败让调用方报错
-    return { success: false, imageUrl: null, rarity: sourceList[0]?.rarity || 'N', sourceName: 'Buffer' };
-  }
-
-  async hashString(str) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(str);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
-  }
-
-  async fetchAndUpload(source) {
-    try {
-      // [fetchAndUpload] Fetching from:
-      let requestUrl = source.url;
-      try { new URL(source.url); } catch { requestUrl = encodeURI(source.url); }
-
-      const initRes = await fetch(requestUrl, { method: 'GET', redirect: 'follow' });
-      const contentType = initRes.headers.get('content-type') || '';
-      let finalUrl = source.url;
-
-      if (contentType.includes('application/json') || contentType.includes('text/html')) {
-        try {
-          const data = await initRes.json();
-          finalUrl = data.url || data.img || data.image || data.data || 
-                     data.text || data.msg || data.result ||
-                     (data.data && (data.data.url || data.data.img || data.data[0])) ||
-                     (Array.isArray(data.data) && data.data[0]?.url) || source.url;
-        } catch (e) {
-          console.warn('[fetchAndUpload] JSON parse error:', e);
-          finalUrl = initRes.url;
-        }
-      } else {
-        finalUrl = initRes.url;
-      }
-      if (!finalUrl || finalUrl === 'null' || finalUrl === 'undefined') {
-        return { success: false, rarity: 'N', imageUrl: null };
-      }
-      // [fetchAndUpload] URL:
-
-      const compressedUrl = `https://wsrv.nl/?url=${encodeURIComponent(finalUrl)}&output=webp&q=75&w=1200&il`;
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const imgRes = await fetch(compressedUrl, { signal: controller.signal });
-      clearTimeout(timeout);
-
-      if (imgRes.ok) {
-        const compressedBuffer = await imgRes.arrayBuffer();
-        if (compressedBuffer.byteLength < 100) throw new Error('Compressed image too small');
-        const hashStr = await calculateHash(compressedBuffer);
-        const filename = `images/${source.rarity}_${hashStr}.webp`;
-        await this.env.R2_BUCKET.put(filename, compressedBuffer, {
-          httpMetadata: { contentType: 'image/webp', cacheControl: `public, max-age=${CONFIG.TTL.STATIC_ASSET}, immutable` }
-        });
-        return {
-          success: true,
-          imageUrl: `${CONFIG.R2_DOMAIN}/${filename}`,
-          rarity: source.rarity,
-          sourceName: source.name
-        };
-      }
-    } catch (e) {
-      console.error('Fetch/Compress Error:', e);
-    }
-    return { success: false, rarity: 'N', imageUrl: null };
-  }
-
-  // 计算软保底概率（单抽/十连复用）
-  calcSoftPityProbs(ssrPity, urPity) {
-    let urProb = 1;
-    let ssrProb = 4;
-    const urConfig = CONFIG.PITY.UR;
-    const ssrConfig = CONFIG.PITY.SSR;
-    if (urConfig.softStart && urPity >= urConfig.softStart) {
-      urProb += (urPity - urConfig.softStart + 1) * urConfig.softRate;
-    }
-    if (ssrConfig.softStart && ssrPity >= ssrConfig.softStart) {
-      ssrProb += (ssrPity - ssrConfig.softStart + 1) * ssrConfig.softRate;
-    }
-    return { urProb: Math.min(urProb, 100), ssrProb: Math.min(ssrProb, 100) };
-  }
-
-  // ==================== 抽卡核心逻辑（无 DB） ====================
-  // pity 参数可选：不传则从 KV 读取（单抽用），传入则直接用（多连抽用）
-  async executeDrawLogic(userId, username, pity = null) {
-    const { ssrPity, urPity } = pity || await this.getPityCounters(userId);
-
-    const { urProb, ssrProb } = this.calcSoftPityProbs(ssrPity, urPity);
-    const rand = Math.random() * 100;
-    let rarity;
-    if (rand < urProb) rarity = 'UR';
-    else if (rand < urProb + ssrProb) rarity = 'SSR';
-    else if (rand < urProb + ssrProb + 15) rarity = 'SR';
-    else if (rand < urProb + ssrProb + 50) rarity = 'R';
-    else rarity = 'N';
-
-    const pityResult = this.applyPity(rarity, ssrPity, urPity);
-    rarity = pityResult.rarity;
-
-    const sourceList = CONFIG.SOURCES.filter(s => s.rarity === rarity);
-    if (sourceList.length === 0) throw new Error(`配置错误: 无法找到 ${rarity} 的图源`);
-    const asset = await this.consumeGlobalBuffer(rarity, sourceList);
-    if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败，请重试`);
 
     const coinsReward = CONFIG.GAME.POINTS[rarity] || CONFIG.GAME.POINTS['N'] || 5;
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
 
-    return { rarity, asset, expGain, coinsReward, isPity: pityResult.isPity, ssrPity, urPity };
+    const totalExp = (currentUser.total_exp || 0) + expGain;
+    const levelInfo = this.userService.calculateLevelFromTotalExp(totalExp);
+    const levelUp = levelInfo.level > currentUser.level
+      ? { newLevel: levelInfo.level, reward: (levelInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL }
+      : null;
+
+    const stmts = [
+      this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + 1, total_exp = total_exp + ?, level = ?, exp = ? WHERE id = ?')
+        .bind(coinsReward + (levelUp?.reward || 0), expGain, levelInfo.level, levelInfo.currentExp, currentUser.id),
+      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1')
+        .bind(currentUser.id, rarity),
+      this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, asset.sourceName || '常驻池', Date.now()),
+      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = excluded.ssr, ur = excluded.ur')
+        .bind(currentUser.id, nextPity.ssr, nextPity.ur),
+    ];
+    await this.env.DB.batch(stmts);
+
+    if (asset.success) {
+      this.safeWaitUntil(this.galleryService.updateIndex({ url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: asset.sourceName, ts: Date.now() }));
+      if (rarity === 'UR') {
+        this.safeWaitUntil(this.galleryService.updateLeaderboard({ username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() }));
+      }
+    }
+    this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
+    await this.invalidatePityCache(currentUser.id);
+
+    return {
+      card: asset,
+      rarity,
+      expGained: expGain,
+      coinsReward,
+      isPity,
+      pityInfo: { ssrPity: nextPity.ssr, urPity: nextPity.ur, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
+      levelUp: levelUp ? { newLevel: levelUp.newLevel, reward: levelUp.reward } : null,
+    };
   }
 
-  // ==================== 单抽 ====================
-  async draw(currentUser) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+  // ==================== 十连 ====================
 
-    const cost = CONFIG.GAME.DRAW_COST || 0;
-    if (currentUser.coins < cost) return jsonResponse({ error: '积分不足' }, 400);
+  async multiDraw(currentUser, count) {
+    const reqCount = Math.max(Math.min(parseInt(count) || 10, CONFIG.GAME.MULTI_DRAW_MAX || 10), 1);
+    const isMulti = reqCount >= 10;
+    const cost = isMulti
+      ? (CONFIG.GAME.MULTI_DRAW_COST || CONFIG.GAME.DRAW_COST * 10)
+      : (CONFIG.GAME.DRAW_COST || 0) * reqCount;
 
-    try {
-      const result = await this.executeDrawLogic(currentUser.id, currentUser.username);
-      const { rarity, asset, expGain, coinsReward, isPity, ssrPity, urPity } = result;
-
-      // DB batch 与保底更新并行执行
-      const pityUpdate = this.updatePityCounters(currentUser.id, rarity, { ssrPity, urPity });
-      const netCoinsChange = coinsReward - cost;
-
-      // 内存更新
-      currentUser.coins = (currentUser.coins || 0) + netCoinsChange;
-      currentUser.draw_count = (currentUser.draw_count || 0) + 1;
-      currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
-      const levelUpInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
-      let levelUpResult = null;
-      if (levelUpInfo.level > currentUser.level) {
-        levelUpResult = {
-          newLevel: levelUpInfo.level,
-          newExp: levelUpInfo.currentExp,
-          coinsReward: (levelUpInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL
-        };
-        currentUser.level = levelUpResult.newLevel;
-        currentUser.exp = levelUpResult.newExp;
-      }
-
-      // DB batch
-      const netCoinsDB = netCoinsChange + (levelUpResult?.coinsReward || 0);
-      const userBatch = [
-        this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + 1, total_exp = total_exp + ? WHERE id = ?').bind(netCoinsDB, expGain, currentUser.id)
-      ];
-      if (levelUpResult) {
-        userBatch.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, levelUpResult.newExp, currentUser.id));
-      }
-      userBatch.push(this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity));
-      userBatch.push(this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, asset.sourceName || '常驻池', Date.now()));
-      await Promise.all([this.env.DB.batch(userBatch), pityUpdate]);
-
-      // 图库 & 排行榜
-      if (asset.success) {
-        this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
-        if (rarity === 'UR') {
-          this.safeWaitUntil(updateLeaderboard(this.env, { username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() }));
-        }
-      }
-
-      this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-      this.safeWaitUntil(this.updateSession(currentUser));
-
-      return jsonResponse({
-        success: true,
-        card: asset,
-        rarity,
-        expGained: expGain,
-        userCoins: currentUser.coins,
-        isPity,
-        pityInfo: { ssrPity, urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
-        levelUp: levelUpResult ? { newLevel: levelUpResult.newLevel, reward: levelUpResult.coinsReward } : null
-      });
-    } catch (e) {
-      console.error('[draw] Error:', e);
-      return jsonResponse({ error: '抽卡失败: ' + e.message }, 500);
-    }
-  }
-
-  // ==================== 多连抽（批量优化版） ====================
-  async multiDraw(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-
-    const body = await request.json();
-    const count = parseInt(body.count || body.times) || 10;
-    const maxCount = CONFIG.GAME.MULTI_DRAW_MAX || 10;
-    if (count < 1 || count > maxCount) return jsonResponse({ error: `连抽次数需在 1-${maxCount} 之间` }, 400);
-
-    const isMulti = count >= 10;
-    const cost = isMulti ? (CONFIG.GAME.MULTI_DRAW_COST || CONFIG.GAME.DRAW_COST * 10) : (CONFIG.GAME.DRAW_COST || 0) * count;
-    if (currentUser.coins < cost) return jsonResponse({ error: '积分不足' }, 400);
-
-    // 一次性读取保底计数器
-    const pity = await this.getPityCounters(currentUser.id);
-    const drawCost = Math.floor(cost / count);
-
-    // ① 预抽所有稀有度（内存操作，无 I/O）— 含软保底
-    const drawPlan = [];
-    const tempPity = { ssrPity: pity.ssrPity, urPity: pity.urPity };
-    for (let i = 0; i < count; i++) {
-      const { urProb, ssrProb } = this.calcSoftPityProbs(tempPity.ssrPity, tempPity.urPity);
-      const rand = Math.random() * 100;
-      let rarity;
-      if (rand < urProb) rarity = 'UR';
-      else if (rand < urProb + ssrProb) rarity = 'SSR';
-      else if (rand < urProb + ssrProb + 15) rarity = 'SR';
-      else if (rand < urProb + ssrProb + 50) rarity = 'R';
-      else rarity = 'N';
-      const pityResult = this.applyPity(rarity, tempPity.ssrPity, tempPity.urPity);
-      rarity = pityResult.rarity;
-      tempPity.ssrPity++;
-      tempPity.urPity++;
-      if (rarity === 'SSR' || rarity === 'UR') tempPity.ssrPity = 0;
-      if (rarity === 'UR') tempPity.urPity = 0;
-      drawPlan.push({ index: i, rarity, isPity: pityResult.isPity, ssrPity: tempPity.ssrPity, urPity: tempPity.urPity });
+    if (cost > 0 && !(await this.deductCoins(currentUser.id, cost))) {
+      throw AppError.validationError('积分不足');
     }
 
-    // ② 按稀有度分组，每组预读 buffer slots 一次
-    const rarityGroups = {};
-    for (const d of drawPlan) {
-      if (!rarityGroups[d.rarity]) rarityGroups[d.rarity] = [];
-      rarityGroups[d.rarity].push(d);
-    }
+    const pity = await this.getPity(currentUser.id);
+    const plan = planMultiDraw(reqCount, pity);
+    const drawCost = Math.floor(cost / reqCount);
+
+    // 预读 buffer（按稀有度分组一次）
     const bufferCache = {};
-    for (const rarity of Object.keys(rarityGroups)) {
-      const sourceList = CONFIG.SOURCES.filter(s => s.rarity === rarity);
-      if (sourceList.length === 0) throw new Error(`配置错误: 无法找到 ${rarity} 的图源`);
-      bufferCache[rarity] = { slots: await this.preReadBufferSlots(rarity), sourceList };
+    for (const d of plan) {
+      if (!bufferCache[d.rarity]) {
+        const sourceList = CONFIG.SOURCES.filter(s => s.rarity === d.rarity);
+        bufferCache[d.rarity] = { slots: await this.imagePipeline.preReadBufferSlots(d.rarity), sourceList };
+      }
     }
 
+    const cards = [];
+    const stmts = [];
     let totalCoins = 0;
     let totalExp = 0;
-    const cards = [];
-    const dbStatements = [];
     const failedSlots = [];
-    let levelUpResult = null;
 
-    // ③ 按预抽计划逐张执行 — 跳过 blacklist 检查，最小化 KV 操作
-    for (const plan of drawPlan) {
-      const { index: i, rarity, isPity, ssrPity: sp, urPity: up } = plan;
+    for (const entry of plan) {
+      const { index: i, rarity, isPity, ssrPity, urPity } = entry;
       try {
         const coinsReward = CONFIG.GAME.POINTS[rarity] || CONFIG.GAME.POINTS['N'] || 5;
         const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
-        const netCoins = coinsReward - drawCost;
         const { slots, sourceList } = bufferCache[rarity];
-        let asset = this.consumeSlot(slots, sourceList);
+        const asset = this.imagePipeline.consumeSlot(slots, sourceList);
         if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
 
-        currentUser.coins = (currentUser.coins || 0) + netCoins;
-        currentUser.draw_count = (currentUser.draw_count || 0) + 1;
-        currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
-        totalCoins += netCoins;
+        totalCoins += coinsReward - drawCost;
         totalExp += expGain;
-
-        const lvlInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
-        if (lvlInfo.level > currentUser.level) {
-          if (!levelUpResult) levelUpResult = { fromLevel: currentUser.level, toLevel: lvlInfo.level, coinsReward: 0 };
-          levelUpResult.toLevel = lvlInfo.level;
-          levelUpResult.coinsReward += (lvlInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL;
-          currentUser.level = lvlInfo.level;
-          currentUser.exp = lvlInfo.currentExp;
-        }
 
         cards.push({
           rarity,
           asset: asset.success ? { url: asset.imageUrl, sourceName: asset.sourceName } : null,
           isPity,
-          pityInfo: { ssrPity: sp, urPity: up, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at }
+          pityInfo: { ssrPity, urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
         });
 
-        // 收集 DB statements（不立即执行）
-        dbStatements.push(
+        stmts.push(
           this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity),
           this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, asset.sourceName || '常驻池', Date.now() + i)
         );
 
-        // 异步更新图库和排行榜
         if (asset.success) {
-          this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
+          this.safeWaitUntil(this.galleryService.updateIndex({ url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: asset.sourceName, ts: Date.now() + i }));
           if (rarity === 'UR') {
-            this.safeWaitUntil(updateLeaderboard(this.env, { username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() + i }));
+            this.safeWaitUntil(this.galleryService.updateLeaderboard({ username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() + i }));
           }
         }
       } catch (e) {
@@ -584,174 +195,88 @@ export class GachaService {
       }
     }
 
-    // 单次批量 DB 写入：用户数据 + 所有库存 + 所有历史
-    const netCoinsDB = totalCoins + (levelUpResult?.coinsReward || 0);
-    const userStatements = [
-      this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + ?, total_exp = total_exp + ? WHERE id = ?').bind(netCoinsDB, cards.length, totalExp, currentUser.id)
-    ];
-    if (levelUpResult) {
-      userStatements.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.toLevel, currentUser.exp, currentUser.id));
-    }
-    await this.env.DB.batch([...userStatements, ...dbStatements]);
+    const lastPlan = plan[plan.length - 1];
+    const totalExpNew = (currentUser.total_exp || 0) + totalExp;
+    const levelInfo = this.userService.calculateLevelFromTotalExp(totalExpNew);
+    const levelUp = levelInfo.level > currentUser.level
+      ? { newLevel: levelInfo.level, reward: (levelInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL }
+      : null;
 
-    // 单次批量写入保底计数器
-    await Promise.all([
-      this.env.KV_CACHE.put(`pity:ssr:${currentUser.id}`, String(tempPity.ssrPity), { expirationTtl: 86400 * 7 }),
-      this.env.KV_CACHE.put(`pity:ur:${currentUser.id}`, String(tempPity.urPity), { expirationTtl: 86400 * 7 })
-    ]);
+    stmts.push(
+      this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + ?, total_exp = total_exp + ?, level = ?, exp = ? WHERE id = ?')
+        .bind(totalCoins + (levelUp?.reward || 0), cards.length, totalExp, levelInfo.level, levelInfo.currentExp, currentUser.id),
+      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = excluded.ssr, ur = excluded.ur')
+        .bind(currentUser.id, lastPlan.ssrPity, lastPlan.urPity),
+    );
+    await this.env.DB.batch(stmts);
 
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-      this.safeWaitUntil(this.updateSession(currentUser));
+    await this.invalidatePityCache(currentUser.id);
 
-    return jsonResponse({
-      success: true,
+    return {
       cards,
       count: cards.length,
       totalCost: cost,
-      userCoins: currentUser.coins,
       expGained: totalExp,
-      levelUp: levelUpResult ? { newLevel: levelUpResult.toLevel, reward: levelUpResult.coinsReward } : null,
-      pityInfo: { ssrPity: tempPity.ssrPity, urPity: tempPity.urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
-      failedSlots: failedSlots.length > 0 ? failedSlots : undefined
-    });
+      levelUp: levelUp ? { newLevel: levelUp.newLevel, reward: levelUp.reward } : null,
+      pityInfo: { ssrPity: lastPlan.ssrPity, urPity: lastPlan.urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
+      failedSlots: failedSlots.length > 0 ? failedSlots : undefined,
+    };
   }
 
-  // ==================== 抽卡历史记录 ====================
-  async getDrawHistory(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+  // ==================== 限定池（独立保底） ====================
 
-    const url = new URL(request.url);
-    const page = parseInt(url.searchParams.get('page')) || 1;
-    const limit = Math.min(parseInt(url.searchParams.get('limit')) || 20, 100);
-    const rarityFilter = url.searchParams.get('rarity');
-
-    let query = 'SELECT * FROM draw_history WHERE user_id = ?';
-    let params = [currentUser.id];
-
-    if (rarityFilter) {
-      query += ' AND rarity = ?';
-      params.push(rarityFilter.toUpperCase());
-    }
-    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, (page - 1) * limit);
-
-    const countQuery = 'SELECT COUNT(*) as total FROM draw_history WHERE user_id = ?';
-    const [results, countResult] = await Promise.all([
-      this.env.DB.prepare(query).bind(...params).all(),
-      this.env.DB.prepare(rarityFilter ? countQuery + ' AND rarity = ?' : countQuery).bind(currentUser.id, ...(rarityFilter ? [rarityFilter.toUpperCase()] : [])).first()
-    ]);
-
-    return jsonResponse({
-      success: true,
-      history: results.results || [],
-      pagination: {
-        page,
-        limit,
-        total: countResult?.total || 0,
-        totalPages: Math.ceil((countResult?.total || 0) / limit)
-      }
-    });
-  }
-
-  // ==================== 限定池独立保底计数器 ====================
-  async getLimitedPityCounters(userId) {
-    if (!this.env.KV_CACHE) return { ssrPity: 0, urPity: 0 };
-    try {
-      const [ssr, ur] = await Promise.all([
-        this.env.KV_CACHE.get(`pity:limited:ssr:${userId}`),
-        this.env.KV_CACHE.get(`pity:limited:ur:${userId}`)
-      ]);
-      return {
-        ssrPity: parseInt(ssr || '0', 10),
-        urPity: parseInt(ur || '0', 10)
-      };
-    } catch { return { ssrPity: 0, urPity: 0 }; }
-  }
-
-  async updateLimitedPityCounters(userId, rarity, current = null) {
-    if (!this.env.KV_CACHE) return;
-    try {
-      let ssrPity, urPity;
-      if (current) {
-        ssrPity = current.ssrPity + 1;
-        urPity = current.urPity + 1;
-      } else {
-        ssrPity = parseInt(await this.env.KV_CACHE.get(`pity:limited:ssr:${userId}`) || '0', 10) + 1;
-        urPity = parseInt(await this.env.KV_CACHE.get(`pity:limited:ur:${userId}`) || '0', 10) + 1;
-      }
-      if (rarity === 'SSR' || rarity === 'UR') ssrPity = 0;
-      if (rarity === 'UR') urPity = 0;
-      await Promise.all([
-        this.env.KV_CACHE.put(`pity:limited:ssr:${userId}`, String(ssrPity), { expirationTtl: 86400 * 7 }),
-        this.env.KV_CACHE.put(`pity:limited:ur:${userId}`, String(urPity), { expirationTtl: 86400 * 7 })
-      ]);
-    } catch (e) { console.error('[Pity] limited update failed:', e); }
-  }
-
-  // ==================== 限定池抽卡（带独立保底，支持单抽/十连） ====================
-  async drawLimited(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const { poolId, count: reqCount } = await request.json();
+  async drawLimited(currentUser, poolId, reqCount) {
     const pool = poolId && CONFIG.LIMITED.POOLS[poolId] ? poolId : CONFIG.LIMITED.DEFAULT_POOL;
     const poolConfig = CONFIG.LIMITED.POOLS[pool];
-    if (!poolConfig) return jsonResponse({ error: '卡池不存在' }, 400);
+    if (!poolConfig) throw AppError.validationError('卡池不存在');
     const sources = poolConfig.sources;
-    if (!sources?.length) return jsonResponse({ error: '卡池配置错误' }, 500);
+    if (!sources?.length) throw AppError.serverError('卡池配置错误');
 
     const count = Math.min(Math.max(parseInt(reqCount) || 1, 1), CONFIG.GAME.MULTI_DRAW_MAX || 10);
     const isMulti = count >= 10;
     const singleCost = poolConfig.cost || CONFIG.LIMITED.COST;
     const cost = isMulti ? (CONFIG.LIMITED.MULTI_COST || singleCost * 10) : singleCost * count;
-    if (currentUser.coins < cost) return jsonResponse({ error: '积分不足' }, 400);
 
-    const pityCounters = await this.getLimitedPityCounters(currentUser.id);
+    if (cost > 0 && !(await this.deductCoins(currentUser.id, cost))) {
+      throw AppError.validationError('积分不足');
+    }
+
+    const pity = await this.getLimitedPity(currentUser.id);
+    const tempPity = { ssr: pity.ssr, ur: pity.ur };
     const baseRarity = poolConfig.rarity || 'UR';
-    const drawCost = Math.floor(cost / count);
-    const tempPity = { ssrPity: pityCounters.ssrPity, urPity: pityCounters.urPity };
 
     const cards = [];
-    const dbStatements = [];
+    const stmts = [];
     let totalExp = 0;
-    let levelUpResult = null;
     const drawnUrls = new Set();
 
     for (let i = 0; i < count; i++) {
-      const { urProb, ssrProb } = this.calcSoftPityProbs(tempPity.ssrPity, tempPity.urPity);
-      const rand = Math.random() * 100;
-      let rarity;
-      if (rand < urProb) rarity = 'UR';
-      else if (rand < urProb + ssrProb) rarity = 'SSR';
-      else if (rand < urProb + ssrProb + 15) rarity = 'SR';
-      else if (rand < urProb + ssrProb + 50) rarity = 'R';
-      else rarity = 'N';
-
-      const pityResult = this.applyPity(rarity, tempPity.ssrPity, tempPity.urPity);
-      rarity = pityResult.rarity;
+      const { rarity, isPity } = rollRarity(tempPity.ssr, tempPity.ur);
+      tempPity.ssr++;
+      tempPity.ur++;
+      if (rarity === 'SSR' || rarity === 'UR') tempPity.ssr = 0;
+      if (rarity === 'UR') tempPity.ur = 0;
 
       let asset;
       if (rarity === baseRarity) {
-        asset = await this.fetchAndUploadWithFallback(sources[Math.floor(Math.random() * sources.length)]);
+        asset = await this.imagePipeline.fetchAndUploadWithFallback(sources[Math.floor(Math.random() * sources.length)]);
       } else {
         const fallbackSources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
-        asset = await this.consumeGlobalBuffer(rarity, fallbackSources.length > 0 ? fallbackSources : sources);
+        asset = await this.imagePipeline.consumeBuffer(rarity, fallbackSources.length > 0 ? fallbackSources : sources);
       }
       if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
 
-      // 同批次去重
+      // 同批去重
       let finalAsset = asset;
       if (asset.success && drawnUrls.has(asset.imageUrl)) {
         try {
           const retrySrc = rarity === baseRarity ? sources : CONFIG.SOURCES.filter(s => s.rarity === rarity);
-          const retry = await this.fetchAndUploadWithFallback(retrySrc[Math.floor(Math.random() * retrySrc.length)]);
+          const retry = await this.imagePipeline.fetchAndUploadWithFallback(retrySrc[Math.floor(Math.random() * retrySrc.length)]);
           if (retry.success && !drawnUrls.has(retry.imageUrl)) finalAsset = retry;
         } catch {}
       }
       if (finalAsset.success) drawnUrls.add(finalAsset.imageUrl);
-
-      tempPity.ssrPity++;
-      tempPity.urPity++;
-      if (rarity === 'SSR' || rarity === 'UR') tempPity.ssrPity = 0;
-      if (rarity === 'UR') tempPity.urPity = 0;
 
       const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
       totalExp += expGain;
@@ -759,197 +284,196 @@ export class GachaService {
       cards.push({
         rarity,
         asset: finalAsset.success ? { url: finalAsset.imageUrl, sourceName: finalAsset.sourceName } : null,
-        isPity: pityResult.isPity,
-        pityInfo: { ssrPity: tempPity.ssrPity, urPity: tempPity.urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at }
+        isPity,
+        pityInfo: { ssrPity: tempPity.ssr, urPity: tempPity.ur, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
       });
 
-      dbStatements.push(
+      stmts.push(
         this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity),
-        this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, pityResult.isPity ? 1 : 0, finalAsset.sourceName || poolConfig.name || '限定池', Date.now() + i)
+        this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, finalAsset.sourceName || poolConfig.name || '限定池', Date.now() + i)
       );
 
       if (finalAsset.success) {
-        this.safeWaitUntil(updateGalleryIndex(this.env, { url: finalAsset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: finalAsset.sourceName, ts: getBeijingISOString() }));
+        this.safeWaitUntil(this.galleryService.updateIndex({ url: finalAsset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: finalAsset.sourceName, ts: Date.now() + i }));
       }
     }
 
-    currentUser.coins -= cost;
-    currentUser.draw_count = (currentUser.draw_count || 0) + count;
-    currentUser.total_exp = (currentUser.total_exp || 0) + totalExp;
-    const levelUpInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
-    if (levelUpInfo.level > currentUser.level) {
-      levelUpResult = {
-        newLevel: levelUpInfo.level,
-        newExp: levelUpInfo.currentExp,
-        coinsReward: (levelUpInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL
-      };
-      currentUser.level = levelUpResult.newLevel;
-      currentUser.exp = levelUpResult.newExp;
-    }
+    const totalExpNew = (currentUser.total_exp || 0) + totalExp;
+    const levelInfo = this.userService.calculateLevelFromTotalExp(totalExpNew);
+    const levelUp = levelInfo.level > currentUser.level
+      ? { newLevel: levelInfo.level, reward: (levelInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL }
+      : null;
+    const levelUpCoins = levelUp?.reward || 0;
 
-    const levelUpCoins = levelUpResult ? levelUpResult.coinsReward : 0;
-    const userStatements = [
-      this.env.DB.prepare('UPDATE users SET coins = coins - ? + ?, draw_count = draw_count + ?, total_exp = total_exp + ? WHERE id = ?').bind(cost, levelUpCoins, count, totalExp, currentUser.id)
-    ];
-    if (levelUpResult) {
-      userStatements.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, levelUpResult.newExp, currentUser.id));
-    }
-    await this.env.DB.batch([...userStatements, ...dbStatements]);
+    // 注意：cost 已在 deductCoins 原子扣减，batch 只补回奖励/升级金币，不得重复扣减
+    stmts.push(
+      this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + ?, total_exp = total_exp + ?, level = ?, exp = ? WHERE id = ?')
+        .bind(levelUpCoins, count, totalExp, levelInfo.level, levelInfo.currentExp, currentUser.id),
+      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, 0, 0, ?, ?) ON CONFLICT(user_id) DO UPDATE SET limited_ssr = excluded.limited_ssr, limited_ur = excluded.limited_ur')
+        .bind(currentUser.id, tempPity.ssr, tempPity.ur),
+    );
+    await this.env.DB.batch(stmts);
 
-    await Promise.all([
-      this.env.KV_CACHE.put(`pity:limited:ssr:${currentUser.id}`, String(tempPity.ssrPity), { expirationTtl: 86400 * 7 }),
-      this.env.KV_CACHE.put(`pity:limited:ur:${currentUser.id}`, String(tempPity.urPity), { expirationTtl: 86400 * 7 })
-    ]);
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-      this.safeWaitUntil(this.updateSession(currentUser));
+    await this.invalidatePityCache(currentUser.id);
 
-    return jsonResponse({
-      success: true,
+    return {
       cards,
       count: cards.length,
       pool: poolConfig.name || pool,
-      userCoins: currentUser.coins,
       expGained: totalExp,
-      levelUp: levelUpResult ? { newLevel: levelUpResult.newLevel, reward: levelUpResult.coinsReward } : null,
-      pityInfo: { ssrPity: tempPity.ssrPity, urPity: tempPity.urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at }
-    });
+      levelUp: levelUp ? { newLevel: levelUp.newLevel, reward: levelUp.reward } : null,
+      pityInfo: { ssrPity: tempPity.ssr, urPity: tempPity.ur, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
+    };
   }
 
-  // ==================== 获取限定池列表 ====================
-  async getLimitedPools(currentUser) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
+  async getLimitedPools() {
     const pools = [];
     for (const [id, config] of Object.entries(CONFIG.LIMITED.POOLS)) {
       let count = '可用';
-      let available = config.sources && config.sources.length > 0;
       if (id === 'github_repo' && config.sources && config.sources[0]) {
         try {
           const res = await fetch(config.sources[0].url, { method: 'GET' });
           const data = await res.json();
           count = data.total || '可用';
-        } catch (e) {
-          console.error('[getLimitedPools] Failed to fetch count:', e);
-        }
+        } catch (e) { console.error('[getLimitedPools] Failed to fetch count:', e); }
       }
       pools.push({
         id,
         name: config.name,
         description: config.description,
         cost: CONFIG.LIMITED.COST,
-        available,
-        count
+        available: config.sources && config.sources.length > 0,
+        count,
       });
     }
-    return jsonResponse({ success: true, pools, defaultPool: CONFIG.LIMITED.DEFAULT_POOL });
+    return { pools, defaultPool: CONFIG.LIMITED.DEFAULT_POOL };
   }
 
-  // ==================== 合成系统（消耗库存卡材料） ====================
-  async craft(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const { targetRarity } = await request.json();
-    const cost = CONFIG.GAME.CRAFT_COST;
+  // ==================== 抽卡历史 ====================
+
+  async getDrawHistory(currentUser, params) {
+    const page = parseInt(params.page) || 1;
+    const limit = Math.min(parseInt(params.limit) || 20, 100);
+    const rarityFilter = params.rarity;
+
+    let query = 'SELECT * FROM draw_history WHERE user_id = ?';
+    const qp = [currentUser.id];
+    if (rarityFilter) { query += ' AND rarity = ?'; qp.push(rarityFilter.toUpperCase()); }
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    qp.push(limit, (page - 1) * limit);
+
+    const countQuery = 'SELECT COUNT(*) as total FROM draw_history WHERE user_id = ?';
+    const countParams = [currentUser.id];
+    if (rarityFilter) countParams.push(rarityFilter.toUpperCase());
+
+    const [results, countResult] = await Promise.all([
+      this.env.DB.prepare(query).bind(...qp).all(),
+      this.env.DB.prepare(countQuery).bind(...countParams).first(),
+    ]);
+
+    return {
+      history: results.results || [],
+      pagination: { page, limit, total: countResult?.total || 0, totalPages: Math.ceil((countResult?.total || 0) / limit) },
+    };
+  }
+
+  // ==================== 合成 / 商店 / 分解 / 骰子 ====================
+
+  async craft(currentUser, targetRarity) {
     const rarityMap = { 'R': 'N', 'SR': 'R', 'SSR': 'SR', 'UR': 'SSR' };
     const sourceRarity = rarityMap[targetRarity];
-    if (!sourceRarity) return jsonResponse({ error: '无效的合成目标' }, 400);
-    const inventory = await this.env.DB.prepare(
+    if (!sourceRarity) throw AppError.validationError('无效的合成目标');
+
+    const cost = CONFIG.GAME.CRAFT_COST;
+    const inv = await this.env.DB.prepare(
       'SELECT count FROM inventory WHERE user_id = ? AND rarity = ?'
     ).bind(currentUser.id, sourceRarity).first();
-    if (!inventory || inventory.count < cost) {
-      return jsonResponse({ error: `合成需要 ${cost} 张 ${sourceRarity} 卡` }, 400);
+    if (!inv || inv.count < cost) {
+      throw AppError.validationError(`合成需要 ${cost} 张 ${sourceRarity} 卡`);
     }
+
     const targetSources = CONFIG.SOURCES.filter(s => s.rarity === targetRarity);
-    if (targetSources.length === 0) return jsonResponse({ error: `找不到 ${targetRarity} 图源` }, 500);
-    const asset = await this.consumeGlobalBuffer(targetRarity, targetSources);
-    // 先计算等级和金币奖励，再写入 DB
+    if (targetSources.length === 0) throw AppError.serverError(`找不到 ${targetRarity} 图源`);
+    const asset = await this.imagePipeline.consumeBuffer(targetRarity, targetSources);
+
     const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT || 50;
-    currentUser.total_exp = (currentUser.total_exp || 0) + expGain;
-    const levelUpInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
-    let levelUpResult = null;
-    if (levelUpInfo.level > currentUser.level) {
-      levelUpResult = {
-        newLevel: levelUpInfo.level,
-        coinsReward: (levelUpInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL
-      };
-      currentUser.level = levelUpResult.newLevel;
-      currentUser.exp = levelUpInfo.currentExp;
-    }
-    // batch 事务：扣除材料 + 增加成品 + 升级金币和经验
-    const levelUpCoins = levelUpResult ? levelUpResult.coinsReward : 0;
-    const craftStmts = [
+    const totalExp = (currentUser.total_exp || 0) + expGain;
+    const levelInfo = this.userService.calculateLevelFromTotalExp(totalExp);
+    const levelUp = levelInfo.level > currentUser.level
+      ? { newLevel: levelInfo.level, reward: (levelInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL }
+      : null;
+
+    const stmts = [
       this.env.DB.prepare('UPDATE inventory SET count = count - ? WHERE user_id = ? AND rarity = ?').bind(cost, currentUser.id, sourceRarity),
-      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, targetRarity)
+      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, targetRarity),
+      this.env.DB.prepare('UPDATE users SET total_exp = total_exp + ?, level = ?, exp = ?, coins = coins + ? WHERE id = ?')
+        .bind(expGain, levelInfo.level, levelInfo.currentExp, levelUp?.reward || 0, currentUser.id),
     ];
-    if (levelUpCoins > 0) craftStmts.push(this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(levelUpCoins, currentUser.id));
-    if (levelUpResult) craftStmts.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, currentUser.exp, currentUser.id));
-    await this.env.DB.batch(craftStmts);
-    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
+    await this.env.DB.batch(stmts);
+
+    if (asset.success) {
+      this.safeWaitUntil(this.galleryService.updateIndex({ url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, sourceName: asset.sourceName, ts: Date.now() }));
+    }
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-      this.safeWaitUntil(this.updateSession(currentUser));
-    return jsonResponse({
-      success: true,
+
+    return {
       card: asset,
       consumed: `${cost} 张 ${sourceRarity}`,
       expGained: expGain,
-      levelUp: levelUpResult
-    });
+      levelUp: levelUp ? { newLevel: levelUp.newLevel, reward: levelUp.reward } : null,
+    };
   }
 
-  // ==================== 商店购买 ====================
-  async shopBuy(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const { targetRarity } = await request.json();
+  async shopBuy(currentUser, targetRarity) {
     const shopConfig = CONFIG.GAME.SHOP;
-    if (!shopConfig) return jsonResponse({ error: '商店不存在' }, 400);
+    if (!shopConfig) throw AppError.validationError('商店不存在');
     const price = shopConfig[targetRarity];
-    if (!price) return jsonResponse({ error: '商品不存在' }, 400);
-    if (currentUser.coins < price) return jsonResponse({ error: '积分不足' }, 400);
-    currentUser.coins -= price;
-    const expGained = CONFIG.LEVEL.EXP_GAIN.SHOP_BUY || 20;
-    currentUser.total_exp = (currentUser.total_exp || 0) + expGained;
-    const levelUpInfo = this.userService.calculateLevelFromTotalExp(currentUser.total_exp);
-    let levelUpResult = null;
-    if (levelUpInfo.level > currentUser.level) {
-      levelUpResult = {
-        newLevel: levelUpInfo.level,
-        coinsReward: (levelUpInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL
-      };
-      currentUser.level = levelUpResult.newLevel;
-      currentUser.exp = levelUpInfo.currentExp;
+    if (!price) throw AppError.validationError('商品不存在');
+
+    if (!(await this.deductCoins(currentUser.id, price))) {
+      throw AppError.validationError('积分不足');
     }
-    const asset = await this.consumeGlobalBuffer(targetRarity, CONFIG.SOURCES.filter(s => s.rarity === targetRarity));
-    const levelUpCoins = levelUpResult ? levelUpResult.coinsReward : 0;
-    const shopStatements = [
-      this.env.DB.prepare('UPDATE users SET coins = coins - ? + ?, total_exp = total_exp + ? WHERE id = ?').bind(price, levelUpCoins, expGained, currentUser.id),
-      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, targetRarity)
-    ];
-    if (levelUpResult) shopStatements.push(this.env.DB.prepare('UPDATE users SET level = ?, exp = ? WHERE id = ?').bind(levelUpResult.newLevel, currentUser.exp, currentUser.id));
-    await this.env.DB.batch(shopStatements);
-    if (asset.success) this.safeWaitUntil(updateGalleryIndex(this.env, { url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, sourceName: asset.sourceName, ts: getBeijingISOString() }));
+
+    const expGain = CONFIG.LEVEL.EXP_GAIN.SHOP_BUY || 20;
+    const totalExp = (currentUser.total_exp || 0) + expGain;
+    const levelInfo = this.userService.calculateLevelFromTotalExp(totalExp);
+    const levelUp = levelInfo.level > currentUser.level
+      ? { newLevel: levelInfo.level, reward: (levelInfo.level - currentUser.level) * CONFIG.LEVEL.REWARDS.COINS_PER_LEVEL }
+      : null;
+
+    const asset = await this.imagePipeline.consumeBuffer(targetRarity, CONFIG.SOURCES.filter(s => s.rarity === targetRarity));
+
+    await this.env.DB.batch([
+      this.env.DB.prepare('UPDATE users SET total_exp = total_exp + ?, level = ?, exp = ?, coins = coins + ? WHERE id = ?')
+        .bind(expGain, levelInfo.level, levelInfo.currentExp, levelUp?.reward || 0, currentUser.id),
+      this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, targetRarity),
+    ]);
+
+    if (asset.success) {
+      this.safeWaitUntil(this.galleryService.updateIndex({ url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity: targetRarity, sourceName: asset.sourceName, ts: Date.now() }));
+    }
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-      this.safeWaitUntil(this.updateSession(currentUser));
-    return jsonResponse({
-      success: true,
+
+    return {
       message: `成功购买 ${targetRarity} 卡片`,
       card: asset,
-      userCoins: currentUser.coins,
-      levelUp: levelUpResult
-    });
+      levelUp: levelUp ? { newLevel: levelUp.newLevel, reward: levelUp.reward } : null,
+    };
   }
 
-  // ==================== 卡片分解 ====================
-  async decompose(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const { rarity, count: rawCount } = await request.json();
+  async decompose(currentUser, rarity, rawCount) {
     const decomposeConfig = CONFIG.GAME.DECOMPOSE;
-    if (!rarity || !decomposeConfig[rarity]) return jsonResponse({ error: '无效的稀有度' }, 400);
+    if (!rarity || !decomposeConfig[rarity]) throw AppError.validationError('无效的稀有度');
     const count = Math.min(Math.max(parseInt(rawCount) || 1, 1), 100);
     const coinsPerCard = decomposeConfig[rarity];
 
-    // 查询库存
     const inv = await this.env.DB.prepare(
       'SELECT count FROM inventory WHERE user_id = ? AND rarity = ?'
     ).bind(currentUser.id, rarity).first();
-    if (!inv || inv.count < count) return jsonResponse({ error: `${rarity} 卡片不足（拥有 ${inv?.count || 0} 张）` }, 400);
+    if (!inv || inv.count < count) {
+      throw AppError.validationError(`${rarity} 卡片不足（拥有 ${inv?.count || 0} 张）`);
+    }
 
     const totalCoins = coinsPerCard * count;
     await this.env.DB.batch([
@@ -957,114 +481,51 @@ export class GachaService {
       this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(totalCoins, currentUser.id),
     ]);
 
-    currentUser.coins = (currentUser.coins || 0) + totalCoins;
-    await this.userService.invalidateUserCache(currentUser.id);
-    this.safeWaitUntil(this.updateSession(currentUser));
+    this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
 
-    return jsonResponse({
-      success: true,
+    return {
       decomposed: count,
       rarity,
       coinsPerCard,
       totalCoins,
-      userCoins: currentUser.coins,
-    });
+    };
   }
 
-  // ==================== 骰子游戏 ====================
-  async playDice(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const { betAmount } = await request.json() || {};
+  async playDice(currentUser, betAmount) {
     const diceConfig = CONFIG.GAME.DICE;
     const bet = Math.min(Math.max(parseInt(betAmount) || 1, diceConfig.MIN_BET || 1), diceConfig.MAX_BET || 5);
-    const cost = bet;
-    if (currentUser.coins < cost) return jsonResponse({ error: '积分不足' }, 400);
-    const onCooldown = await this.checkDiceCooldown(currentUser.id);
-    if (onCooldown) return jsonResponse({ error: '骰子冷却中，请稍候再试' }, 429);
-    currentUser.coins -= cost;
-    if (bet >= diceConfig.MAX_BET) currentUser.diceCount = (currentUser.diceCount || 0) + 1;
+    if (bet < (diceConfig.MIN_BET || 1)) throw AppError.validationError(`投注不能小于 ${diceConfig.MIN_BET}`);
+    if (bet > (diceConfig.MAX_BET || 1000)) throw AppError.validationError(`投注不能大于 ${diceConfig.MAX_BET}`);
+
+    if (!(await this.deductCoins(currentUser.id, bet))) {
+      throw AppError.validationError('积分不足');
+    }
+
+    // 冷却（KV 计数）
+    if (this.env.KV_CACHE) {
+      const rl = await this.env.KV_CACHE.get(`rl:dice:${currentUser.id}`);
+      const now = Date.now();
+      if (rl && now < parseInt(rl)) throw AppError.validationError('骰子冷却中，请稍候再试');
+      await this.env.KV_CACHE.put(`rl:dice:${currentUser.id}`, String(now + (diceConfig.COOLDOWN_MS || 3000)), { expirationTtl: Math.ceil((diceConfig.COOLDOWN_MS || 3000) / 1000) });
+    }
+
     const roll1 = Math.floor(Math.random() * 6) + 1;
     const roll2 = Math.floor(Math.random() * 6) + 1;
     const sum = roll1 + roll2;
     const payout = diceConfig.PAYOUT || 2;
     let reward = 0;
-    if (sum >= 10) reward = Math.floor(cost * payout * 0.5);
-    if (roll1 === roll2) reward = Math.max(reward, Math.floor(cost * payout));
-    if (sum === 7) reward = Math.max(reward, Math.floor(cost * payout * 2));
-    currentUser.coins += reward;
-    const netChange = reward - cost;
-    await this.env.DB.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').bind(netChange, currentUser.id).run();
+    if (sum >= 10) reward = Math.floor(bet * payout * 0.5);
+    if (roll1 === roll2) reward = Math.max(reward, Math.floor(bet * payout));
+    if (sum === 7) reward = Math.max(reward, Math.floor(bet * payout * 2));
+    const netChange = reward - bet;
+
+    await this.env.DB.prepare('UPDATE users SET coins = coins + ?, wins = wins + ? WHERE id = ?')
+      .bind(netChange, reward > 0 ? 1 : 0, currentUser.id).run();
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
-      this.safeWaitUntil(this.updateSession(currentUser));
-    return jsonResponse({
-      roll1, roll2, sum, reward, cost,
-      message: `🎲 ${roll1} + ${roll2} = ${sum}, ${reward > cost ? '恭喜中奖！' : '下次好运！'}`,
-      userCoins: currentUser.coins
-    });
-  }
 
-  // ==================== 图片上传 ====================
-  async uploadImage(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    try {
-      const formData = await request.formData();
-      const file = formData.get('image');
-      const rarityRaw = formData.get('rarity') || 'N';
-      const rarityError = validateRarity(rarityRaw);
-      if (rarityError) return jsonResponse({ error: rarityError }, 400);
-      const rarity = rarityRaw.toUpperCase();
-      if (!file) return jsonResponse({ error: '未提供图片' }, 400);
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-      if (!allowedTypes.includes(file.type)) return jsonResponse({ error: '无效的文件类型' }, 400);
-      const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-      const fileName = file.name || '';
-      const ext = fileName.includes('.') ? '.' + fileName.split('.').pop().toLowerCase() : '';
-      if (!allowedExts.includes(ext)) return jsonResponse({ error: '无效的文件扩展名' }, 400);
-      const maxSize = 5 * 1024 * 1024;
-      if (file.size > maxSize) return jsonResponse({ error: '文件过大，最大5MB' }, 400);
-      const arrayBuffer = await file.arrayBuffer();
-
-      // Magic bytes validation
-      const bytes = new Uint8Array(arrayBuffer.slice(0, 4));
-      const magic = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-      const MAGIC_MAP = { 'FFD8FF': 'image/jpeg', '89504E47': 'image/png', '47494638': 'image/gif', '52494646': 'image/webp' };
-      const matchedMime = Object.entries(MAGIC_MAP).find(([magicPrefix]) => magic.startsWith(magicPrefix));
-      if (!matchedMime) return jsonResponse({ error: '文件内容不是有效的图片格式' }, 400);
-      if (matchedMime[1] !== file.type) return jsonResponse({ error: '文件扩展名与内容不匹配' }, 400);
-
-      const timestamp = Date.now();
-      const random = Math.random().toString(36).substring(2, 8);
-      const r2Key = `uploads/${currentUser.id}_${timestamp}_${random}${ext}`;
-      const r2Url = `${CONFIG.R2_DOMAIN}/${r2Key}`;
-      await this.env.R2_BUCKET.put(r2Key, arrayBuffer, {
-        httpMetadata: { contentType: file.type, cacheControl: 'public, max-age=3600' }
-      });
-      await this.env.DB.prepare(
-        'INSERT INTO user_uploads (user_id, username, r2_key, url, rarity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).bind(currentUser.id, currentUser.username, r2Key, r2Url, rarity, 'pending', Date.now()).run();
-      return jsonResponse({ success: true, url: r2Url, message: '上传成功，等待审核' });
-    } catch (e) {
-      console.error('Upload error:', e);
-      return jsonResponse({ error: '上传失败: ' + e.message }, 500);
-    }
-  }
-
-  async getUserUploads(currentUser, request) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    const url = new URL(request.url);
-    const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = 20;
-    const offset = (page - 1) * limit;
-    const total = await this.env.DB.prepare('SELECT COUNT(*) as count FROM user_uploads WHERE user_id = ?').bind(currentUser.id).first();
-    const uploads = await this.env.DB.prepare(
-      'SELECT * FROM user_uploads WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
-    ).bind(currentUser.id, limit, offset).all();
-    return jsonResponse({ success: true, uploads: uploads.results || [], total: total.count, page, totalPages: Math.ceil(total.count / limit) });
-  }
-
-  // ==================== 用户信息 ====================
-  async getUserInfo(currentUser) {
-    if (!currentUser) return jsonResponse({ error: '请先登录' }, 401);
-    return jsonResponse({ success: true, user: currentUser });
+    return {
+      roll1, roll2, sum, reward, cost: bet,
+      message: `🎲 ${roll1} + ${roll2} = ${sum}, ${reward > bet ? '恭喜中奖！' : '下次好运！'}`,
+    };
   }
 }
