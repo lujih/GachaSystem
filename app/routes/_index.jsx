@@ -7,6 +7,7 @@ import { useGacha } from '~/hooks/useGacha';
 import DrawResultDialog from '~/components/DrawResultDialog';
 import Toast from '~/components/Toast';
 import { api } from '~/lib/api';
+import { getBeijingDateStr } from '~/lib/time';
 import { rarityBg, rarityBorder, rarityGlow } from '~/lib/rarity';
 
 const POOL_CONFIG = {
@@ -125,11 +126,9 @@ export default function Index() {
   }
 
   const todayChecked = useCallback(() => {
-    const lastDate = user?.lastLoginAt ? new Date(user.lastLoginAt + 8 * 3600 * 1000).toISOString().slice(0, 10) : null;
-    if (!lastDate) return false;
     const beijingNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
     const todayStr = beijingNow.toISOString().split('T')[0];
-    return lastDate === todayStr;
+    return getBeijingDateStr(user?.lastLoginAt) === todayStr;
   }, [user?.lastLoginAt]);
 
   const showAnnouncement = announcement?.title && dismissedAnnId !== String(announcement.updated_at);

@@ -4,6 +4,7 @@ import Header from '~/components/Header';
 import BottomNav from '~/components/BottomNav';
 import Toast from '~/components/Toast';
 import { api } from '~/lib/api';
+import { getBeijingDateStr } from '~/lib/time';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RARITY_COLORS, RARITY_ORDER, rarityBg } from '~/lib/rarity';
 
@@ -135,11 +136,9 @@ export default function Profile() {
 
   // 签到状态判断（memoize）
   const todayIsChecked = useMemo(() => {
-    const lastDate = user?.lastLoginAt ? new Date(user.lastLoginAt + 8 * 3600 * 1000).toISOString().slice(0, 10) : null;
-    if (!lastDate) return false;
     const beijingNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
     const todayStr = beijingNow.toISOString().split('T')[0];
-    return lastDate === todayStr;
+    return getBeijingDateStr(user?.lastLoginAt) === todayStr;
   }, [user?.lastLoginAt]);
 
   if (!user) {
