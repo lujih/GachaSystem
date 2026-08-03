@@ -141,7 +141,6 @@ export class GachaService {
 
     const pity = await this.getPity(currentUser.id);
     const plan = planMultiDraw(reqCount, pity);
-    const drawCost = Math.floor(cost / reqCount);
 
     // 预读 buffer（按稀有度分组一次）
     const bufferCache = {};
@@ -167,7 +166,7 @@ export class GachaService {
         const asset = this.imagePipeline.consumeSlot(slots, sourceList);
         if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
 
-        totalCoins += coinsReward - drawCost;
+        totalCoins += coinsReward;
         totalExp += expGain;
 
         cards.push({
@@ -496,16 +495,16 @@ export class GachaService {
     if (bet < (diceConfig.MIN_BET || 1)) throw AppError.validationError(`投注不能小于 ${diceConfig.MIN_BET}`);
     if (bet > (diceConfig.MAX_BET || 1000)) throw AppError.validationError(`投注不能大于 ${diceConfig.MAX_BET}`);
 
-    if (!(await this.deductCoins(currentUser.id, bet))) {
-      throw AppError.validationError('积分不足');
-    }
-
-    // 冷却（KV 计数）
+    // 冷却检查（先于扣币）
     if (this.env.KV_CACHE) {
       const rl = await this.env.KV_CACHE.get(`rl:dice:${currentUser.id}`);
       const now = Date.now();
       if (rl && now < parseInt(rl)) throw AppError.validationError('骰子冷却中，请稍候再试');
       await this.env.KV_CACHE.put(`rl:dice:${currentUser.id}`, String(now + (diceConfig.COOLDOWN_MS || 3000)), { expirationTtl: Math.ceil((diceConfig.COOLDOWN_MS || 3000) / 1000) });
+    }
+
+    if (!(await this.deductCoins(currentUser.id, bet))) {
+      throw AppError.validationError('积分不足');
     }
 
     const roll1 = Math.floor(Math.random() * 6) + 1;
