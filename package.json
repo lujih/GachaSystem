@@ -11,7 +11,9 @@
     "start": "wrangler pages dev ./build/client",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc",
-    "preview": "npm run build && wrangler dev"
+    "preview": "npm run build && wrangler dev",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -20,13 +22,15 @@
     "@tailwindcss/vite": "^4.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "hono": "^4.12.34",
     "isbot": "^5.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "shadcn": "^4.6.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.4",
-    "tw-animate-css": "^1.4.0"
+    "tw-animate-css": "^1.4.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250303.0",
@@ -36,6 +40,7 @@
     "typescript": "^5.5.0",
     "vite": "^5.4.0",
     "vite-tsconfig-paths": "^5.0.0",
+    "vitest": "^4.1.10",
     "wrangler": "^4.86.0"
   },
   "engines": {
