@@ -31,12 +31,14 @@ export async function loader({ request, context }) {
     return { showcase: [], announcement: null, drawHistory: [] };
   }
 
-  // 并行查询 gallery 和公告
+  // 并行查询 gallery 和公告（公告权威存储在 D1 announcements 表）
   const [showcaseResult, announcement] = await Promise.all([
     env.DB.prepare(
       'SELECT g.*, u.username FROM gallery g LEFT JOIN users u ON g.user_id = u.id ORDER BY g.created_at DESC LIMIT 6'
     ).all().catch(e => { console.error('[loader] showcase failed:', e); return { results: [] }; }),
-    env.KV_CACHE?.get('system:announcement', { type: 'json' }).catch(() => null) ?? Promise.resolve(null)
+    env.DB.prepare(
+      'SELECT title, content, enabled, updated_at FROM announcements WHERE enabled = 1 ORDER BY updated_at DESC LIMIT 1'
+    ).first().catch(() => null)
   ]);
 
   return { showcase: showcaseResult.results || [], announcement: announcement || null };
@@ -123,14 +125,14 @@ export default function Index() {
   }
 
   const todayChecked = useCallback(() => {
-    if (!user?.lastLoginDate) return false;
-    const lastDate = user.lastLoginDate.split('T')[0];
+    const lastDate = user?.lastLoginAt ? new Date(user.lastLoginAt + 8 * 3600 * 1000).toISOString().slice(0, 10) : null;
+    if (!lastDate) return false;
     const beijingNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
     const todayStr = beijingNow.toISOString().split('T')[0];
     return lastDate === todayStr;
-  }, [user?.lastLoginDate]);
+  }, [user?.lastLoginAt]);
 
-  const showAnnouncement = announcement?.title && dismissedAnnId !== announcement.refreshId;
+  const showAnnouncement = announcement?.title && dismissedAnnId !== String(announcement.updated_at);
 
   return (
     <div className="min-h-screen bg-anime-sky relative">
@@ -156,8 +158,9 @@ export default function Index() {
             </div>
             <button
               onClick={() => {
-                if (announcement.refreshId) localStorage.setItem('dismissedAnnouncement', announcement.refreshId);
-                setDismissedAnnId(announcement.refreshId || 'closed');
+                const annKey = announcement.updated_at ? String(announcement.updated_at) : 'closed';
+                localStorage.setItem('dismissedAnnouncement', annKey);
+                setDismissedAnnId(annKey);
               }}
               className="text-on-primary-fixed-variant/60 hover:text-on-primary-fixed-variant p-1"
             >

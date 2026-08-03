@@ -135,12 +135,12 @@ export default function Profile() {
 
   // 签到状态判断（memoize）
   const todayIsChecked = useMemo(() => {
-    if (!user?.lastLoginDate) return false;
-    const lastDate = user.lastLoginDate.split('T')[0];
+    const lastDate = user?.lastLoginAt ? new Date(user.lastLoginAt + 8 * 3600 * 1000).toISOString().slice(0, 10) : null;
+    if (!lastDate) return false;
     const beijingNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
     const todayStr = beijingNow.toISOString().split('T')[0];
     return lastDate === todayStr;
-  }, [user?.lastLoginDate]);
+  }, [user?.lastLoginAt]);
 
   if (!user) {
     return (

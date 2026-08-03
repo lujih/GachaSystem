@@ -231,9 +231,9 @@ export default function Games() {
                     )}
                   </div>
 
-                  {result.userCoins !== undefined && (
+                  {user && (
                     <div className="mt-2 text-xs text-on-surface-variant">
-                      余额: {result.userCoins.toLocaleString()} 积分
+                      余额: {(user.coins ?? 0).toLocaleString()} 积分
                     </div>
                   )}
                 </div>
