@@ -11,7 +11,7 @@ import { adminRoutes } from './routes/admin.js';
 import { publicRoutes } from './routes/public.js';
 
 export function createApp() {
-  const app = new Hono();
+  const app = new Hono().basePath('/api');
 
   app.use(cors({
     allowHeaders: ['Content-Type', 'Authorization', 'X-User-ID', 'X-Session-Token', 'X-Admin-Mode'],
