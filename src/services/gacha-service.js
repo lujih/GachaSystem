@@ -5,7 +5,6 @@
  */
 import { CONFIG } from '../config/index.js';
 import { AppError } from '../utils/AppError.js';
-import { getBeijingISOString } from '../utils/time.js';
 import { rollRarity, advancePity, planMultiDraw } from './draw-engine.js';
 
 export class GachaService {
