@@ -1,14 +1,14 @@
 # Chouka 抽卡系统
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lujih/GachaSystem)
+[![Deploy to Cloudflare Pages](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lujih/GachaSystem)
 
-一个基于 Cloudflare Workers 的轻量级二次元抽卡（Gacha）系统，完整使用 Cloudflare 生态：Workers、D1（SQLite）、KV、R2 存储。支持用户注册/登录、抽卡（常驻/限定）、合成、商店购买、小游戏（骰子）、每日签到、图库与排行榜，并内置管理后台用于发布公告与管理用户。
+一个基于 Cloudflare Pages 的轻量级二次元抽卡（Gacha）系统，完整使用 Cloudflare 生态：Pages Functions、D1（SQLite）、KV、R2 存储。支持用户注册/登录、抽卡（常驻/限定）、合成、商店购买、小游戏（骰子）、每日签到、图库与排行榜，并内置管理后台用于发布公告与管理用户。
 
 ---
 
 ## ✨ 关键特性
 
-- ⚡ **Serverless**：无服务器架构，部署在 Cloudflare Workers，低延迟、高可用。
+- ⚡ **Serverless**：无服务器架构，部署在 Cloudflare Pages（Functions），低延迟、高可用。
 - 🎲 **抽卡系统**：常驻池与多类型限定池，稀有度：N / R / SR / SSR / UR；每次抽卡会获得积分与经验。
 - 🎒 **背包与合成**：卡片以稀有度入库，支持用 5 件低阶卡合成 1 件高阶卡。
 - 💰 **积分与商店**：积分可用于限定池与商城购买道具/卡片。
@@ -23,11 +23,11 @@
 ## 🚀 快速上手（部署要点）
 
 ### 必要的 Cloudflare 资源
-- KV Namespaces: `KV_CACHE`, `RECENT_REQUESTS`
+- KV Namespaces: `KV_CACHE`
 - D1 Database: `DB`
 - R2 Bucket: `R2_BUCKET`
 
-### 必要环境变量（在 Cloudflare Dashboard -> Workers -> Settings -> Variables & Secrets）
+### 必要环境变量（在 Cloudflare Dashboard -> Pages -> Settings -> Variables & Secrets）
 - `admin` (Secret) — 管理后台密码
 - `GITHUB_TOKEN` (Secret) — GitHub Personal Access Token（需要 repo 权限）
 - `GITHUB_OWNER` (Var) — GitHub 用户名（可选，默认：`lujih`）
@@ -43,17 +43,20 @@ npx wrangler d1 execute chouka --remote --file=./schema.sql
 
 ### 本地开发与调试
 ```bash
-# 本地开发
-npx wrangler dev --local
+# 本地开发（Vite HMR）
+npm run dev
 
-# 使用远程 D1 开发
-npx wrangler dev
+# SSR 预览（构建后）
+npm run start
+
+# 构建
+npm run build
 ```
 
 ---
 
-## 🔧 Wrangler 绑定（来自 `wrangler.toml`）
-- KV: `KV_CACHE` (id: adb207beb...) 以及 `RECENT_REQUESTS`
+## 🔧 Wrangler 绑定（来自 `wrangler.jsonc`）
+- KV: `KV_CACHE`
 - D1: `DB` (database_name: `chouka`)
 - R2: `R2_BUCKET` (bucket_name: `cloudflare-t1`)
 
@@ -62,12 +65,19 @@ npx wrangler dev
 ## 📚 数据库结构概览
 主要表：
 - `users` — 用户信息（`id`, `username`, `nickname`, `password`, `coins`, `level`, `exp`, `total_exp`, `login_streak`, `draw_count`, `wins`）
-- `gallery` — 图库索引（`url`, `user_id`, `username`, `created_at`）
+- `sessions` — 会话（token 仅存 SHA-256 哈希）
+- `pity_counters` — 保底计数（常驻 ssr/ur + 限定 limited_ssr/limited_ur）
+- `gallery` — 图库索引（`url` UNIQUE, `user_id`, `username`, `created_at`）
 - `inventory` — 背包（`user_id`, `rarity`, `count`）
+- `draw_history` — 抽卡历史
 - `logs` — 行为日志
 - `level_rewards` — 等级奖励领取记录
 - `user_titles` — 用户称号（`title_id`, `is_equipped`, `unlocked_at`）
 - `user_uploads` — 玩家上传图片（`r2_key`, `github_path`, `url`, `rarity`, `status`）
+- `card_likes` / `card_bookmarks` — 图库点赞/收藏
+- `buffer_claims` — 图片 buffer 领取去重
+- `announcements` / `changelogs` — 公告与更新日志（D1 表）
+- `leaderboard` — 排行榜（替代原 RECENT_REQUESTS KV）
 
 ---
 

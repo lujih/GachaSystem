@@ -5,7 +5,6 @@
 interface Env {
   DB: D1Database;
   KV_CACHE: KVNamespace;
-  RECENT_REQUESTS: KVNamespace;
   R2_BUCKET: R2Bucket;
   admin: string;
   GITHUB_TOKEN: string;
