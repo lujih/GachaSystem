@@ -22,9 +22,10 @@ export class GalleryService {
 
   async updateIndex({ url, userId, username, rarity, sourceName, ts }) {
     try {
+      const tsMs = typeof ts === 'string' ? Date.parse(ts) : ts;
       await this.env.DB.prepare(
         'INSERT INTO gallery (url, user_id, username, rarity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET user_id = excluded.user_id, username = excluded.username, rarity = excluded.rarity, source_name = excluded.source_name, created_at = excluded.created_at'
-      ).bind(url, userId, username, rarity || 'N', sourceName || null, ts).run();
+      ).bind(url, userId, username, rarity || 'N', sourceName || null, tsMs).run();
     } catch (e) { console.error('Gallery D1 error:', e); }
   }
 
@@ -44,15 +45,17 @@ export class GalleryService {
 
   async listItems(params) {
     const { page = 1, limit = 20, rarity, userId, sort = 'newest', search, period } = params;
+    const safePage = Math.max(parseInt(page) || 1, 1);
     const safeLimit = Math.min(parseInt(limit) || 20, 100);
-    const offset = (page - 1) * safeLimit;
+    const safeUserId = userId && !isNaN(parseInt(userId)) ? parseInt(userId) : null;
+    const offset = (safePage - 1) * safeLimit;
 
     let q = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at, (SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) as like_count FROM gallery g';
     let cq = 'SELECT COUNT(*) as total FROM gallery g';
     const p = [], cp = [], conds = [];
 
     if (rarity) { conds.push('g.rarity = ?'); p.push(rarity.toUpperCase()); cp.push(rarity.toUpperCase()); }
-    if (userId) { conds.push('g.user_id = ?'); p.push(parseInt(userId)); cp.push(parseInt(userId)); }
+    if (safeUserId) { conds.push('g.user_id = ?'); p.push(safeUserId); cp.push(safeUserId); }
     if (search) { conds.push('g.username LIKE ?'); p.push(`%${search}%`); cp.push(`%${search}%`); }
     if (period && period !== 'all') {
       const PERIOD_MS = { today: 86400000, week: 604800000, month: 2592000000 };

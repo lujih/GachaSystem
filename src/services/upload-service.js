@@ -46,10 +46,18 @@ export class UploadService {
     const arrayBuffer = await file.arrayBuffer();
 
     // Magic bytes 校验
-    const bytes = new Uint8Array(arrayBuffer.slice(0, 4));
+    const bytes = new Uint8Array(arrayBuffer.slice(0, 12));
     const magic = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-    const MAGIC_MAP = { 'FFD8FF': 'image/jpeg', '89504E47': 'image/png', '47494638': 'image/gif', '52494646': 'image/webp' };
-    const matchedMime = Object.entries(MAGIC_MAP).find(([magicPrefix]) => magic.startsWith(magicPrefix));
+    const MAGIC_MAP = {
+      'FFD8FF': 'image/jpeg',
+      '89504E47': 'image/png',
+      '47494638': 'image/gif',
+    };
+    let matchedMime = Object.entries(MAGIC_MAP).find(([magicPrefix]) => magic.startsWith(magicPrefix));
+    // WebP: RIFF....WEBP (bytes 8-11)
+    if (!matchedMime && magic.startsWith('52494646') && magic.slice(16, 24) === '57454250') {
+      matchedMime = ['5249464657454250', 'image/webp'];
+    }
     if (!matchedMime) throw AppError.validationError('文件内容不是有效的图片格式');
     if (matchedMime[1] !== file.type) throw AppError.validationError('文件扩展名与内容不匹配');
 
