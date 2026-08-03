@@ -33,10 +33,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 -- 保底计数器表（权威）：常驻 + 限定独立计数，永久保留
 CREATE TABLE IF NOT EXISTS pity_counters (
     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    ssr INTEGER DEFAULT 0 NOT NULL,
-    ur INTEGER DEFAULT 0 NOT NULL,
-    limited_ssr INTEGER DEFAULT 0 NOT NULL,
-    limited_ur INTEGER DEFAULT 0 NOT NULL
+    ssr INTEGER DEFAULT 0 NOT NULL CHECK (ssr >= 0),
+    ur INTEGER DEFAULT 0 NOT NULL CHECK (ur >= 0),
+    limited_ssr INTEGER DEFAULT 0 NOT NULL CHECK (limited_ssr >= 0),
+    limited_ur INTEGER DEFAULT 0 NOT NULL CHECK (limited_ur >= 0)
 ) STRICT;
 
 -- 图库（url 唯一约束 → 配合 ON CONFLICT(url) 去重生效）
@@ -84,9 +84,9 @@ CREATE TABLE IF NOT EXISTS level_rewards (
     reward_type TEXT NOT NULL,
     reward_data TEXT,
     claimed_at INTEGER NOT NULL,
+    UNIQUE(user_id, level),
     CONSTRAINT fk_lr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_level_rewards_check ON level_rewards(user_id, level);
 
 -- 用户称号
 CREATE TABLE IF NOT EXISTS user_titles (
@@ -98,7 +98,6 @@ CREATE TABLE IF NOT EXISTS user_titles (
     UNIQUE(user_id, title_id),
     CONSTRAINT fk_title_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_user_titles_user ON user_titles(user_id);
 
 -- 玩家上传
 CREATE TABLE IF NOT EXISTS user_uploads (
