@@ -113,7 +113,7 @@ export class GachaService {
         .bind(currentUser.id, rarity),
       this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, asset.sourceName || '常驻池', Date.now()),
-      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = MAX(ssr, excluded.ssr), ur = MAX(ur, excluded.ur)')
+      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = CASE WHEN excluded.ssr = 0 THEN 0 ELSE MAX(ssr, excluded.ssr) END, ur = CASE WHEN excluded.ur = 0 THEN 0 ELSE MAX(ur, excluded.ur) END')
         .bind(currentUser.id, nextPity.ssr, nextPity.ur),
     ];
     await this.env.DB.batch(stmts);
@@ -217,7 +217,7 @@ export class GachaService {
     stmts.push(
       this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + ?, total_exp = total_exp + ?, level = ?, exp = ? WHERE id = ?')
         .bind(totalCoins + refund + (levelUp?.reward || 0), cards.length, totalExp, levelInfo.level, levelInfo.currentExp, currentUser.id),
-      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = MAX(ssr, excluded.ssr), ur = MAX(ur, excluded.ur)')
+      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, ?, ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET ssr = CASE WHEN excluded.ssr = 0 THEN 0 ELSE MAX(ssr, excluded.ssr) END, ur = CASE WHEN excluded.ur = 0 THEN 0 ELSE MAX(ur, excluded.ur) END')
         .bind(currentUser.id, lastPlan.ssrPity, lastPlan.urPity),
     );
     await this.env.DB.batch(stmts);
@@ -326,7 +326,7 @@ export class GachaService {
     stmts.push(
       this.env.DB.prepare('UPDATE users SET coins = coins + ?, draw_count = draw_count + ?, total_exp = total_exp + ?, level = ?, exp = ? WHERE id = ?')
         .bind(levelUpCoins, count, totalExp, levelInfo.level, levelInfo.currentExp, currentUser.id),
-      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, 0, 0, ?, ?) ON CONFLICT(user_id) DO UPDATE SET limited_ssr = MAX(limited_ssr, excluded.limited_ssr), limited_ur = MAX(limited_ur, excluded.limited_ur)')
+      this.env.DB.prepare('INSERT INTO pity_counters (user_id, ssr, ur, limited_ssr, limited_ur) VALUES (?, 0, 0, ?, ?) ON CONFLICT(user_id) DO UPDATE SET limited_ssr = CASE WHEN excluded.limited_ssr = 0 THEN 0 ELSE MAX(limited_ssr, excluded.limited_ssr) END, limited_ur = CASE WHEN excluded.limited_ur = 0 THEN 0 ELSE MAX(limited_ur, excluded.limited_ur) END')
         .bind(currentUser.id, tempPity.ssr, tempPity.ur),
     );
     await this.env.DB.batch(stmts);
