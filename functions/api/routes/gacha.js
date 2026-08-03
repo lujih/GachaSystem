@@ -39,4 +39,9 @@ export const gachaRoutes = new Hono()
     const services = c.get('services');
     const { targetRarity } = await c.req.json();
     return c.json({ success: true, ...await services.gacha.shopBuy(c.get('user'), targetRarity) });
+  })
+  .post('/user/craft', requireAuth, async (c) => {
+    const services = c.get('services');
+    const { targetRarity } = await c.req.json();
+    return c.json({ success: true, ...await services.gacha.craft(c.get('user'), targetRarity) });
   });
