@@ -22,10 +22,6 @@
     {
       "binding": "KV_CACHE",
       "id": ""
-    },
-    {
-      "binding": "RECENT_REQUESTS",
-      "id": ""
     }
   ],
   "r2_buckets": [

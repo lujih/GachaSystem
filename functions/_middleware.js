@@ -1,11 +1,3 @@
-const PUBLIC_PATHS = new Set([
-  '/api/announcement',
-  '/api/changelog',
-  '/api/showcase',
-  '/api/library/items',
-  '/api/library/like-counts',
-]);
-
 function generateNonce() {
   const array = new Uint8Array(16);
   crypto.getRandomValues(array);
@@ -13,7 +5,6 @@ function generateNonce() {
 }
 
 function injectNonceIntoHtml(html, nonce) {
-  // 为所有 <script> 标签注入 nonce（跳过已有 nonce 的标签）
   return html.replace(/<script\b(?!(?:[^>]*\bnonce\s*=))/gi, `<script nonce="${nonce}"`);
 }
 
@@ -30,41 +21,17 @@ function applySecurityHeaders(headers, nonce) {
 }
 
 export async function onRequest(context) {
-  const { request, env } = context;
+  const { request } = context;
   const url = new URL(request.url);
 
-  // CORS preflight
+  // CORS 预检由 Hono cors() 处理（/api/*）；非 API 路径预检直接放行
   if (request.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-ID, X-Session-Token, X-Admin-Mode',
-        'Access-Control-Max-Age': '86400',
-      },
-    });
-  }
-
-  // Skip session lookup for public API paths — resolve session for all other requests
-  const pathname = url.pathname;
-  const isPublicApi = PUBLIC_PATHS.has(pathname);
-
-  if (!isPublicApi) {
-    const token = request.headers.get('X-Session-Token');
-    if (token) {
-      try {
-        const sessionData = await env.KV_CACHE.get(`session:${token}`, { type: 'json' });
-        context.data = { ...context.data, currentUser: sessionData, _sessionToken: token };
-      } catch (e) {
-        // Token expired or invalid — continue without user
-      }
-    }
+    return context.next();
   }
 
   const response = await context.next();
   const nonce = generateNonce();
 
-  // 对 HTML 响应注入 script nonce 并重写 CSP
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('text/html')) {
     const text = await response.text();
