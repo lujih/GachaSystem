@@ -15,13 +15,13 @@
     {
       "binding": "DB",
       "database_name": "chouka",
-      "database_id": ""
+      "database_id": "local-dev"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "KV_CACHE",
-      "id": ""
+      "id": "local-dev"
     }
   ],
   "r2_buckets": [

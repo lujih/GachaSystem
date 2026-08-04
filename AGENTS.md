@@ -79,7 +79,7 @@ app.post('/users', requireAdmin, async (c) => {
 - D1 batch 是原子事务（官方语义）；单条语句 auto-commit
 - craft/decompose 库存 read-then-write 有 TOCTOU 竞态（CHECK count >= 0 兜底）
 - KV 限流计数 TOCTOU（可接受）
-- `wrangler.jsonc` 的 `database_id` / KV id 为空字符串——本地 wrangler 命令（`d1 execute --local` 等）可能崩溃（wrangler 4.86 校验），部署前需填真实 id
+- `wrangler.jsonc` 的 `database_id` / KV id 为占位符 `local-dev`（本地 wrangler 4.86 校验空字符串会崩溃）——**部署前必须替换为真实 id**（Cloudflare Dashboard 获取）；本地 wrangler CLI 命令（`d1 execute --local` 等）可能挂起，可用 `wrangler pages dev` 代替（它使用 .wrangler/state 本地模拟）
 - wsrv.nl 图片压缩代理是第三方依赖，失败时降级直传原图
 - 前端 `app/lib/api.js` 自动附加 `X-Session-Token`（localStorage，XSS 风险已知，暂无对策）
 - 上传校验（`/user/upload`）：双 MIME 检查（浏览器 file.type + magic bytes）、扩展名白名单（.jpg/.png/.gif/.webp）、`validateRarity`
