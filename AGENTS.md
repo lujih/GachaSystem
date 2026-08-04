@@ -55,11 +55,11 @@ Browser → Cloudflare Pages
 ## Admin Auth（重要！）
 
 - `requireAdmin` 中间件（`functions/api/middleware/auth.js`）**消费 request body** 读取 `body.password` 与 `env.admin` 比对；不通过则 403 `认证失败`；内置限流 `rl:admin` 10次/10min/IP（429）
-- **admin 路由 handler 必须用 `c.req.raw.clone().json()` 读取字段**（body 已被中间件消费）：
+- **admin 路由 handler 从 `c.get('adminBody')` 读取字段**（requireAdmin 已解析 body 并存入 context，body 流已消费无法二次读取）：
 
 ```js
 app.post('/users', requireAdmin, async (c) => {
-  const body = await c.req.raw.clone().json();
+  const { page, limit } = c.get('adminBody');
   ...
 });
 ```

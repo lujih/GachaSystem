@@ -7,7 +7,8 @@ export async function requireAuth(c, next) {
 
 /**
  * 管理员鉴权：读 body.password 与 env.admin 比对。
- * 注意：消费 request body，后续 handler 必须用 c.req.raw.clone().json() 读取。
+ * 注意：消费 request body，已解析的 body 存入 context（c.set('adminBody')），
+ * handler 必须用 c.get('adminBody') 读取（body 流已消费，无法二次 clone 读取）。
  */
 export async function requireAdmin(c, next) {
   const ip = c.req.header('CF-Connecting-IP') || 'unknown';
@@ -22,5 +23,7 @@ export async function requireAdmin(c, next) {
   if (!body || !body.password || body.password !== c.env.admin) {
     return c.json({ success: false, error: '认证失败' }, 403);
   }
+  // 已解析的 body 存入 context，handler 直接读取（body 流已消费，无法二次 clone 读取）
+  c.set('adminBody', body);
   await next();
 }

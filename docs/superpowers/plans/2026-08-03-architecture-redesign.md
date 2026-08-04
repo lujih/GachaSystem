@@ -2396,7 +2396,8 @@ export async function requireAuth(c, next) {
 
 /**
  * 管理员鉴权：读 body.password 与 env.admin 比对。
- * 注意：消费 request body，后续 handler 必须用 c.req.raw.clone().json() 读取。
+ * 注意：消费 request body，已解析的 body 存入 context（c.set('adminBody')），
+ * handler 必须用 c.get('adminBody') 读取（body 流已消费，无法二次 clone 读取）。
  */
 export async function requireAdmin(c, next) {
   const ip = c.req.header('CF-Connecting-IP') || 'unknown';
@@ -2411,6 +2412,8 @@ export async function requireAdmin(c, next) {
   if (!body || !body.password || body.password !== c.env.admin) {
     return c.json({ success: false, error: '认证失败' }, 403);
   }
+  // 已解析的 body 存入 context，handler 直接读取（body 流已消费，无法二次 clone 读取）
+  c.set('adminBody', body);
   await next();
 }
 ```
@@ -2700,37 +2703,37 @@ export const adminRoutes = new Hono()
   .post('/verify', requireAdmin, async (c) => c.json({ success: true }))
   .post('/users', requireAdmin, async (c) => {
     const services = c.get('services');
-    const { page, limit } = await c.req.raw.clone().json();
+    const { page, limit } = c.get('adminBody');
     return c.json({ success: true, ...await services.admin.listUsers(page, limit) });
   })
   .post('/update-points', requireAdmin, async (c) => {
     const services = c.get('services');
-    const { targetId, amount } = await c.req.raw.clone().json();
+    const { targetId, amount } = c.get('adminBody');
     return c.json({ success: true, ...await services.admin.updatePoints(targetId, amount) });
   })
   .post('/delete-user', requireAdmin, async (c) => {
     const services = c.get('services');
-    const { targetId } = await c.req.raw.clone().json();
+    const { targetId } = c.get('adminBody');
     return c.json({ success: true, ...await services.admin.deleteUser(targetId) });
   })
   .post('/uploads', requireAdmin, async (c) => {
     const services = c.get('services');
-    const { status, page, limit } = await c.req.raw.clone().json();
+    const { status, page, limit } = c.get('adminBody');
     return c.json({ success: true, ...await services.admin.listUploads(status, page, limit) });
   })
   .post('/review-upload', requireAdmin, async (c) => {
     const services = c.get('services');
-    const { uploadId, action, rarity } = await c.req.raw.clone().json();
+    const { uploadId, action, rarity } = c.get('adminBody');
     return c.json({ success: true, ...await services.admin.reviewUpload(uploadId, action, rarity) });
   })
   .post('/save-changelog', requireAdmin, async (c) => {
     const services = c.get('services');
-    const { logs } = await c.req.raw.clone().json();
+    const { logs } = c.get('adminBody');
     return c.json({ success: true, ...await services.admin.saveChangelog(logs) });
   })
   .post('/save-announcement', requireAdmin, async (c) => {
     const services = c.get('services');
-    const { announcement } = await c.req.raw.clone().json();
+    const { announcement } = c.get('adminBody');
     return c.json({ success: true, ...await services.admin.saveAnnouncement(announcement) });
   });
 ```
@@ -2938,7 +2941,7 @@ Expected: 无输出（Task 10/12 已移除全部调用）。若有残留（如 `
 - Commands：新增 `npm test`（vitest）
 - Architecture：`functions/api/[[path]].js` 改为 Hono 薄入口 + 中间件链 + 8 个服务模块
 - Database：11 表 → 新表清单（sessions/pity_counters/announcements/changelogs/leaderboard；删 logs；gallery.url UNIQUE）
-- Admin Auth：`requireAdmin` 由 `functions/api/middleware/auth.js` 中间件实现（仍消费 body，handler 用 `c.req.raw.clone().json()`）
+- Admin Auth：`requireAdmin` 由 `functions/api/middleware/auth.js` 中间件实现（消费 body 后存入 context，handler 用 `c.get('adminBody')`）
 - Error Handling：删除"两种模式不要混用"章节 → 改为"统一 AppError + Hono onError 中间件"
 - Gotchas：更新会话机制（D1 sessions 权威，KV 仅缓存）；保底存 D1
 
@@ -3019,6 +3022,6 @@ git commit -m "docs: update AGENTS.md for new architecture"
 - `rollRarity/advancePity/planMultiDraw` 在 Task 4 定义、Task 10 使用，签名一致（pity 为 `{ssr, ur}` 对象）
 - `imagePipeline.consumeBuffer/consumeSlot/preReadBufferSlots/fetchAndUploadWithFallback` 在 Task 5 定义、Task 10 使用，命名一致
 - `services.gacha/services.user/...` 在 Task 11 `servicesMiddleware` 装配、Task 12 路由消费，键名一致
-- `requireAdmin` 中间件在 Task 11 定义、Task 12 admin 路由使用，行为一致（body 已消费 → `c.req.raw.clone().json()`）
+- `requireAdmin` 中间件在 Task 11 定义、Task 12 admin 路由使用，行为一致（body 已消费 → handler 从 `c.get('adminBody')` 读取）
 - `getSessionUser` 在 Task 6 定义、Task 11 session 中间件使用，返回 `user` 或 `null`，一致
 - `galleryService.updateIndex/updateLeaderboard` Task 8 定义、Task 10 调用，参数对象键一致
