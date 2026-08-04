@@ -176,8 +176,12 @@ export class GachaService {
         const coinsReward = CONFIG.GAME.POINTS[rarity] || CONFIG.GAME.POINTS['N'] || 5;
         const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
         const { slots, sourceList } = bufferCache[rarity];
-        const asset = this.imagePipeline.consumeSlot(slots, sourceList);
-        if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
+        let asset = this.imagePipeline.consumeSlot(slots, sourceList);
+        if (!asset || (!asset.success && !asset.imageUrl)) {
+          // buffer 空降级：实时拉取
+          asset = await this.imagePipeline.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]);
+          if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
+        }
 
         totalCoins += coinsReward;
         totalExp += expGain;
@@ -529,7 +533,7 @@ export class GachaService {
       const rl = await this.env.KV_CACHE.get(`rl:dice:${currentUser.id}`);
       const now = Date.now();
       if (rl && now < parseInt(rl)) throw AppError.validationError('骰子冷却中，请稍候再试');
-      await this.env.KV_CACHE.put(`rl:dice:${currentUser.id}`, String(now + (diceConfig.COOLDOWN_MS || 3000)), { expirationTtl: Math.ceil((diceConfig.COOLDOWN_MS || 3000) / 1000) });
+      await this.env.KV_CACHE.put(`rl:dice:${currentUser.id}`, String(now + (diceConfig.COOLDOWN_MS || 3000)), { expirationTtl: Math.max(60, Math.ceil((diceConfig.COOLDOWN_MS || 3000) / 1000)) });
     }
 
     if (!(await this.deductCoins(currentUser.id, bet))) {
