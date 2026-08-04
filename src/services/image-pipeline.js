@@ -190,7 +190,13 @@ export class ImagePipeline {
     }
 
     if (!selectedSlot || !selectedSlot.asset.success) {
+      // buffer 空 → 实时拉取，并在后台并行 refill 全部 slots（下次请求即命中缓存）
       selectedSlot = { asset: await this.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]), index: -1 };
+      if (selectedSlot.asset.success) {
+        for (let i = 0; i < CONFIG.TTL.BUFFER_SLOTS; i++) {
+          this.safeWaitUntil(this.safeRefillBuffer(rarity, sourceList, i));
+        }
+      }
     }
 
     if (selectedSlot.asset.imageUrl && selectedSlot.index >= 0) {

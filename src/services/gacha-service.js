@@ -7,6 +7,20 @@ import { CONFIG } from '../config/index.js';
 import { AppError } from '../utils/AppError.js';
 import { rollRarity, advancePity, planMultiDraw } from './draw-engine.js';
 
+// 并发限制工具：串行消费 items，最多 limit 个并发执行 fn
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export class GachaService {
   constructor(env, ctx = null, deps = {}) {
     this.env = env;
@@ -164,6 +178,28 @@ export class GachaService {
       }
     }
 
+    // 第一遍：消费 buffer slots（纯 KV 快路径）
+    const fetchJobs = [];
+    const slotResults = new Map(); // index -> asset
+    for (const entry of plan) {
+      const { index: i, rarity } = entry;
+      const { slots, sourceList } = bufferCache[rarity];
+      const asset = this.imagePipeline.consumeSlot(slots, sourceList);
+      if (asset && asset.success && asset.imageUrl) {
+        slotResults.set(i, asset);
+      } else {
+        fetchJobs.push({ index: i, rarity, sourceList });
+      }
+    }
+
+    // 第二遍：buffer 未命中的并行实时拉取（限并发，避免超过 Workers 请求时限）
+    const fetched = await mapLimit(fetchJobs, 5, async ({ index, rarity, sourceList }) => {
+      const asset = await this.imagePipeline.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]);
+      return { index, rarity, asset };
+    });
+    for (const f of fetched) slotResults.set(f.index, f.asset);
+
+    // 第三遍：按计划顺序组装
     const cards = [];
     const stmts = [];
     let totalCoins = 0;
@@ -172,41 +208,35 @@ export class GachaService {
 
     for (const entry of plan) {
       const { index: i, rarity, isPity, ssrPity, urPity } = entry;
-      try {
-        const coinsReward = CONFIG.GAME.POINTS[rarity] || CONFIG.GAME.POINTS['N'] || 5;
-        const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
-        const { slots, sourceList } = bufferCache[rarity];
-        let asset = this.imagePipeline.consumeSlot(slots, sourceList);
-        if (!asset || (!asset.success && !asset.imageUrl)) {
-          // buffer 空降级：实时拉取
-          asset = await this.imagePipeline.fetchAndUploadWithFallback(sourceList[Math.floor(Math.random() * sourceList.length)]);
-          if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
-        }
-
-        totalCoins += coinsReward;
-        totalExp += expGain;
-
-        cards.push({
-          rarity,
-          asset: asset.success ? { url: asset.imageUrl, sourceName: asset.sourceName } : null,
-          isPity,
-          pityInfo: { ssrPity, urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
-        });
-
-        stmts.push(
-          this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity),
-          this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, asset.sourceName || '常驻池', Date.now() + i)
-        );
-
-        if (asset.success) {
-          this.safeWaitUntil(this.galleryService.updateIndex({ url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: asset.sourceName, ts: Date.now() + i }));
-          if (rarity === 'UR') {
-            this.safeWaitUntil(this.galleryService.updateLeaderboard({ username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() + i }));
-          }
-        }
-      } catch (e) {
-        console.error(`[multiDraw] Draw ${i + 1} failed:`, e);
+      const asset = slotResults.get(i);
+      if (!asset || (!asset.success && !asset.imageUrl)) {
+        console.error(`[multiDraw] Draw ${i + 1} failed: buffer miss and realtime fetch failed`);
         failedSlots.push(i + 1);
+        continue;
+      }
+      const coinsReward = CONFIG.GAME.POINTS[rarity] || CONFIG.GAME.POINTS['N'] || 5;
+      const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
+
+      totalCoins += coinsReward;
+      totalExp += expGain;
+
+      cards.push({
+        rarity,
+        asset: asset.success ? { url: asset.imageUrl, sourceName: asset.sourceName } : null,
+        isPity,
+        pityInfo: { ssrPity, urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
+      });
+
+      stmts.push(
+        this.env.DB.prepare('INSERT INTO inventory (user_id, rarity, count) VALUES (?, ?, 1) ON CONFLICT(user_id, rarity) DO UPDATE SET count = count + 1').bind(currentUser.id, rarity),
+        this.env.DB.prepare('INSERT INTO draw_history (user_id, username, rarity, is_pity, source_name, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(currentUser.id, currentUser.username, rarity, isPity ? 1 : 0, asset.sourceName || '常驻池', Date.now() + i)
+      );
+
+      if (asset.success) {
+        this.safeWaitUntil(this.galleryService.updateIndex({ url: asset.imageUrl, userId: currentUser.id, username: currentUser.username, rarity, sourceName: asset.sourceName, ts: Date.now() + i }));
+        if (rarity === 'UR') {
+          this.safeWaitUntil(this.galleryService.updateLeaderboard({ username: currentUser.username, rarity, imageUrl: asset.imageUrl, ts: Date.now() + i }));
+        }
       }
     }
 
@@ -268,23 +298,44 @@ export class GachaService {
     const drawnUrls = new Set();
 
     try {
+      // 第一遍：确定全部稀有度 + 消费非 base 卡（buffer 快路径），base 卡收集并行拉取
+      const rolls = [];
       for (let i = 0; i < count; i++) {
         const { rarity, isPity } = rollRarity(tempPity.ssr, tempPity.ur);
         tempPity.ssr++;
         tempPity.ur++;
         if (rarity === 'SSR' || rarity === 'UR') tempPity.ssr = 0;
         if (rarity === 'UR') tempPity.ur = 0;
+        rolls.push({ index: i, rarity, isPity, ssrPity: tempPity.ssr, urPity: tempPity.ur });
+      }
 
-        let asset;
-        if (rarity === baseRarity) {
-          asset = await this.imagePipeline.fetchAndUploadWithFallback(sources[Math.floor(Math.random() * sources.length)]);
+      const assets = new Map(); // index -> asset
+      const baseJobs = [];
+      for (const roll of rolls) {
+        if (roll.rarity === baseRarity) {
+          baseJobs.push(roll);
         } else {
-          const fallbackSources = CONFIG.SOURCES.filter(s => s.rarity === rarity);
-          asset = await this.imagePipeline.consumeBuffer(rarity, fallbackSources.length > 0 ? fallbackSources : sources);
+          const fallbackSources = CONFIG.SOURCES.filter(s => s.rarity === roll.rarity);
+          const asset = await this.imagePipeline.consumeBuffer(roll.rarity, fallbackSources.length > 0 ? fallbackSources : sources);
+          assets.set(roll.index, asset);
         }
-        if (!asset || (!asset.success && !asset.imageUrl)) throw new Error(`获取 ${rarity} 图片失败`);
+      }
 
-        // 同批去重
+      // 第二遍：base 卡并行实时拉取（限并发）
+      const baseResults = await mapLimit(baseJobs, 5, async (roll) => {
+        const asset = await this.imagePipeline.fetchAndUploadWithFallback(sources[Math.floor(Math.random() * sources.length)]);
+        return { index: roll.index, asset };
+      });
+      for (const r of baseResults) assets.set(r.index, r.asset);
+
+      // 第三遍：按顺序组装 + 同批去重（重复 URL 重拉一次）
+      for (const roll of rolls) {
+        const { index: i, rarity, isPity, ssrPity, urPity } = roll;
+        let asset = assets.get(i);
+        if (!asset || (!asset.success && !asset.imageUrl)) {
+          throw new Error(`获取 ${rarity} 图片失败`);
+        }
+
         let finalAsset = asset;
         if (asset.success && drawnUrls.has(asset.imageUrl)) {
           try {
@@ -302,7 +353,7 @@ export class GachaService {
           rarity,
           asset: finalAsset.success ? { url: finalAsset.imageUrl, sourceName: finalAsset.sourceName } : null,
           isPity,
-          pityInfo: { ssrPity: tempPity.ssr, urPity: tempPity.ur, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
+          pityInfo: { ssrPity, urPity, ssrAt: CONFIG.PITY.SSR.at, urAt: CONFIG.PITY.UR.at },
         });
 
         stmts.push(
