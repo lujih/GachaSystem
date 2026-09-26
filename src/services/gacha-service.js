@@ -317,6 +317,12 @@ export class GachaService {
         } else {
           const fallbackSources = CONFIG.SOURCES.filter(s => s.rarity === roll.rarity);
           const asset = await this.imagePipeline.consumeBuffer(roll.rarity, fallbackSources.length > 0 ? fallbackSources : sources);
+          if (!asset || (!asset.success && !asset.imageUrl)) {
+            // 非 base 稀有度 buffer 消费失败（图源不可用）时降级到 base 图源实时拉取，
+            // 让本轮限定抽卡仍能产出卡片，而非整轮退款
+            baseJobs.push(roll);
+            continue;
+          }
           assets.set(roll.index, asset);
         }
       }
@@ -435,9 +441,9 @@ export class GachaService {
     query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
     qp.push(limit, (page - 1) * limit);
 
-    const countQuery = 'SELECT COUNT(*) as total FROM draw_history WHERE user_id = ?';
+    let countQuery = 'SELECT COUNT(*) as total FROM draw_history WHERE user_id = ?';
     const countParams = [currentUser.id];
-    if (rarityFilter) countParams.push(rarityFilter.toUpperCase());
+    if (rarityFilter) { countQuery += ' AND rarity = ?'; countParams.push(rarityFilter.toUpperCase()); }
 
     const [results, countResult] = await Promise.all([
       this.env.DB.prepare(query).bind(...qp).all(),
