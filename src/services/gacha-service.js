@@ -111,7 +111,7 @@ export class GachaService {
       throw AppError.serverError(`获取 ${rarity} 图片失败，请重试`);
     }
 
-    const coinsReward = CONFIG.GAME.POINTS[rarity] || CONFIG.GAME.POINTS['N'] || 5;
+    const coinsReward = CONFIG.CARD_VALUE[rarity] || CONFIG.CARD_VALUE['N'] || 7;
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
 
     const totalExp = (currentUser.total_exp || 0) + expGain;
@@ -178,13 +178,13 @@ export class GachaService {
       }
     }
 
-    // 第一遍：消费 buffer slots（纯 KV 快路径）
+    // 第一遍：消费 buffer slots（KV 快路径，仍执行原子锁/黑名单/refill）
     const fetchJobs = [];
     const slotResults = new Map(); // index -> asset
     for (const entry of plan) {
       const { index: i, rarity } = entry;
       const { slots, sourceList } = bufferCache[rarity];
-      const asset = this.imagePipeline.consumeSlot(slots, sourceList);
+      const asset = await this.imagePipeline.consumeSlot(slots, rarity, sourceList);
       if (asset && asset.success && asset.imageUrl) {
         slotResults.set(i, asset);
       } else {
@@ -214,7 +214,7 @@ export class GachaService {
         failedSlots.push(i + 1);
         continue;
       }
-      const coinsReward = CONFIG.GAME.POINTS[rarity] || CONFIG.GAME.POINTS['N'] || 5;
+      const coinsReward = CONFIG.CARD_VALUE[rarity] || CONFIG.CARD_VALUE['N'] || 7;
       const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
 
       totalCoins += coinsReward;
@@ -473,7 +473,18 @@ export class GachaService {
 
     const targetSources = CONFIG.SOURCES.filter(s => s.rarity === targetRarity);
     if (targetSources.length === 0) throw AppError.serverError(`找不到 ${targetRarity} 图源`);
-    const asset = await this.imagePipeline.consumeBuffer(targetRarity, targetSources);
+
+    // 与 draw/shopBuy 一致：取图失败必须在扣材料之前失败，否则会出现
+    // 「材料被扣、卡片 imageUrl=null」的幽灵卡（consumeBuffer 只返回失败态，不抛异常）
+    let asset;
+    try {
+      asset = await this.imagePipeline.consumeBuffer(targetRarity, targetSources);
+    } catch {
+      throw AppError.serverError(`获取 ${targetRarity} 图片失败，请重试`);
+    }
+    if (!asset || (!asset.success && !asset.imageUrl)) {
+      throw AppError.serverError(`获取 ${targetRarity} 图片失败，请重试`);
+    }
 
     const expGain = CONFIG.LEVEL.EXP_GAIN.CRAFT || 50;
     const totalExp = (currentUser.total_exp || 0) + expGain;
@@ -551,7 +562,7 @@ export class GachaService {
   }
 
   async decompose(currentUser, rarity, rawCount) {
-    const decomposeConfig = CONFIG.GAME.DECOMPOSE;
+    const decomposeConfig = CONFIG.CARD_VALUE;
     if (!rarity || !decomposeConfig[rarity]) throw AppError.validationError('无效的稀有度');
     const count = Math.min(Math.max(parseInt(rawCount) || 1, 1), 100);
     const coinsPerCard = decomposeConfig[rarity];
@@ -600,20 +611,22 @@ export class GachaService {
     const roll1 = Math.floor(Math.random() * 6) + 1;
     const roll2 = Math.floor(Math.random() * 6) + 1;
     const sum = roll1 + roll2;
-    const payout = diceConfig.PAYOUT || 2;
+    const payout = diceConfig.PAYOUT || 1.5;
     let reward = 0;
     if (sum >= 10) reward = Math.floor(bet * payout * 0.5);
     if (roll1 === roll2) reward = Math.max(reward, Math.floor(bet * payout));
     if (sum === 7) reward = Math.max(reward, Math.floor(bet * payout * 2));
-    const netChange = reward - bet;
 
+    // 注意：bet 已由 deductCoins 原子扣减，这里只补回 reward，
+    // 不得再减去 bet（历史上写成 netChange = reward - bet，导致每局被扣两次投注）
     await this.env.DB.prepare('UPDATE users SET coins = coins + ?, wins = wins + ? WHERE id = ?')
-      .bind(netChange, reward > 0 ? 1 : 0, currentUser.id).run();
+      .bind(reward, reward > 0 ? 1 : 0, currentUser.id).run();
     this.safeWaitUntil(this.userService.invalidateUserCache(currentUser.id));
 
     return {
       roll1, roll2, sum, reward, cost: bet,
-      message: `🎲 ${roll1} + ${roll2} = ${sum}, ${reward > bet ? '恭喜中奖！' : '下次好运！'}`,
+      netChange: reward - bet,
+      message: `🎲 ${roll1} + ${roll2} = ${sum}, ${reward > bet ? '恭喜中奖！' : (reward > 0 ? '保本！' : '下次好运！')}`,
     };
   }
 }

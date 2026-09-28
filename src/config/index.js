@@ -125,16 +125,17 @@ function validateConfig(config) {
   if (!config.GAME || typeof config.GAME !== 'object') {
     errors.push('游戏数值配置无效');
   } else {
-    const { POINTS, DRAW_COST, MULTI_DRAW_COST } = config.GAME;
-    
-    if (!POINTS || typeof POINTS !== 'object') {
-      errors.push('游戏点数配置无效');
+    const { CARD_VALUE } = config;
+    const { DRAW_COST, MULTI_DRAW_COST } = config.GAME;
+
+    if (!CARD_VALUE || typeof CARD_VALUE !== 'object') {
+      errors.push('卡牌价值配置无效');
     }
-    
+
     if (typeof DRAW_COST !== 'number' || DRAW_COST < 0) {
       errors.push('单抽消耗配置无效');
     }
-    
+
     if (typeof MULTI_DRAW_COST !== 'number' || MULTI_DRAW_COST < 0) {
       errors.push('十连抽消耗配置无效');
     }
@@ -147,6 +148,25 @@ function validateConfig(config) {
 }
 
 export const CONFIG = mergeConfig();
+
+/**
+ * 用运行时 env 覆盖配置中的动态字段。
+ *
+ * 必须在每个请求开始时调用（functions/api/middleware/services.js），
+ * 否则 CONFIG 会在模块加载期以空 env 固化，导致 R2_DOMAIN / GITHUB_OWNER /
+ * GITHUB_REPO / GITHUB_TOKEN 的覆盖永久失效、静默回落到 technical.js 的硬编码值。
+ *
+ * 同一部署内 Workers 的 env 对所有请求一致，因此改写单例是安全的。
+ */
+export function applyEnv(env = {}) {
+  if (env.R2_DOMAIN) CONFIG.R2_DOMAIN = env.R2_DOMAIN;
+  if (env.GITHUB_OWNER) CONFIG.GITHUB.OWNER = env.GITHUB_OWNER;
+  if (env.GITHUB_REPO) CONFIG.GITHUB.REPO = env.GITHUB_REPO;
+  if (env.GITHUB_TOKEN) CONFIG.GITHUB.TOKEN = env.GITHUB_TOKEN;
+  if (env.DEBUG_MODE === 'true' || env.DEBUG_MODE === '1') CONFIG.DEBUG_MODE_ENABLED = true;
+  validateConfig(CONFIG);
+  return CONFIG;
+}
 
 export const DEFAULT_CHANGELOG = [
   { 

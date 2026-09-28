@@ -6,10 +6,13 @@ import { api } from '~/lib/api';
 import { useRouteError } from '@remix-run/react';
 import { useState, useEffect, useRef } from 'react';
 
+// 赔付倍数与后端一致：reward = bet * PAYOUT(1.5) * 0.5 * mult
+//   sum=7 → 1.5*0.5*4 = 3倍 / 对子 → 1.5*0.5*2 = 1.5倍 / sum>=10 → 1.5*0.5*1 = 0.75倍
+// 庄家优势 16.7%（36 种点数穷举）
 const DICE_RULES = [
-  { condition: '点数 = 7', reward: '2倍下注', color: 'text-amber-500', icon: 'auto_awesome' },
-  { condition: '对子（两骰相同）', reward: '1倍下注', color: 'text-emerald-500', icon: 'stars' },
-  { condition: '点数 ≥ 10', reward: '0.5倍下注', color: 'text-blue-500', icon: 'arrow_upward' },
+  { condition: '点数 = 7', reward: '3倍下注', color: 'text-amber-500', icon: 'auto_awesome' },
+  { condition: '对子（两骰相同）', reward: '1.5倍下注', color: 'text-emerald-500', icon: 'stars' },
+  { condition: '点数 ≥ 10', reward: '0.75倍下注', color: 'text-blue-500', icon: 'arrow_upward' },
   { condition: '其他', reward: '输掉下注', color: 'text-red-500', icon: 'arrow_downward' },
 ];
 

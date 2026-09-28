@@ -75,16 +75,22 @@ export const BUSINESS_CONFIG = {
     DEFAULT_POOL: 'genshin'
   },
 
+  // 卡牌价值（单一数据源）：抽卡即时奖励与分解返还共用同一条曲线
+  // 反解依据：长期占比 N 40.71% / R 34.06% / SR 14.68% / SSR 8.32% / UR 2.23%（含软保底）
+  // 使 E[每抽回报] ≈ 70 < DRAW_COST(100)，堵死「抽卡→分解」无限刷币闭环。
+  // 不变式由 tests/economy-invariants.test.js 守护，调整数值前请先跑该测试。
+  CARD_VALUE: { 'N': 7, 'R': 20, 'SR': 65, 'SSR': 262, 'UR': 1309 },
+
   // 游戏数值配置
   GAME: {
-    POINTS: { 'N': 5, 'R': 15, 'SR': 50, 'SSR': 200, 'UR': 1000 },
     DRAW_COST: 100,             // 单抽消耗
     MULTI_DRAW_COST: 900,       // 十连消耗（9折优惠）
     MULTI_DRAW_MAX: 10,
     CRAFT_COST: 5,
     SHOP: { 'R': 150, 'SR': 600, 'SSR': 2500, 'UR': 10000 },
-    DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 2, COOLDOWN_MS: 3000 },
-    DECOMPOSE: { 'N': 50, 'R': 30, 'SR': 80, 'SSR': 250, 'UR': 1000 }, // 分解返还金币
+    // PAYOUT 经 36 种点数穷举反解：庄家优势 16.7%
+    // 赔付 = bet * PAYOUT * 0.5 * mult（mult: sum>=10→1, 对子→2, sum=7→4）
+    DICE: { MIN_BET: 10, MAX_BET: 1000, PAYOUT: 1.5, COOLDOWN_MS: 3000 },
   },
 
   // 等级系统配置
