@@ -41,6 +41,15 @@ export const libraryRoutes = new Hono()
     const { galleryId } = await c.req.json();
     return c.json({ success: true, ...await services.gallery.unbookmarkCard(c.get('user').id, galleryId) });
   })
+  .get('/my-items', requireAuth, async (c) => {
+    const services = c.get('services');
+    const mode = c.req.query('mode') === 'bookmarks' ? 'bookmarks' : 'mine';
+    // 身份只取自会话，忽略任何 userId 查询参数（防越权）
+    const result = await services.gallery.listMyItems(c.get('user').id, mode, c.req.query());
+    for (const [k, v] of Object.entries(result.cacheHeaders)) c.header(k, v);
+    delete result.cacheHeaders;
+    return c.json({ success: true, ...result });
+  })
   .get('/my-interactions', requireAuth, async (c) => {
     const services = c.get('services');
     return c.json({ success: true, ...await services.gallery.getMyInteractions(c.get('user').id) });

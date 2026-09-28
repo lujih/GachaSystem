@@ -6,6 +6,7 @@ import { AppError } from '../utils/AppError.js';
 
 const CACHE_1M = { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' };
 const CACHE_5M = { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=600' };
+const CACHE_PRIVATE = { 'Cache-Control': 'private, no-store' };
 
 export class GalleryService {
   constructor(env, ctx = null) {
@@ -44,16 +45,24 @@ export class GalleryService {
   // ==================== 图库查询（公开） ====================
 
   async listItems(params) {
-    const { page = 1, limit = 20, rarity, userId, sort = 'newest', search, period } = params;
+    const { page = 1, limit = 20, rarity, userId, sort = 'newest', search, period, bookmarkedBy } = params;
     const safePage = Math.max(parseInt(page) || 1, 1);
-    const safeLimit = Math.min(parseInt(limit) || 20, 100);
+    // 下界必须夹取：SQLite 中 LIMIT 负值等价于「无上限」，会被 ?limit=-1 拖库
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
     const safeUserId = userId && !isNaN(parseInt(userId)) ? parseInt(userId) : null;
+    const safeBookmarkedBy = bookmarkedBy && !isNaN(parseInt(bookmarkedBy)) ? parseInt(bookmarkedBy) : null;
     const offset = (safePage - 1) * safeLimit;
 
-    let q = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at, (SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) as like_count FROM gallery g';
+    const baseSelect = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at, (SELECT COUNT(*) FROM card_likes WHERE gallery_id = g.id) as like_count FROM gallery g';
+    let q = baseSelect;
     let cq = 'SELECT COUNT(*) as total FROM gallery g';
     const p = [], cp = [], conds = [];
 
+    if (safeBookmarkedBy) {
+      q += ' INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
+      cq += ' INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
+      p.push(safeBookmarkedBy); cp.push(safeBookmarkedBy);
+    }
     if (rarity) { conds.push('g.rarity = ?'); p.push(rarity.toUpperCase()); cp.push(rarity.toUpperCase()); }
     if (safeUserId) { conds.push('g.user_id = ?'); p.push(safeUserId); cp.push(safeUserId); }
     if (search) { conds.push('g.username LIKE ?'); p.push(`%${search}%`); cp.push(`%${search}%`); }
@@ -80,10 +89,22 @@ export class GalleryService {
     return {
       items: items.results || [],
       total: count?.total || 0,
-      page,
+      page: safePage,
       totalPages: Math.ceil((count?.total || 0) / safeLimit),
       cacheHeaders: CACHE_1M,
     };
+  }
+
+  /**
+   * 用户维度图库（我的抽卡 / 我的书签）。
+   * userId 一律取自会话，不接受调用方传入 —— 防止越权查看他人数据。
+   */
+  async listMyItems(userId, mode, params) {
+    // 注意展开顺序：scoped 必须覆盖 params，否则调用方传入的 userId 会
+    // 覆盖会话身份，变成越权查看他人图库的入口
+    const scoped = mode === 'bookmarks' ? { bookmarkedBy: userId, userId: null } : { userId, bookmarkedBy: null };
+    // 用户维度数据不可共享缓存
+    return { ...(await this.listItems({ ...params, ...scoped })), cacheHeaders: CACHE_PRIVATE };
   }
 
   // ==================== 点赞 / 书签 ====================

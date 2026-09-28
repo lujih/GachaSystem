@@ -24,11 +24,18 @@ export async function loader({ request, context }) {
   const period = url.searchParams.get('period') || 'all';
   const offset = (page - 1) * limit;
 
-  // 获取当前登录用户（middleware 注入）
-  const currentUser = context?.data?.currentUser || null;
-  // "我的收藏" 模式必须验证 userId 与当前登录用户一致
-  const isMine = mode === 'mine' && currentUser;
-  const isBookmarks = mode === 'bookmarks' && currentUser;
+  // 用户维度筛选（我的抽卡 / 我的书签）必须在客户端完成：
+  // 会话 token 存在 localStorage，SSR 阶段的 request 上没有该头，
+  // 服务端 loader 永远拿不到身份。历史上这里读 context.data.currentUser，
+  // 而该值已随 a16fc85 的中间件重构被移除，导致「我的」永久退化为全服图库。
+  if (mode === 'mine' || mode === 'bookmarks') {
+    return {
+      items: [], total: 0, page, totalPages: 0,
+      rarity: rarity || '', mode, rarityCounts: {}, globalRarityCounts: {}, globalTotal: 0,
+      sort, search: search || '', period,
+      clientFetch: true,
+    };
+  }
 
   const baseSelect = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at';
   let query = `${baseSelect} FROM gallery g`;
@@ -38,15 +45,7 @@ export async function loader({ request, context }) {
   const countParams = [];
   const conds = [];
 
-  if (isBookmarks) {
-    query = 'SELECT g.id, g.url, g.user_id, g.username, g.rarity, g.source_name, g.created_at FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
-    countQuery = 'SELECT COUNT(*) as total FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
-    rarityCountQuery = 'SELECT g.rarity, COUNT(*) as count FROM gallery g INNER JOIN card_bookmarks b ON g.id = b.gallery_id AND b.user_id = ?';
-    params.push(currentUser.id);
-    countParams.push(currentUser.id);
-  }
   if (rarity) { conds.push('g.rarity = ?'); params.push(rarity.toUpperCase()); countParams.push(rarity.toUpperCase()); }
-  if (isMine) { conds.push('g.user_id = ?'); params.push(currentUser.id); countParams.push(currentUser.id); }
   if (search) { conds.push('g.username LIKE ?'); params.push(`%${search}%`); countParams.push(`%${search}%`); }
   if (period && period !== 'all') {
     const now = Date.now();
@@ -69,18 +68,12 @@ export async function loader({ request, context }) {
     env.DB.prepare(countQuery).bind(...countParams).first(),
     env.DB.prepare(`${rarityCountQuery} GROUP BY rarity`).bind(...countParams).all(),
   ];
-  if (isMine) queries.push(env.DB.prepare('SELECT rarity, COUNT(*) as count FROM gallery GROUP BY rarity').all());
 
-  const [itemsResult, countResult, rarityCountsResult, globalRarityResult] = await Promise.all(queries);
+  const [itemsResult, countResult, rarityCountsResult] = await Promise.all(queries);
 
   const rarityCounts = {};
   if (rarityCountsResult.results) {
     rarityCountsResult.results.forEach(r => { rarityCounts[r.rarity] = r.count; });
-  }
-  const globalRarityCounts = isMine ? {} : { ...rarityCounts };
-  let globalTotal = isMine ? 0 : Object.values(rarityCounts).reduce((s, n) => s + n, 0);
-  if (isMine && globalRarityResult?.results) {
-    globalRarityResult.results.forEach(r => { globalRarityCounts[r.rarity] = r.count; globalTotal += r.count; });
   }
 
   return {
@@ -89,18 +82,19 @@ export async function loader({ request, context }) {
     page,
     totalPages: Math.ceil((countResult?.total || 0) / limit),
     rarity: rarity || '',
-    mode: isBookmarks ? 'bookmarks' : isMine ? 'mine' : 'all',
+    mode,
     sort,
     search: search || '',
     period,
     rarityCounts,
-    globalRarityCounts,
-    globalTotal,
+    globalRarityCounts: { ...rarityCounts },
+    globalTotal: Object.values(rarityCounts).reduce((s, n) => s + n, 0),
   };
 }
 
 export default function Library() {
-  const { items, total, page, totalPages, rarity, mode, sort, search, period, rarityCounts, globalRarityCounts, globalTotal } = useLoaderData();
+  const loaderData = useLoaderData();
+  const { rarity, mode, sort, search, period, rarityCounts, globalRarityCounts, globalTotal } = loaderData;
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [selectedCard, setSelectedCard] = useState(null);
@@ -109,9 +103,29 @@ export default function Library() {
   const [bookmarkedIds, setBookmarkedIds] = useState(new Set());
   const [likeCounts, setLikeCounts] = useState({});
 
+  // 「我的抽卡 / 我的书签」由客户端请求（loader 无法拿到身份，见 loader 注释）
+  const [myData, setMyData] = useState(null);
+  const clientFetch = !!loaderData.clientFetch;
+  const clientScoped = clientFetch && !!user;
+  const data = clientScoped ? myData : loaderData;
+  const items = data?.items || [];
+  const total = data?.total || 0;
+  const page = clientScoped ? (myData?.page || 1) : (loaderData.page || 1);
+  const totalPages = clientScoped ? (myData?.totalPages || 0) : (loaderData.totalPages || 0);
+
   const allCount = Object.values(rarityCounts).reduce((s, n) => s + n, 0);
   const isMine = mode === 'mine';
   const isBookmarks = mode === 'bookmarks';
+
+  useEffect(() => {
+    if (!clientFetch) { setMyData(null); return; }
+    if (!user) { setMyData(null); return; }
+    let cancelled = false;
+    api.getMyItems(mode, loaderData.page || 1, rarity, sort, period)
+      .then(res => { if (!cancelled) setMyData(res); })
+      .catch(() => { if (!cancelled) setMyData(null); });
+    return () => { cancelled = true; };
+  }, [clientFetch, user?.id, mode, loaderData.page, rarity, sort, period]);
 
   // 获取当前用户的点赞和书签列表（合并请求）
   useEffect(() => {
@@ -139,7 +153,13 @@ export default function Library() {
     if (rarity) base.rarity = rarity;
     if (search) base.search = search;
     if (period && period !== 'all') base.period = period;
-    return { page: '1', ...base, ...overrides };
+    const merged = { page: '1', ...base, ...overrides };
+    // 剔除 undefined / 空串：setSearchParams 会把 undefined 序列化成字面量
+    // "undefined"，使 loader 变成 username LIKE '%undefined%' 恒空
+    for (const k of Object.keys(merged)) {
+      if (merged[k] === undefined || merged[k] === '') delete merged[k];
+    }
+    return merged;
   }
 
   function handleSearch(e) {

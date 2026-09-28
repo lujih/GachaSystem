@@ -16,18 +16,28 @@ async function apiFetch(path, options = {}) {
   };
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  const data = await res.json();
+
+  let data = null;
+  const text = await res.text();
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = { error: text }; }
+  }
 
   if (!res.ok) {
-    throw new Error(data.error || `请求失败: ${res.status}`);
+    // 附带 status/code，供调用方区分 401（会话过期）与 429（限流）
+    const err = new Error(data?.error || `请求失败: ${res.status}`);
+    err.status = res.status;
+    err.code = data?.code;
+    throw err;
   }
-  return data;
+  return data ?? { success: true };
 }
 
 export const api = {
   // Auth
   register: (body) => apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   login: (body) => apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
 
   // User
   getUserInfo: () => apiFetch('/api/user/info'),
@@ -58,6 +68,11 @@ export const api = {
   bookmarkCard: (galleryId) => apiFetch('/api/library/bookmark', { method: 'POST', body: JSON.stringify({ galleryId }) }),
   unbookmarkCard: (galleryId) => apiFetch('/api/library/bookmark', { method: 'DELETE', body: JSON.stringify({ galleryId }) }),
   getMyInteractions: () => apiFetch('/api/library/my-interactions'),
+  getMyItems: (mode, page = 1, rarity, sort = 'newest', period = 'all') => {
+    const q = new URLSearchParams({ mode, page: String(page), sort, period });
+    if (rarity) q.set('rarity', rarity);
+    return apiFetch(`/api/library/my-items?${q.toString()}`);
+  },
 
   // Admin
   adminVerify: (password) => apiFetch('/api/admin/verify', { method: 'POST', body: JSON.stringify({ password }) }),

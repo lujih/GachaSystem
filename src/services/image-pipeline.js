@@ -218,13 +218,38 @@ export class ImagePipeline {
     return selectedSlot.asset;
   }
 
-  /** 十连快速路径：跳过黑名单检查，从预读 slots 中取一个 */
-  consumeSlot(slots, sourceList) {
-    if (slots.length > 0) {
-      slots.sort((a, b) => a.lastUsed - b.lastUsed);
-      const slot = slots.shift();
+  /**
+   * 十连快速路径：从预读 slots 中取一个。
+   * 与单抽同等的保护：原子锁 + 黑名单 + lastUsed + refill。
+   * （修复前此路径完全跳过这些步骤，导致同一张图会并发发给多个玩家）
+   */
+  async consumeSlot(slots, rarity, sourceList) {
+    const miss = { success: false, imageUrl: null, rarity: sourceList[0]?.rarity || rarity || 'N', sourceName: 'Buffer' };
+    if (!slots || slots.length === 0) return miss;
+
+    slots.sort((a, b) => a.lastUsed - b.lastUsed);
+    const now = Date.now();
+    const candidates = slots.slice(0, Math.min(3, slots.length));
+
+    for (const slot of candidates) {
+      const urlHash = await this.hashString(slot.asset.imageUrl);
+      // 抢不到锁说明该图已被其他并发请求领取，换下一张候选
+      if (!(await this.tryClaimBufferSlot(urlHash, rarity, slot.index, now))) continue;
+
+      const idx = slots.indexOf(slot);
+      if (idx >= 0) slots.splice(idx, 1); // 同一请求内不得重复发放
+
+      await this.env.KV_CACHE.put(`${CONFIG.KEYS.DRAW_BLACKLIST}${rarity}:${urlHash}`, now.toString(), { expirationTtl: CONFIG.TTL.BLACKLIST_TTL });
+      slot.asset.lastUsed = now;
+      await this.env.KV_CACHE.put(`${CONFIG.KEYS.BUFFER_PREFIX}${rarity}:${slot.index}`, JSON.stringify(slot.asset), { expirationTtl: CONFIG.TTL.BUFFER });
+
+      this.safeWaitUntil(this.safeRefillBuffer(rarity, sourceList, slot.index));
+      this.safeWaitUntil(this.cleanupStaleClaims());
       return { ...slot.asset, success: true };
     }
-    return { success: false, imageUrl: null, rarity: sourceList[0]?.rarity || 'N', sourceName: 'Buffer' };
+
+    // 候选全被并发请求抢走 → 降级为实时拉取（调用方会走 fetchJobs）
+    this.safeWaitUntil(this.cleanupStaleClaims());
+    return miss;
   }
 }

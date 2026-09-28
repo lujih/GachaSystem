@@ -75,3 +75,56 @@ describe('ImagePipeline.consumeBuffer', () => {
     expect(asset.imageUrl).toMatch(/^https:\/\/cft1\.cszxorx\.dpdns\.org\/images\/N_[0-9a-f]{16}\.webp$/);
   });
 });
+
+describe('ImagePipeline.consumeSlot（十连快路径）', () => {
+  beforeEach(() => { vi.unstubAllGlobals(); });
+
+  it('必须抢 D1 原子锁：未抢到锁就不发放该图', async () => {
+    const { env, kv, db } = makeEnv(0); // changes=0 → 锁已被其他并发请求持有
+    kv.store.set('sys:buffer:N:0', JSON.stringify(slotAsset('https://cdn.test/taken.png')));
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+
+    const pipe = new ImagePipeline(env);
+    const slots = [{ index: 0, asset: slotAsset('https://cdn.test/taken.png'), lastUsed: 0 }];
+    const asset = await pipe.consumeSlot(slots, 'N', [{ name: 'S', url: 'https://src.test', rarity: 'N' }]);
+
+    // 回归点：修复前此路径完全不抢锁，直接把该图发给用户
+    expect(asset.success).toBe(false);
+    expect(asset.imageUrl).toBeNull();
+  });
+
+  it('抢到锁后正常发放，并写入黑名单', async () => {
+    const { env, kv } = makeEnv(1);
+    const pipe = new ImagePipeline(env);
+    const url = 'https://cdn.test/ok.png';
+    const slots = [{ index: 0, asset: slotAsset(url), lastUsed: 0 }];
+
+    const asset = await pipe.consumeSlot(slots, 'N', [{ name: 'S', url: 'https://src.test', rarity: 'N' }]);
+
+    expect(asset.success).toBe(true);
+    expect(asset.imageUrl).toBe(url);
+    const hash = await pipe.hashString(url);
+    expect(kv.store.get(`sys:draw:blacklist:N:${hash}`)).toBeDefined();
+  });
+
+  it('同一请求内不会把同一张图发两次', async () => {
+    const { env, kv } = makeEnv(1);
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    const pipe = new ImagePipeline(env);
+    const mk = (i) => ({ index: i, asset: slotAsset(`https://cdn.test/${i}.png`), lastUsed: i });
+    const slots = [mk(0), mk(1)];
+
+    const a = await pipe.consumeSlot(slots, 'N', [{ name: 'S', url: 'https://src.test', rarity: 'N' }]);
+    const b = await pipe.consumeSlot(slots, 'N', [{ name: 'S', url: 'https://src.test', rarity: 'N' }]);
+
+    expect(a.imageUrl).not.toBe(b.imageUrl);
+  });
+
+  it('slots 为空时返回 miss，由调用方走实时拉取', async () => {
+    const { env } = makeEnv(1);
+    const pipe = new ImagePipeline(env);
+    const asset = await pipe.consumeSlot([], 'N', [{ name: 'S', url: 'https://src.test', rarity: 'N' }]);
+    expect(asset.success).toBe(false);
+    expect(asset.imageUrl).toBeNull();
+  });
+});
