@@ -9,10 +9,11 @@
     "dev": "remix vite:dev",
     "build": "remix vite:build",
     "start": "wrangler pages dev ./build/client",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "npm run build && wrangler pages deploy ./build/client",
     "typecheck": "tsc",
-    "preview": "npm run build && wrangler dev",
-    "test": "vitest run --passWithNoTests",
+    "preview": "npm run build && wrangler pages dev ./build/client",
+    "test": "vitest run",
+    "test:integration": "node tests/integration/run-all.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

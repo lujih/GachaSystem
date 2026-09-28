@@ -1,0 +1,18 @@
+# 本地开发环境变量模板
+#
+# 用法：cp .dev.vars.example .dev.vars 后填入真实值。
+# .dev.vars 已被 .gitignore 忽略，**切勿提交**（曾因被 git 跟踪而进入历史，务必保持未跟踪）。
+#
+# 部署到 Cloudflare 时请在 Dashboard / `wrangler secret put` 中配置，而非写进本文件。
+
+# 管理员口令（functions/api/middleware/auth.js 比对 env.admin）
+admin=
+
+# 玩家共建图库所用的 GitHub 仓库
+GITHUB_OWNER=lujih
+GITHUB_REPO=chouka-images
+# GitHub token（访问私有仓库时需要，公开仓库可留空）
+GITHUB_TOKEN=
+
+# R2 自定义域名（图片对外访问地址）
+R2_DOMAIN=

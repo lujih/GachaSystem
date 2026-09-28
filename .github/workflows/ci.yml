@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        # 此前 vite.config.ts 里的 serverBuildPath 死配置会让这一项恒为红，
+        # 而仓库没有 CI，所以长期无人察觉。门禁必须真的接进流水线。
+        run: npm run typecheck
+
+      - name: Unit tests
+        # 覆盖：draw-engine 概率/保底、image-pipeline buffer 锁、
+        # economy-invariants 经济不变式、gacha-service 资损回归、gallery/error 边界
+        run: npm test
+
+      - name: Build
+        run: npm run build

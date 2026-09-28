@@ -15,7 +15,10 @@ export default defineConfig({
         v3_relativeSplatPath: true,
         v3_throwAbortReason: true,
       },
-      serverBuildPath: "functions/[[path]].js",
+      // 注意：不要在此设置 serverBuildPath。Vite 插件只解析 buildDirectory /
+      // serverBuildFile，serverBuildPath 属旧版 RemixConfig，会被静默忽略
+      // （并使 tsc 报 TS2353）。服务端入口由 functions/[[path]].js 手写 import
+      // ../build/server/index.js，与默认输出路径一致。
     }),
     tsconfigPaths(),
     tailwindcss(),
