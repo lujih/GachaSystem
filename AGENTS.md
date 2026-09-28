@@ -7,18 +7,20 @@ Remix v2 SPA on Cloudflare Pages. React 18 + TypeScript + Tailwind CSS v4 + shad
 ```bash
 npm run dev          # vite HMR
 npm run build        # remix vite:build → build/server/ + build/client/
-npm run typecheck    # tsc (noEmit via tsconfig — 仅静态检查，无测试无 lint)
-npm test             # vitest run（tests/ 下 draw-engine、image-pipeline 等纯函数单测）
-npm run deploy       # npm run build && wrangler deploy
+npm run typecheck    # tsc (noEmit via tsconfig — 静态检查；源码多为 .js 且缺 JSDoc，实际覆盖面有限)
+npm test             # vitest run（draw-engine / image-pipeline / economy-invariants / gacha-service / gallery-and-errors）
+npm run test:integration  # tests/integration 裸 Node 冒烟脚本（需先 npm run build && npm run start）
+npm run deploy       # npm run build && wrangler pages deploy ./build/client
 npm run start        # wrangler pages dev ./build/client (SSR after build)
-npm run preview      # npm run build && wrangler dev (full preview)
+npm run preview      # npm run build && wrangler pages dev ./build/client
 ```
 
 - D1 migration: `npx wrangler d1 execute chouka --remote --file=./schema.sql`
 - `.npmrc`: `legacy-peer-deps=true` (shadcn compat)
-- `.dev.vars` (gitignored): `admin`, `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`, `R2_DOMAIN`
-- `wrangler.jsonc`: `nodejs_compat` flag required
-- Known false‑positive: vite.config.ts:18 `'serverBuildPath' not in VitePluginConfig` (Remix type resolution)
+- `.dev.vars` (gitignored，模板见 `.dev.vars.example`): `admin`, `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`, `R2_DOMAIN`
+- `wrangler.jsonc`: `nodejs_compat` flag required；**Pages 项目用 `pages_build_output_dir`，不要用 `assets.directory`**——后者会让 `wrangler deploy` 产出不含 `functions/` 的 no-op Worker
+- `vitest.config.mts` 独立于 `vite.config.ts`（不加载 Remix 插件，且排除 `tests/integration/`——那些是裸 Node 脚本，被默认 include 捕获会让 `npm test` 恒为红）
+- 不要再往 `vite.config.ts` 的 remix 插件加 `serverBuildPath`：Vite 插件只解析 `buildDirectory` / `serverBuildFile`，该键会被静默忽略并使 tsc 报 TS2353
 
 ## Architecture
 
@@ -30,10 +32,12 @@ Browser → Cloudflare Pages
 ```
 
 - **functions/api/app.js 装配**：`createApp()` = `cors()`（allowHeaders 含 X-User-ID / X-Session-Token / X-Admin-Mode）+ `servicesMiddleware` + `sessionMiddleware` + `onError` + `notFound` + 6 个路由模块（auth / user / gacha `/` / library / admin / public），basePath `/api`。
-- **中间件**：`functions/api/middleware/` — `error.js`（AppError → `{ success: false, error, code }`）、`services.js`（注入 8 服务到 `c.get('services')`）、`session.js`（X-Session-Token → `c.get('user')`）、`auth.js`（requireAuth / requireAdmin）、`rate-limit.js`。
-- **服务层 8 模块**（`src/services/`）：auth-service / user-service / gacha-service / draw-engine（纯函数）/ image-pipeline / gallery-service / admin-service / upload-service。服务在 `src/services/index.js` 统一实例化。
+- **中间件**：`functions/api/middleware/` — `error.js`（AppError → `{ success: false, error, code }`；非 AppError 一律回 `INTERNAL_ERROR` + 通用文案，**不回吐 `err.message`**，否则 D1 的表名/列名/约束名会泄露）、`services.js`（注入 7 个服务到 `c.get('services')`，并调用 `applyEnv(env)`）、`session.js`（X-Session-Token → `c.get('user')`）、`auth.js`（requireAuth / requireAdmin）、`rate-limit.js`。
+- **服务层 8 模块**（`src/services/`）：auth-service / user-service / gacha-service / draw-engine（纯函数）/ image-pipeline / gallery-service / admin-service / upload-service。**实际实例化点是 `functions/api/middleware/services.js`**（`src/services/index.js` 是零引用的死文件）。
+- **配置注入**：`src/config/index.js` 的 `CONFIG` 在模块加载期以空 env 固化；`applyEnv(env)` 必须在每请求开始时调用（servicesMiddleware 已调），否则 `R2_DOMAIN` / `GITHUB_*` 的环境变量覆盖会**静默失效**并回落到 `technical.js` 的硬编码值。
 - **请求流约定**：服务返回数据对象或抛 `AppError`，路由层统一 `{ success: true, ...data }` 包装；错误由 onError 中间件统一 `{ success: false, error, code }`。服务层不直接返回 HTTP 响应。
-- **`functions/_middleware.js`**：CORS preflight、安全头（CSP `'strict-dynamic'` + 每请求 nonce 注入 `<script>`、HSTS、XFO 等）。API 会话解析已在 Hono 层，根中间件不再处理 session。
+- **`functions/_middleware.js`**：CORS preflight、安全头（CSP `'strict-dynamic'` + 每请求 nonce 注入 `<script>`、XFO、nosniff 等；**未实现 HSTS**）。API 会话解析已在 Hono 层，根中间件不再处理 session。
+- **SSR loader 无会话上下文**：`functions/[[path]].js` 未接 `getLoadContext`，loader 拿不到用户身份（`context.data.currentUser` 恒 undefined）。用户维度数据（如「我的抽卡/书签」）必须走客户端 API，见 `/api/library/my-items`（`listMyItems` 强制以会话身份覆盖调用方传入的 `userId`，防越权）。
 - **Frontend**：8 routes under `app/routes/`. Path alias `~` → `app/`. Tailwind v4 (`@tailwindcss/vite` plugin, no `tailwind.config.js`). shadcn components in `app/components/ui/`. API client `app/lib/api.js` 自动附加 `X-Session-Token`。
 
 ## Database（D1 权威存储，15 表）
@@ -49,8 +53,9 @@ Browser → Cloudflare Pages
 - **失败退款**：取图失败 `refundCoins`；multiDraw 失败槽位退款；drawLimited 循环失败全退
 - **保底**：`pity_counters` 表（常驻 ssr/ur + 限定 limited_ssr/limited_ur 列），upsert 用 `CASE WHEN excluded.x = 0 THEN 0 ELSE MAX(x, excluded.x) END`（重置恒胜）
 - **会话**：`sessions` 表权威，token 仅存 SHA-256 哈希（`sha256Hex`），KV 60s 缓存可丢；登出删 DB 行 + 缓存
-- **全局 buffer 并发**：`buffer_claims` 表 `INSERT ON CONFLICT DO NOTHING` 作原子分布式锁（按 URL hash），防止并发重复分发；`consumeGlobalBuffer` 仅在 `selectedSlot.index >= 0` 时 refill，避免 `sys:buffer:UR:-1` 脏 key
-- **draw-engine** 为纯函数模块：抽卡概率/保底计算无副作用，可单测（`tests/draw-engine.test.js`）
+- **全局 buffer 并发**：`buffer_claims` 表 `INSERT ON CONFLICT DO NOTHING` 作原子分布式锁（按 URL hash），防止并发重复分发。**单抽（`consumeBuffer`）与十连快路径（`consumeSlot`）都必须走这把锁 + 黑名单 + refill**——历史上十连路径完全跳过，导致同一张图并发发给多人。refill 仅在 `selectedSlot.index >= 0` 时触发，避免 `sys:buffer:UR:-1` 脏 key。
+- **经济数值**：`CARD_VALUE`（`business.js`）是卡牌价值的**单一数据源**，抽卡即时奖励与分解返还共用；反解目标是 `E[每抽回报] < DRAW_COST`，堵死「抽卡→分解」造币回路。骰子 `DICE.PAYOUT` 同理，`reward = bet * PAYOUT * 0.5 * mult`。两者都有不变式测试（`tests/economy-invariants.test.js`），**改数值前先跑**。
+- **draw-engine** 为纯函数模块：抽卡概率/保底计算无副作用，可单测（`tests/draw-engine.test.js`）。注意软保底会把 SSR/UR 实际产出率显著抬高（实测 8.3%/2.2% vs 基础 4%/1%），**按基础概率做经济测算会算错**。
 
 ## Admin Auth（重要！）
 
@@ -70,7 +75,7 @@ app.post('/users', requireAdmin, async (c) => {
 
 - 统一 `AppError`（`src/utils/AppError.js`：`validationError` / `authError` / `permissionError` / `notFoundError` / `conflictError` / `serverError` 等静态工厂）+ Hono `onError` 中间件
 - 校验：`src/utils/validation.js`（validators 返回 `null` 或错误串，不抛异常）；用户消息中文
-- **Gotcha**：`validatePrediction` 检查 `'odd'`/`'even'`，骰子用 `'small'`/`'big'`，不要混用
+- **Gotcha**：`validatePrediction`（`src/utils/validation.js`）目前是**零调用的死代码**，骰子端点根本不收 `prediction` 字段。改动前请先确认它是否还需要保留。
 - 密码：PBKDF2-SHA256 100k 迭代（`src/utils/password.js`），存储 `saltBase64:hashBase64`；明文密码兼容：登录返回 `'migrated'` 触发重哈希
 
 ## 已知限制（Gotchas）
@@ -97,6 +102,7 @@ Secrets: `admin`, `GITHUB_TOKEN`. Vars: `GITHUB_OWNER` (default `lujih`), `GITHU
 
 ## 技术配置（`src/config/`）
 
-- `business.js`：概率/保底/费用/奖励数值
-- `technichal.js`：KV key（仅 `BUFFER_PREFIX`、`DRAW_BLACKLIST`）与 TTL
+- `business.js`：概率/保底/费用/奖励数值（`CARD_VALUE` 为卡牌价值单一数据源）
+- `technical.js`（注意：不是 `technichal`）：KV key（仅 `BUFFER_PREFIX`、`DRAW_BLACKLIST`）与 TTL
 - `constants.js`：HTTP 状态、`RARITY_COLORS`
+- `index.js`：`CONFIG` 汇总出口 + `mergeConfig` / `applyEnv` / `validateConfig`
