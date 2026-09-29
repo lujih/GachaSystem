@@ -4,11 +4,12 @@
 // rarity returns 0 rows.
 //
 // Usage: node tests/integration/history-filter.test.mjs [username]
-//   username defaults to itest_rare2_<random>; register/login to that username.
-//   Reuse: pass an existing username that already has >= 3 draw rows.
-const base = 'http://127.0.0.1:8787/api';
+//   默认使用共享账号 itest_shared_history（不存在时自动注册一次）。
+//   本脚本不依赖「全新用户」：它会自己把抽卡记录补足到 >= 3 行再断言，
+//   因此复用账号是安全的，也避免每轮消耗 register 限流预算。
+import { ensureSharedAccount } from './_account.mjs';
 
-async function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
+const base = 'http://127.0.0.1:8787/api';
 
 async function j(method, path, body, token) {
   const headers = {};
@@ -25,38 +26,13 @@ async function j(method, path, body, token) {
 }
 
 async function main() {
-  const uname = process.argv[2] || ('itest_rf_' + Math.floor(Math.random() * 999999));
-  let auth = { error: 'not attempted' };
-  for (let attempt = 0; attempt < 15; attempt++) {
-    const reg = await j('POST', '/auth/register', { username: uname, password: 'abc12345' });
-    if (reg.status === 409) {
-      auth = { reused: true, uname };
-      break;
-    }
-    if (reg.status === 429) {
-      console.log(`register attempt ${attempt + 1}: 429 — waiting 65s`);
-      await sleep(65000);
-      continue;
-    }
-    if (reg.status !== 200) { auth = { registerError: reg.raw }; break; }
-    const login = await j('POST', '/auth/login', { username: uname, password: 'abc12345' });
-    if (login.status === 429) {
-      console.log(`login attempt ${attempt + 1}: 429 — waiting 65s`);
-      await sleep(65000);
-      continue;
-    }
-    if (login.status !== 200) { auth = { loginError: login.raw }; break; }
-    auth = { token: login.body.token };
-    break;
+  let token;
+  try {
+    ({ token } = await ensureSharedAccount('history'));
+  } catch (e) {
+    console.error('无法取得测试账号:', e.message);
+    process.exit(2);
   }
-  if (!auth.token) {
-    console.log('Auth failed:', auth, '— trying login with existing user');
-    const l2 = await j('POST', '/auth/login', { username: uname, password: 'abc12345' });
-    if (l2.status === 200) auth = { token: l2.body.token };
-    else { console.log('login also failed:', l2.raw); process.exit(2); }
-  }
-  const token = auth.token;
-  console.log('using user:', uname, 'token acquired');
 
   // Ensure at least 3 rows exist in history
   const before = await j('GET', '/draw/draw-history?page=1', undefined, token);

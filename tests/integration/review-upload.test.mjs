@@ -2,8 +2,6 @@
 const base = 'http://127.0.0.1:8787/api';
 const ADMIN = 'test_password';
 
-async function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
-
 async function j(method, path, body, token) {
   const headers = {};
   if (body !== undefined && typeof body === 'object') headers['Content-Type'] = 'application/json';
@@ -19,24 +17,24 @@ async function j(method, path, body, token) {
 }
 
 async function main() {
-  // 1) Create a pending upload via a fresh user (with retry on 429)
+  // 1) Create a pending upload via a fresh user.
+  // 不再在脚本内等待限流恢复：register 限流是 5 次/10 分钟/IP，等待 14×65s
+  // 意味着终端会挂起最多 30 分钟。快速失败并给出可操作提示，由 run-all.mjs 统一中止。
   const uname = 'itest_review_' + Math.floor(Math.random() * 999999);
-  let reg;
-  for (let attempt = 0; attempt < 14; attempt++) {
-    reg = await j('POST', '/auth/register', { username: uname, password: 'abc12345' });
-    if (reg.status === 200 || reg.status === 409) break;
-    if (reg.status === 429) { console.log(`register ${attempt + 1}: 429, waiting 65s`); await sleep(65000); continue; }
-    break;
+  const reg = await j('POST', '/auth/register', { username: uname, password: 'abc12345' });
+  if (reg.status === 429) {
+    console.error('注册被限流（5 次/10 分钟/IP）。请等待约 10 分钟后重试，或清空本地 KV：rm -rf .wrangler/state/v3/kv');
+    process.exit(2);
   }
   if (reg.status === 409) {
     console.log('user already exists, logging in');
+  } else if (reg.status !== 200) {
+    console.log('register failed:', reg.raw); process.exit(2);
   }
-  let login;
-  for (let attempt = 0; attempt < 14; attempt++) {
-    login = await j('POST', '/auth/login', { username: uname, password: 'abc12345' });
-    if (login.status === 200) break;
-    if (login.status === 429) { console.log(`login ${attempt + 1}: 429, waiting 65s`); await sleep(65000); continue; }
-    break;
+  const login = await j('POST', '/auth/login', { username: uname, password: 'abc12345' });
+  if (login.status === 429) {
+    console.error('登录被限流（10 次/10 分钟/IP）。请等待约 10 分钟后重试，或清空本地 KV。');
+    process.exit(2);
   }
   if (login.status !== 200) { console.log('login failed:', login.raw); process.exit(2); }
   const token = login.body.token;

@@ -6,8 +6,6 @@ function check(name, cond, detail = '') {
   results.push({ name, ok: !!cond, detail });
 }
 
-async function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
-
 async function j(method, path, body, token, contentType = 'application/json') {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = contentType;
@@ -23,15 +21,16 @@ async function j(method, path, body, token, contentType = 'application/json') {
   return { status: res.status, body: parsed, raw: text };
 }
 
-// Retry wrapper for auth endpoints that hit the 5/10min register + 10/10min login rate limit
+// 认证端点会命中限流（register 5 次/10 分钟、login 10 次/10 分钟，均按 IP）。
+// 此前这里是 8 × 65s 的等待重试，终端会静默挂起近 9 分钟；改为快速失败，
+// 由 run-all.mjs 统一识别 429 并给出可操作提示。
 async function jWithRetry(method, path, body, token) {
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const r = await j(method, path, body, token);
-    if (r.status !== 429) return r;
-    console.log(`  [retry ${attempt + 1}] 429 on ${method} ${path} — waiting 65s`);
-    await sleep(65000);
+  const r = await j(method, path, body, token);
+  if (r.status === 429) {
+    console.error(`  [限流] ${method} ${path} 返回 429 — 请等待约 10 分钟后重试，或清空本地 KV：rm -rf .wrangler/state/v3/kv`);
+    process.exit(2);
   }
-  return j(method, path, body, token);
+  return r;
 }
 
 async function main() {

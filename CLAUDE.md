@@ -1,132 +1,51 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> **本文件不再维护技术细节。** 此前版本描述的是重构前的架构（会话存 KV、单体
+> `path.startsWith()` 路由、服务每请求 `new UserService(env, ctx)`、`requireAdmin` 返回值
+> 语义、"No test framework"），已与 2026-08-03 架构重构后的代码全面不符，且**过时方向会主动
+> 误导**——照着它写会写出错误的代码。
+>
+> 请以 **[AGENTS.md](./AGENTS.md)** 为唯一权威文档。
 
-## Commands
+## 从哪里开始读
+
+1. **[AGENTS.md](./AGENTS.md)** — 架构、关键机制、已知限制。改代码前必读。
+2. **[docs/review-2026-09-29.md](./docs/review-2026-09-29.md)** — 全面代码审查报告
+   （8 个专项子代理并行审查，140 条发现），含代码位置、复算过程与修复建议。
+   Critical / High 部分已修复，可作为「哪些地方曾经出过什么问题」的历史参考。
+
+## 动手前必知的几条硬约束
+
+以下都是本项目历史上**真实出过事故**的地方，详见 AGENTS.md 对应章节：
+
+- **不要破坏扣币的原子性**。`UPDATE ... WHERE coins >= ?` + `meta.changes` 判定是唯一正确的
+  扣币写法。历史上 `playDice` 在引入原子扣币后忘了删旧的补偿语句，导致每局被扣两次投注，
+  单局期望从 +11% 变成 -88.9%。
+- **改经济数值前先跑 `npm test`**。`tests/economy-invariants.test.js` 守护
+  「期望回报 < 抽卡成本」等不变式。**按基础概率测算会得出错误结论**——软保底会把 SSR/UR
+  实际产出率抬到 8.3%/2.2%（基础值 4%/1%）。
+- **Hono 中间件不能用数组形式传入**，必须展开：`.get(path, ...withLimit(...), handler)`。
+  传数组会让 compose 拿到非函数并抛 "handler is not a function"，整个端点 500。
+- **不要再往 vite.config.ts 的 remix 插件加 `serverBuildPath`**。Vite 插件只解析
+  `buildDirectory` / `serverBuildFile`，该键属旧版 RemixConfig，会被静默忽略并使 tsc 报错。
+- **单抽与十连的消费路径都必须走 buffer 原子锁**（`buffer_claims` 表）。历史上十连快路径
+  `consumeSlot` 完全绕过了它，导致同一张图并发发给多个玩家。
+- **SSR loader 拿不到用户身份**。会话 token 存在 localStorage，服务端 request 上没有该头。
+  用户维度数据必须走客户端 API（如 `/api/library/my-items`），且身份只取自会话，
+  绝不能接受调用方传入的 `userId`。
+- **`.dev.vars` 曾被 git 跟踪过**（`.gitignore` 对已跟踪文件无效）。如需填入真实凭据，
+  先确认它处于未跟踪状态。
+
+## 提交前
 
 ```bash
-npm run dev          # Vite HMR dev server (remix vite:dev)
-npm run build        # Production build → build/server/ + build/client/
-npm run deploy       # Build + wrangler deploy to Cloudflare Pages
-npm run typecheck    # tsc type checking (noEmit)
-npm run start        # Local preview: wrangler pages dev ./build/client
-npm run preview      # Build + wrangler dev
+npm run typecheck && npm test && npm run build
 ```
 
-No test framework or linter configured. `npm run typecheck` is the only static check.
+三者都是 `.github/workflows/ci.yml` 中的门禁。仓库曾长期处于「typecheck 恒红、
+`npm test` 因 integration 脚本被 vitest 误捕获而恒红」的状态而无人察觉，因为没有 CI。
 
-D1 migration: `npx wrangler d1 execute chouka --remote --file=./schema.sql`
+## 行为准则
 
-## Architecture
-
-Remix v2 SPA on Cloudflare Pages. React 18 + TypeScript + Tailwind CSS v4 + shadcn/ui. Backend uses D1 (SQLite), KV (sessions/cache), R2 (images).
-
-### Request flow
-
-```
-Browser → Cloudflare Pages
-  /api/* → functions/_middleware.js (session + CORS) → functions/api/[[path]].js (API dispatch)
-  /*     → functions/_middleware.js → functions/[[path]].js (Remix SSR)
-```
-
-- `functions/_middleware.js` — global middleware: CORS preflight, parses `X-Session-Token`, loads user from KV, attaches to `context.data.currentUser`.
-- `functions/api/[[path]].js` — monolithic API router. Routes matched by `path.startsWith()` + string compare. Services instantiated per-request: `new UserService(env, ctx)`.
-- `functions/[[path]].js` — Remix server entry.
-- `load-context.ts` — injects `env`/`ctx` into Remix `AppLoadContext`.
-- Dead code: `functions/api/admin.js`, `showcase.js`, `library.js`, `changelog.js`, `announcement.js` exist but are NOT routed — `[[path]].js` catches all `/api/*` first.
-
-### Frontend
-
-- Remix file-based routing: `app/routes/_index.jsx` (home), `login.jsx`, `library.jsx`, `profile.jsx`, `games.jsx`, `shop.jsx`, `synthesis.jsx`, `admin.jsx`.
-- Path alias `~` → `app/` (tsconfig + vite).
-- `AuthProvider` (React Context) wraps entire app in `app/root.jsx`. Exposes `user`, `login`, `register`, `logout`, `refreshUser`.
-- `app/lib/api.js` — client API client. Auto-attaches `X-Session-Token` from `localStorage('sessionToken')`.
-- Tailwind v4 with `@tailwindcss/vite` plugin. No `tailwind.config.js`.
-- shadcn/ui components in `app/components/ui/`.
-- All config in `vite.config.ts` — no `remix.config.js`.
-
-### Backend services
-
-- `src/services/user-service.js` — auth, profile, inventory, check-in, titles, uploads.
-- `src/services/gacha-service.js` — draw logic, pity system, craft, shop, dice game.
-- `src/config/business.js` — game balance: probabilities, pity, pool costs, level curves, titles.
-- `src/config/technical.js` — KV key namespaces, TTLs, R2/GitHub URLs.
-- `src/config/constants.js` — enums: HTTP statuses, rarity order/colors, game action types.
-- `src/utils/validation.js` — validators return `null` (ok) or error string. `validateAndThrow()` wraps them.
-
-### Database
-
-- Direct parameterized SQL via D1: `.prepare(...).bind(...).first()` / `.all()` / `.run()`. No ORM.
-- Tables use `STRICT` mode. Foreign keys cascade on delete. `users.id` is INTEGER AUTOINCREMENT.
-- Timestamps stored as integer milliseconds (`Date.now()`).
-
-## Auth & Sessions
-
-- Login: `POST /api/auth/login` → generates `crypto.randomUUID()` token, stores user JSON in `KV_CACHE(session:{token})`.
-- Client: token in `localStorage('sessionToken')`, sent by `app/lib/api.js`.
-- Password: PBKDF2 (SHA-256, 100k iterations, 16-byte salt). Legacy plaintext auto-migrated on login.
-- Admin auth: password compared against `env.admin` (lowercase `a`). `requireAdmin(request, env)` returns `{authorized, error}` — does NOT throw. Must check `auth.authorized`.
-
-## Error Handling
-
-Two coexisting patterns — do not mix in one handler:
-1. Direct return: `return jsonResponse({ error: 'msg' }, 400);`
-2. Throw: `throw AppError.validationError('msg');`
-
-User-facing messages in Chinese.
-
-## Validation Gotcha
-
-`validatePrediction()` checks `'odd'`/`'even'`, but the dice endpoint (`/api/game/dice`) uses `'small'`/`'big'`. Don't use `validatePrediction` for dice.
-
-## Cloudflare Workers Gotchas
-
-- No `Buffer` global. Use `crypto.subtle.digest` for hashing.
-- `ctx.waitUntil()` for background work; `UserService.safeWaitUntil()` wraps with fallback.
-- `btoa`/`atob` available (Web APIs).
-- `nodejs_compat` compatibility flag enabled in `wrangler.jsonc`.
-
-## Environment
-
-Secrets: `admin`, `GITHUB_TOKEN`. Vars: `GITHUB_OWNER`, `GITHUB_REPO`, `R2_DOMAIN`.
-Local secrets in `.dev.vars` (gitignored). `.npmrc`: `legacy-peer-deps=true`.
-
----
-
-## Behavioral Guidelines
-
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
-
-### 1. Think Before Coding
-
-Don't assume. Don't hide confusion. Surface tradeoffs.
-
-- State assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them — don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-
-### 2. Simplicity First
-
-Minimum code that solves the problem. Nothing speculative.
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- If you write 200 lines and it could be 50, rewrite it.
-
-### 3. Surgical Changes
-
-Touch only what you must. Clean up only your own mess.
-
-- Don't "improve" adjacent code, comments, or formatting.
-- Match existing style, even if you'd do it differently.
-- Remove imports/variables/functions that YOUR changes made unused.
-
-### 4. Goal-Driven Execution
-
-Define success criteria. Loop until verified.
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-```
+本项目偏好最小改动：只碰必须碰的，不要顺手重构相邻代码或格式化无关文件，匹配既有风格。
+多步任务先说清计划与验证方式。

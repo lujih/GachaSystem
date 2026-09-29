@@ -3,8 +3,6 @@
 // the whole limited draw with a full refund.
 const base = 'http://127.0.0.1:8787/api';
 
-async function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
-
 async function j(method, path, body, token) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -20,19 +18,19 @@ async function j(method, path, body, token) {
 }
 
 async function main() {
+  // 本脚本依赖「全新用户」（起始 1000 金币），因此必须注册新账号，不能复用共享账号。
+  // 不在脚本内等待限流恢复：等待 65s 只会让终端长时间无响应，快速失败并提示更可用。
   const uname = 'itest_limited_' + Math.floor(Math.random() * 999999);
-  let reg = await j('POST', '/auth/register', { username: uname, password: 'abc12345' });
+  const reg = await j('POST', '/auth/register', { username: uname, password: 'abc12345' });
   if (reg.status === 429) {
-    console.log('register rate-limited, waiting 65s...');
-    await sleep(65000);
-    reg = await j('POST', '/auth/register', { username: uname, password: 'abc12345' });
+    console.error('注册被限流（5 次/10 分钟/IP）。请等待约 10 分钟后重试，或清空本地 KV：rm -rf .wrangler/state/v3/kv');
+    process.exit(2);
   }
   if (reg.status !== 200) { console.log('register failed:', reg.raw); process.exit(2); }
-  let login = await j('POST', '/auth/login', { username: uname, password: 'abc12345' });
+  const login = await j('POST', '/auth/login', { username: uname, password: 'abc12345' });
   if (login.status === 429) {
-    console.log('login rate-limited, waiting 65s...');
-    await sleep(65000);
-    login = await j('POST', '/auth/login', { username: uname, password: 'abc12345' });
+    console.error('登录被限流（10 次/10 分钟/IP）。请等待约 10 分钟后重试，或清空本地 KV。');
+    process.exit(2);
   }
   if (login.status !== 200) { console.log('login failed:', login.raw); process.exit(2); }
   const token = login.body.token;
