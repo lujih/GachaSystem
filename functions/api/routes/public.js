@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { CONFIG } from '../../../src/config/index.js';
 
 const CACHE_1M = { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' };
 const CACHE_5M = { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=600' };
@@ -11,6 +12,13 @@ export const publicRoutes = new Hono()
       KV_CACHE: !!c.env.KV_CACHE,
       R2_BUCKET: !!c.env.R2_BUCKET,
     },
+  }))
+  // 分解面板需要在分解前就展示每张卡能换多少金币。前端此前硬编码了一份
+  // 已过期的数值（且与后端 N>R 倒挂），这里下发权威值以消除第三份副本。
+  .get('/rarities', (c) => c.json({
+    success: true,
+    cardValues: CONFIG.CARD_VALUE,
+    drawCoinRatio: CONFIG.DRAW_COIN_RATIO,
   }))
   .get('/showcase', async (c) => {
     try {

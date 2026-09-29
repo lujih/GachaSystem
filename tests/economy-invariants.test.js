@@ -45,23 +45,31 @@ describe('抽卡概率分布', () => {
 });
 
 describe('卡牌价值：抽卡→分解不得成为造币回路', () => {
-  it('E[每抽回报] 必须小于单抽成本', () => {
-    const p = sampleDistribution();
-    const ev = Object.keys(B.CARD_VALUE).reduce(
-      (sum, r) => sum + p[r] * B.CARD_VALUE[r],
+  /**
+   * 关键：抽卡同时给「金币 + 卡」，卡又能分解成金币，所以每抽总收入是
+   * CARD_VALUE × (1 + DRAW_COIN_RATIO)，不是 CARD_VALUE 本身。
+   * 只断言 E[CARD_VALUE] < DRAW_COST 会漏掉一半收入——这正是曾经发生过的情况：
+   * E[CARD_VALUE]=70 < 100 被判定为安全，但真实收入是 140，刷币回路从未闭合。
+   */
+  const totalReturnPerDraw = (p) =>
+    Object.keys(B.CARD_VALUE).reduce(
+      (sum, r) => sum + p[r] * B.CARD_VALUE[r] * (1 + B.DRAW_COIN_RATIO),
       0
     );
+
+  it('每抽总回报（金币 + 同卡分解价值）必须小于单抽成本', () => {
+    const ev = totalReturnPerDraw(sampleDistribution());
     expect(ev).toBeLessThan(B.GAME.DRAW_COST);
   });
 
-  it('E[每抽回报] 同样小于十连的等价单抽成本（90）', () => {
+  it('每抽总回报同样小于十连的等价单抽成本（90）', () => {
     const perDraw = B.GAME.MULTI_DRAW_COST / B.GAME.MULTI_DRAW_MAX;
-    const p = sampleDistribution();
-    const ev = Object.keys(B.CARD_VALUE).reduce(
-      (sum, r) => sum + p[r] * B.CARD_VALUE[r],
-      0
-    );
-    expect(ev).toBeLessThan(perDraw);
+    expect(totalReturnPerDraw(sampleDistribution())).toBeLessThan(perDraw);
+  });
+
+  it('DRAW_COIN_RATIO 必须在 (0, 1] 区间', () => {
+    expect(B.DRAW_COIN_RATIO).toBeGreaterThan(0);
+    expect(B.DRAW_COIN_RATIO).toBeLessThanOrEqual(1);
   });
 
   it('卡牌价值必须随稀有度严格递增（不得再出现 N > R 的倒挂）', () => {
@@ -96,16 +104,10 @@ describe('骰子：每局净损益与庄家优势', () => {
   const outcomes = [];
   for (let a = 1; a <= 6; a++) for (let b = 1; b <= 6; b++) outcomes.push([a, b]);
 
-  it('净损益只计算一次投注：coins = -bet + reward', () => {
-    // 回归点：历史实现写的是 coins += (reward - bet)，叠加 deductCoins 后
-    // 等于每局扣两次投注。这里显式断言「输了只输一注」。
-    for (const [a, b] of outcomes) {
-      const reward = rewardFor(a, b);
-      const net = reward - bet; // 正确：只扣一次
-      if (reward === 0) expect(net).toBe(-bet);
-    }
-  });
-
+  // 注意：这里只断言「配置层」的不变式（PAYOUT 取值是否产生正庄家优势）。
+  // 骰子是否真的只扣一次投注，由 tests/gacha-service.test.js 驱动真实
+  // GachaService.playDice 并断言 SQL 绑定参数来守护——本文件不 import 服务，
+  // 此前在这里写过一个自指的空断言（reward-bet 恒等于 -bet），零覆盖，已删除。
   it('庄家优势为正（玩家不能长期获利）', () => {
     const gross = outcomes.reduce((s, [a, b]) => s + rewardFor(a, b), 0) / outcomes.length;
     expect(gross).toBeLessThan(bet);

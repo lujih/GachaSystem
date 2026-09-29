@@ -38,13 +38,16 @@ export class AdminService {
   }
 
   async listUploads(status = 'pending', page = 1, limit = 20) {
-    const safeLimit = Math.min(parseInt(limit) || 20, 100);
-    const offset = (page - 1) * safeLimit;
+    // 与 listUsers 同样夹取：page 非数字会算出 OFFSET NaN 直接 500，
+    // 负数 limit 在 SQLite 中等价于「无上限」
+    const safePage = Math.max(parseInt(page) || 1, 1);
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+    const offset = (safePage - 1) * safeLimit;
     const [items, count] = await Promise.all([
       this.env.DB.prepare('SELECT * FROM user_uploads WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').bind(status, safeLimit, offset).all(),
       this.env.DB.prepare('SELECT COUNT(*) as total FROM user_uploads WHERE status = ?').bind(status).first(),
     ]);
-    return { uploads: items.results || [], total: count?.total || 0, page };
+    return { uploads: items.results || [], total: count?.total || 0, page: safePage, limit: safeLimit };
   }
 
   async reviewUpload(uploadId, action, rarity) {

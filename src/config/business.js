@@ -75,11 +75,19 @@ export const BUSINESS_CONFIG = {
     DEFAULT_POOL: 'genshin'
   },
 
-  // 卡牌价值（单一数据源）：抽卡即时奖励与分解返还共用同一条曲线
-  // 反解依据：长期占比 N 40.71% / R 34.06% / SR 14.68% / SSR 8.32% / UR 2.23%（含软保底）
-  // 使 E[每抽回报] ≈ 70 < DRAW_COST(100)，堵死「抽卡→分解」无限刷币闭环。
-  // 不变式由 tests/economy-invariants.test.js 守护，调整数值前请先跑该测试。
-  CARD_VALUE: { 'N': 7, 'R': 20, 'SR': 65, 'SSR': 262, 'UR': 1309 },
+  // 卡牌价值（单一数据源）：CARD_VALUE = 分解一张该稀有度卡返还的金币。
+  //
+  // ⚠️ 关键不变式：抽卡会同时给「金币 + 卡」，而卡又能分解成金币，
+  // 所以每抽总收入是 CARD_VALUE × (1 + DRAW_COIN_RATIO)，而不是 CARD_VALUE 本身。
+  // 必须满足  E[CARD_VALUE] × (1 + DRAW_COIN_RATIO) < DRAW_COST，
+  // 否则「抽一张 → 分解 → 再抽」仍是无上限的造币回路。
+  //
+  // 反解依据：长期占比 N 40.7% / R 34.1% / SR 14.7% / SSR 8.3% / UR 2.2%（含软保底）。
+  // 当前值 E[CARD_VALUE]=60，×1.3=78 < 单抽成本 100（ROI −22%），十连 −13%。
+  // 不变式由 tests/economy-invariants.test.js 守护，改数值前请先跑。
+  CARD_VALUE: { 'N': 6, 'R': 17, 'SR': 56, 'SSR': 225, 'UR': 1125 },
+  // 抽卡即时金币 = round(CARD_VALUE × 该比例)，其余价值留在卡片里，分解时才兑现
+  DRAW_COIN_RATIO: 0.3,
 
   // 游戏数值配置
   GAME: {

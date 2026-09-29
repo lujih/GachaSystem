@@ -8,8 +8,9 @@ import { getBeijingDateStr } from '~/lib/time';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RARITY_COLORS, RARITY_ORDER, rarityBg } from '~/lib/rarity';
 
-const CONFIG_DECOMPOSE = { 'N': 50, 'R': 30, 'SR': 80, 'SSR': 250, 'UR': 1000 };
-
+// 分解返还价值由后端 /api/rarities 下发（见下方 cardValues state）。
+// 此前此处硬编码了一份已过期的副本，与后端 CARD_VALUE 不一致，
+// 导致分解面板展示的金额全是错的，且与后端经济配置产生分叉。
 const MILESTONES = [
   { level: 5, coins: 500, title: '新手收藏家' },
   { level: 10, coins: 1000, title: '初级收藏家' },
@@ -56,6 +57,16 @@ export default function Profile() {
   const [newNickname, setNewNickname] = useState('');
   const [savingNick, setSavingNick] = useState(false);
   const [equipping, setEquipping] = useState(false);
+  const [cardValues, setCardValues] = useState({});
+
+  // 分解返还价值以服务端为准，避免前端硬编码副本与后端经济配置分叉
+  useEffect(() => {
+    let cancelled = false;
+    api.getRarities()
+      .then(res => { if (!cancelled && res?.cardValues) setCardValues(res.cardValues); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [decomposing, setDecomposing] = useState(null);
 
   // SSR 预取失败时 fallback 到客户端获取
@@ -291,7 +302,7 @@ export default function Profile() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
               {RARITY_ORDER.map(r => {
                 const owned = inventory?.[r] || 0;
-                const coins = CONFIG_DECOMPOSE[r] || 0;
+                const coins = cardValues[r] ?? 0;
                 const canDecompose = owned > 0;
                 return (
                   <div key={r} className="flex items-center gap-2 bg-surface-container-lowest rounded-xl p-2 border border-outline-variant">
@@ -377,7 +388,6 @@ export default function Profile() {
                         ? 'bg-tertiary-container border-tertiary hover:-translate-y-0.5 md:hover:-translate-y-1 cursor-pointer shadow-[2px_2px_0_theme(colors.tertiary)] md:shadow-[4px_4px_0_theme(colors.tertiary)]'
                         : 'bg-surface-container-lowest border-outline-variant opacity-50'
                   }`}
-                  onClick={() => canClaim && handleClaim(lv)}
                 >
                   <div className="flex items-center justify-between">
                     <span className={`font-label-bold text-sm md:text-base ${canClaim ? 'text-on-tertiary-container' : 'text-on-surface-variant'}`}>

@@ -212,16 +212,24 @@ export default function Games() {
                   <div className="flex items-center justify-center gap-2">
                     {result.reward > result.cost ? (
                       <>
-                        <span className="material-symbols-outlined symbol-filled text-emerald-600 text-lg">celebration</span>
+                        <span aria-hidden="true" className="material-symbols-outlined symbol-filled text-emerald-600 text-lg">celebration</span>
                         <p className="font-headline-md text-sm md:text-headline-md text-emerald-700 font-bold">
                           中奖！+{result.reward - result.cost} 积分
                         </p>
                       </>
+                    ) : result.reward === result.cost ? (
+                      // 只有恰好返等额才是保本；sum>=10 只返 0.75 倍，是净亏
+                      <>
+                        <span aria-hidden="true" className="material-symbols-outlined symbol-filled text-amber-600 text-lg">auto_awesome</span>
+                        <p className="font-headline-md text-sm md:text-headline-md text-amber-700 font-bold">
+                          保本！±0 积分
+                        </p>
+                      </>
                     ) : result.reward > 0 ? (
                       <>
-                        <span className="material-symbols-outlined symbol-filled text-amber-600 text-lg">auto_awesome</span>
-                        <p className="font-headline-md text-sm md:text-headline-md text-amber-700 font-bold">
-                          保本！+{result.reward - result.cost} 积分
+                        <span aria-hidden="true" className="material-symbols-outlined symbol-filled text-slate-600 text-lg">info</span>
+                        <p className="font-headline-md text-sm md:text-headline-md text-on-surface-variant font-bold">
+                          差一点…{result.reward - result.cost} 积分
                         </p>
                       </>
                     ) : (

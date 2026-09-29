@@ -40,6 +40,9 @@ export default function GachaCard({ card, onClick, onLikeToggle, onBookmarkToggl
   const openable = typeof onClick === 'function';
   const handleKeyDown = (e) => {
     if (!openable) return;
+    // 卡片内嵌了收藏/点赞两个 <button>。若不拦截冒泡，在这些按钮上按 Enter/Space
+    // 会同时触发它们的 click 和卡片翻页——键盘用户「收藏一下」却弹出了详情。
+    if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
       e.preventDefault(); // 空格默认会滚动页面
       onClick(e);

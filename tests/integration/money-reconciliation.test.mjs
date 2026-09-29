@@ -1,17 +1,21 @@
 // 抽卡资金对账（回归测试）
 //
 // 逐笔核对 余额变化 vs 期望值，覆盖三条资损路径：
-//  1. 成功抽卡：净变化 = CARD_VALUE[rarity] - DRAW_COST
+//  1. 成功抽卡：净变化 = round(CARD_VALUE × DRAW_COIN_RATIO) - DRAW_COST
+//     （分解返还不在此脚本内；「抽卡→分解」整条回路由 tests/economy-invariants.test.js
+//      的 E[CARD_VALUE] × (1 + DRAW_COIN_RATIO) < DRAW_COST 不变式守护）
 //  2. 取图失败：净变化必须为 0（deductCoins 后必须 refundCoins，否则资金黑洞）
-//  3. 全程累计必须与逐笔期望一致
+//  3. 升级奖励：抽到卡片时若跨过等级线，会额外发 COINS_PER_LEVEL 金币，必须计入
 //
 // 数值须与 src/config/business.js 保持一致，改动配置后请同步。
 // ⚠️ 受 register/login 限流（5 次/10 分钟/IP）约束，每轮只注册 1 个用户。
 //
 // 用法：node tests/integration/money-reconciliation.test.mjs
 const BASE = 'http://127.0.0.1:8787/api';
-const CARD_VALUE = { N: 7, R: 20, SR: 65, SSR: 262, UR: 1309 };
+const CARD_VALUE = { N: 6, R: 17, SR: 56, SSR: 225, UR: 1125 };
+const DRAW_COIN_RATIO = 0.3;
 const DRAW_COST = 100;
+const COINS_PER_LEVEL = 50;
 const ROUNDS = 10;
 
 async function j(method, path, body, token) {
@@ -52,12 +56,16 @@ async function main() {
     const actual = (await j('GET', '/user/info', undefined, token)).body.coins;
 
     if (d.status === 200 && d.body?.success) {
-      const r = d.body.card?.rarity;
-      expected -= DRAW_COST - (CARD_VALUE[r] ?? CARD_VALUE.N);
+      const r = d.body.rarity || d.body.card?.rarity;
+      const drawCoins = Math.round((CARD_VALUE[r] ?? CARD_VALUE.N) * DRAW_COIN_RATIO);
+      // 升级奖励：抽到卡片时若跨过等级线，后端会额外发 COINS_PER_LEVEL × 级差
+      const levelUpCoins = d.body.levelUp ? d.body.levelUp.reward : 0;
+      expected -= DRAW_COST - drawCoins - levelUpCoins;
       okCount++;
       const pass = actual === expected;
+      const note = levelUpCoins ? `（含升级奖励 +${levelUpCoins}）` : '';
       if (!pass) mismatches.push(`第${i}次成功抽卡 余额不符: 期望 ${expected} 实际 ${actual}`);
-      console.log(`${String(i).padEnd(2)} 成功               ${String(r).padEnd(8)} ${String(expected).padEnd(10)} ${String(actual).padEnd(10)} ${pass ? 'OK' : 'MISMATCH'}`);
+      console.log(`${String(i).padEnd(2)} 成功               ${String(r).padEnd(8)} ${String(expected).padStart(6)}/${levelUpCoins ? '+' + levelUpCoins : '  '} ${String(actual).padStart(8)}   ${pass ? 'OK' : 'MISMATCH'} ${note}`);
     } else {
       failCount++;
       const gap = expected - actual;

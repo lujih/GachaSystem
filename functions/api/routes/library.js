@@ -8,7 +8,11 @@ const writeLimit = rateLimitByUser('libwrite', 60, 60);
 export const libraryRoutes = new Hono()
   .get('/items', async (c) => {
     const services = c.get('services');
-    const result = await services.gallery.listItems(c.req.query());
+    // 本端点公开且无鉴权，c.req.query() 不能原样透传给 listItems：
+    // listItems 支持 bookmarkedBy，直接透传会让任何人枚举任意用户的完整书签。
+    // 用户维度筛选一律走 /my-items（requireAuth，身份只取自会话）。
+    const { page, limit, rarity, sort, search, period } = c.req.query();
+    const result = await services.gallery.listItems({ page, limit, rarity, sort, search, period });
     if (result.cacheHeaders) {
       for (const [k, v] of Object.entries(result.cacheHeaders)) c.header(k, v);
     }

@@ -73,6 +73,12 @@ export class GachaService {
 
   // ==================== 原子扣币 ====================
 
+  /** 抽卡即时金币 = round(CARD_VALUE × DRAW_COIN_RATIO)，见 business.js 的不变式说明 */
+  drawCoinReward(rarity) {
+    const value = CONFIG.CARD_VALUE[rarity] ?? CONFIG.CARD_VALUE['N'] ?? 6;
+    return Math.round(value * (CONFIG.DRAW_COIN_RATIO ?? 0.3));
+  }
+
   async deductCoins(userId, amount) {
     const res = await this.env.DB.prepare(
       'UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?'
@@ -111,7 +117,10 @@ export class GachaService {
       throw AppError.serverError(`获取 ${rarity} 图片失败，请重试`);
     }
 
-    const coinsReward = CONFIG.CARD_VALUE[rarity] || CONFIG.CARD_VALUE['N'] || 7;
+    // 抽卡即时金币只是卡牌价值的一部分（CARD_VALUE 的 DRAW_COIN_RATIO），
+    // 其余价值留在卡片里、分解时才兑现。若这里直接给满额 CARD_VALUE，
+    // 则每抽总收入变成 2×CARD_VALUE，刷币闭环会重新打开。
+    const coinsReward = this.drawCoinReward(rarity);
     const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
 
     const totalExp = (currentUser.total_exp || 0) + expGain;
@@ -214,7 +223,7 @@ export class GachaService {
         failedSlots.push(i + 1);
         continue;
       }
-      const coinsReward = CONFIG.CARD_VALUE[rarity] || CONFIG.CARD_VALUE['N'] || 7;
+      const coinsReward = this.drawCoinReward(rarity);
       const expGain = CONFIG.LEVEL.EXP_GAIN.DRAW[rarity] || CONFIG.LEVEL.EXP_GAIN.DRAW['N'] || 10;
 
       totalCoins += coinsReward;
@@ -431,8 +440,9 @@ export class GachaService {
   // ==================== 抽卡历史 ====================
 
   async getDrawHistory(currentUser, params) {
-    const page = parseInt(params.page) || 1;
-    const limit = Math.min(parseInt(params.limit) || 20, 100);
+    const page = Math.max(parseInt(params.page) || 1, 1);
+    // 下界必须夹取：SQLite 中 LIMIT 负值等价于「无上限」，?limit=-1 可拖库
+    const limit = Math.min(Math.max(parseInt(params.limit) || 20, 1), 100);
     const rarityFilter = params.rarity;
 
     let query = 'SELECT * FROM draw_history WHERE user_id = ?';
@@ -626,7 +636,8 @@ export class GachaService {
     return {
       roll1, roll2, sum, reward, cost: bet,
       netChange: reward - bet,
-      message: `🎲 ${roll1} + ${roll2} = ${sum}, ${reward > bet ? '恭喜中奖！' : (reward > 0 ? '保本！' : '下次好运！')}`,
+      // 按净损益判定文案：sum>=10 只返 0.75 倍，是净亏而非保本
+      message: `🎲 ${roll1} + ${roll2} = ${sum}, ${reward > bet ? '恭喜中奖！' : (reward === bet ? '保本！' : '下次好运！')}`,
     };
   }
 }

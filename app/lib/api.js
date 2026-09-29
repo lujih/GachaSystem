@@ -73,6 +73,7 @@ export const api = {
     if (rarity) q.set('rarity', rarity);
     return apiFetch(`/api/library/my-items?${q.toString()}`);
   },
+  getRarities: () => apiFetch('/api/rarities'),
 
   // Admin
   adminVerify: (password) => apiFetch('/api/admin/verify', { method: 'POST', body: JSON.stringify({ password }) }),

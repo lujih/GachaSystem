@@ -54,7 +54,7 @@ Browser → Cloudflare Pages
 - **保底**：`pity_counters` 表（常驻 ssr/ur + 限定 limited_ssr/limited_ur 列），upsert 用 `CASE WHEN excluded.x = 0 THEN 0 ELSE MAX(x, excluded.x) END`（重置恒胜）
 - **会话**：`sessions` 表权威，token 仅存 SHA-256 哈希（`sha256Hex`），KV 60s 缓存可丢；登出删 DB 行 + 缓存
 - **全局 buffer 并发**：`buffer_claims` 表 `INSERT ON CONFLICT DO NOTHING` 作原子分布式锁（按 URL hash），防止并发重复分发。**单抽（`consumeBuffer`）与十连快路径（`consumeSlot`）都必须走这把锁 + 黑名单 + refill**——历史上十连路径完全跳过，导致同一张图并发发给多人。refill 仅在 `selectedSlot.index >= 0` 时触发，避免 `sys:buffer:UR:-1` 脏 key。
-- **经济数值**：`CARD_VALUE`（`business.js`）是卡牌价值的**单一数据源**，抽卡即时奖励与分解返还共用；反解目标是 `E[每抽回报] < DRAW_COST`，堵死「抽卡→分解」造币回路。骰子 `DICE.PAYOUT` 同理，`reward = bet * PAYOUT * 0.5 * mult`。两者都有不变式测试（`tests/economy-invariants.test.js`），**改数值前先跑**。
+- **经济数值**：`CARD_VALUE`（`business.js`）是**分解返还**的单一数据源；抽卡即时金币 = `CARD_VALUE × DRAW_COIN_RATIO(0.3)`，前端经 `/api/rarities` 取权威值，不要在前端硬编码副本。**关键不变式：`E[CARD_VALUE] × (1 + DRAW_COIN_RATIO) < DRAW_COST`**（当前 78 < 100）——抽卡同时给金币和卡，只断言 `E[CARD_VALUE] < DRAW_COST` 会漏掉一半收入，历史上正是这样漏判导致刷币回路未闭合。骰子 `DICE.PAYOUT` 同理，`reward = bet * PAYOUT * 0.5 * mult`。均有不变式测试（`tests/economy-invariants.test.js`），**改数值前先跑**。
 - **draw-engine** 为纯函数模块：抽卡概率/保底计算无副作用，可单测（`tests/draw-engine.test.js`）。注意软保底会把 SSR/UR 实际产出率显著抬高（实测 8.3%/2.2% vs 基础 4%/1%），**按基础概率做经济测算会算错**。
 
 ## Admin Auth（重要！）
