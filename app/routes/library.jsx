@@ -333,11 +333,11 @@ export default function Library() {
               placeholder="搜索用户..."
               className="text-xs bg-surface-container text-on-surface border border-outline-variant rounded-full px-3 py-1 outline-none w-28 md:w-40 focus:border-primary transition-colors"
             />
-            <button type="submit" className="text-xs bg-surface-container text-on-surface border border-outline-variant rounded-full px-2 py-1 hover:bg-surface-variant transition-colors">
-              <span className="material-symbols-outlined text-sm">search</span>
+            <button type="submit" aria-label="搜索" className="text-xs bg-surface-container text-on-surface border border-outline-variant rounded-full px-2 py-1 hover:bg-surface-variant transition-colors">
+              <span aria-hidden="true" className="material-symbols-outlined text-sm">search</span>
             </button>
             {search && (
-              <button type="button" onClick={() => { setSearchInput(''); setSearchParams(buildParams({ sort, ...(rarity && { rarity }) })); }} className="text-xs text-on-surface-variant hover:text-on-surface px-1">
+              <button type="button" aria-label="清除搜索" onClick={() => { setSearchInput(''); setSearchParams(buildParams({ sort, ...(rarity && { rarity }) })); }} className="text-xs text-on-surface-variant hover:text-on-surface px-1">
                 ✕
               </button>
             )}
@@ -397,9 +397,10 @@ export default function Library() {
             <button
               onClick={() => setSearchParams(buildParams({ page: String(page - 1), sort, ...(rarity && { rarity }) }))}
               disabled={page <= 1}
+              aria-label="上一页"
               className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-full border border-outline-variant bg-surface-container text-on-surface disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
             >
-              <span className="material-symbols-outlined text-sm">chevron_left</span>
+              <span aria-hidden="true" className="material-symbols-outlined text-sm">chevron_left</span>
             </button>
             {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
               let p;
@@ -424,9 +425,10 @@ export default function Library() {
             <button
               onClick={() => setSearchParams(buildParams({ page: String(page + 1), sort, ...(rarity && { rarity }) }))}
               disabled={page >= totalPages}
+              aria-label="下一页"
               className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-full border border-outline-variant bg-surface-container text-on-surface disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
             >
-              <span className="material-symbols-outlined text-sm">chevron_right</span>
+              <span aria-hidden="true" className="material-symbols-outlined text-sm">chevron_right</span>
             </button>
           </div>
         )}

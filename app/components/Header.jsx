@@ -56,9 +56,10 @@ export default function Header({ activeTab = '大厅' }) {
         {user ? (
           <button
             onClick={logout}
+            aria-label="退出登录"
             className="text-on-surface-variant hover:scale-105 transition-transform hover:text-primary p-1.5 md:p-2"
           >
-            <span className="material-symbols-outlined">logout</span>
+            <span aria-hidden="true" className="material-symbols-outlined">logout</span>
           </button>
         ) : (
           <button

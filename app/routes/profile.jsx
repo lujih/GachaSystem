@@ -227,8 +227,9 @@ export default function Profile() {
                       onClick={() => { setNewNickname(user.nickname || user.username); setEditingNick(true); }}
                       className="text-on-surface-variant hover:text-primary transition-colors"
                       title="编辑昵称"
+                      aria-label="编辑昵称"
                     >
-                      <span className="material-symbols-outlined text-lg md:text-xl">edit</span>
+                      <span aria-hidden="true" className="material-symbols-outlined text-lg md:text-xl">edit</span>
                     </button>
                   </h1>
                 )}
@@ -353,6 +354,22 @@ export default function Profile() {
               return (
                 <div
                   key={lv}
+                  // 可领取的里程碑卡片是可交互的，但此前是纯 <div onClick>，键盘不可达。
+                  // 仅在 canClaim 时赋予 button 语义；已领取/未解锁时保持纯展示。
+                  role={canClaim ? 'button' : undefined}
+                  tabIndex={canClaim ? 0 : undefined}
+                  aria-disabled={!canClaim}
+                  aria-label={canClaim
+                    ? `领取 Lv.${lv} 等级奖励：${coins} 金币${title ? ` 与称号「${title}」` : ''}`
+                    : undefined}
+                  onClick={() => canClaim && handleClaim(lv)}
+                  onKeyDown={(e) => {
+                    if (!canClaim) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleClaim(lv);
+                    }
+                  }}
                   className={`relative rounded-2xl md:rounded-[24px] border-2 p-3 md:p-5 flex flex-col gap-1 md:gap-2 transition-all ${
                     claimed
                       ? 'bg-surface-variant border-outline-variant opacity-60'
