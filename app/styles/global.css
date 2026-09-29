@@ -589,3 +589,17 @@ a:focus-visible {
 .kirakira-star {
   animation: kirakira 1.5s ease-in-out infinite;
 }
+
+/* --- 动效可访问性：尊重系统的「减少动态效果」设置 ---
+   本项目有大量无限循环动画（sakuraFall / float / glow-pulse / kirakira / pitySparkle 等），
+   对前庭功能障碍用户可能造成不适，且会持续占用 CPU/GPU。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

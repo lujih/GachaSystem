@@ -59,6 +59,14 @@ export default function DrawResultDialog({ open, onClose, result }) {
     setShowAll(true);
   }, []);
 
+  // 弹窗打开时支持 Esc 关闭（此前只有 CardDetailDialog 监听，两个弹窗行为不一致）
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   const curDim = dims[current];
   const cardMaxH = 'min(75vh, 600px)';
   const cardStyle = curDim
@@ -68,12 +76,19 @@ export default function DrawResultDialog({ open, onClose, result }) {
   if (!open || total === 0) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="抽卡结果"
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in"
+    >
       <button
+        type="button"
         onClick={onClose}
+        aria-label="关闭抽卡结果"
         className="absolute top-4 right-4 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
       >
-        <span className="material-symbols-outlined text-2xl">close</span>
+        <span aria-hidden="true" className="material-symbols-outlined text-2xl">close</span>
       </button>
 
       {showAll ? (

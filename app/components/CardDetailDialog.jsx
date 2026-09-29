@@ -25,14 +25,19 @@ export default function CardDetailDialog({ card, onClose }) {
     >
       {/* 关闭按钮 */}
       <button
+        type="button"
         onClick={onClose}
+        aria-label="关闭详情"
         className="absolute top-4 right-4 z-20 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
       >
-        <span className="material-symbols-outlined text-2xl">close</span>
+        <span aria-hidden="true" className="material-symbols-outlined text-2xl">close</span>
       </button>
 
       {/* 卡片容器 */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${rarity} 卡片详情`}
         className="relative w-[92vw] max-w-[480px] md:max-w-xl lg:max-w-2xl animate-card-flip-3d"
         onClick={e => e.stopPropagation()}
       >

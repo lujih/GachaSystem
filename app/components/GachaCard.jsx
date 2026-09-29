@@ -35,23 +35,38 @@ export default function GachaCard({ card, onClick, onLikeToggle, onBookmarkToggl
   const rarity = card.rarity || 'N';
   const style = RARITY_STYLES[rarity] || RARITY_STYLES.N;
 
+  // 卡片本体是 <article onClick>，对键盘与读屏完全不可达。
+  // 补 role/tabIndex/键盘事件，使其等价于一个可聚焦按钮。
+  const openable = typeof onClick === 'function';
+  const handleKeyDown = (e) => {
+    if (!openable) return;
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault(); // 空格默认会滚动页面
+      onClick(e);
+    }
+  };
+
   return (
     <article
-      onClick={onClick}
-      className={`relative group cursor-pointer aspect-[3/4] rounded-xl overflow-hidden border-[3px] ${style.border} ${style.shadow} ${style.glow} hover:-translate-y-2 hover:-translate-x-1 transition-all duration-300 ${className}`}
+      onClick={openable ? onClick : undefined}
+      onKeyDown={openable ? handleKeyDown : undefined}
+      role={openable ? 'button' : undefined}
+      tabIndex={openable ? 0 : undefined}
+      aria-label={openable ? `查看 ${rarity} 卡片详情${card.name ? `：${card.name}` : ''}` : undefined}
+      className={`relative group aspect-[3/4] rounded-xl overflow-hidden border-[3px] ${style.border} ${style.shadow} ${style.glow} hover:-translate-y-2 hover:-translate-x-1 transition-all duration-300 ${openable ? 'cursor-pointer' : ''} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${className}`}
     >
       {/* Character Image */}
       {card.imageUrl ? (
         <img
           src={card.imageUrl}
-          alt={card.rarity}
+          alt={`${rarity} 卡片`}
           className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           loading="lazy"
           decoding="async"
         />
       ) : (
         <div className="absolute inset-0 bg-surface-container flex items-center justify-center">
-          <span className="text-6xl font-black text-on-surface-variant">{rarity}</span>
+          <span aria-hidden="true" className="text-6xl font-black text-on-surface-variant">{rarity}</span>
         </div>
       )}
 
@@ -63,10 +78,13 @@ export default function GachaCard({ card, onClick, onLikeToggle, onBookmarkToggl
       {/* 书签按钮 */}
       {card.id && onBookmarkToggle && (
         <button
+          type="button"
           onClick={(e) => { e.stopPropagation(); onBookmarkToggle(card.id); }}
+          aria-label={card.isBookmarked ? '取消收藏' : '收藏'}
+          aria-pressed={!!card.isBookmarked}
           className={`absolute top-xs left-xs z-10 w-7 h-7 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-sm transition-colors ${card.isBookmarked ? 'text-amber-400' : 'text-white/50 hover:text-white'}`}
         >
-          <span className={`material-symbols-outlined text-sm ${card.isBookmarked ? 'symbol-filled' : ''}`}>bookmark</span>
+          <span aria-hidden="true" className={`material-symbols-outlined text-sm ${card.isBookmarked ? 'symbol-filled' : ''}`}>bookmark</span>
         </button>
       )}
 
@@ -85,10 +103,13 @@ export default function GachaCard({ card, onClick, onLikeToggle, onBookmarkToggl
         {/* 点赞按钮 */}
         {card.id && onLikeToggle && (
           <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); onLikeToggle(card.id); }}
+            aria-label={card.isLiked ? '取消点赞' : '点赞'}
+            aria-pressed={!!card.isLiked}
             className={`flex items-center gap-0.5 text-[10px] shrink-0 ml-1 transition-colors ${card.isLiked ? 'text-error' : 'text-on-surface-variant/60 hover:text-error'}`}
           >
-            <span className={`material-symbols-outlined text-sm ${card.isLiked ? 'symbol-filled' : ''}`}>favorite</span>
+            <span aria-hidden="true" className={`material-symbols-outlined text-sm ${card.isLiked ? 'symbol-filled' : ''}`}>favorite</span>
             {card.likeCount > 0 && <span>{card.likeCount}</span>}
           </button>
         )}
