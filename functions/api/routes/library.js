@@ -1,5 +1,9 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth.js';
+import { rateLimitByUser } from '../middleware/rate-limit.js';
+
+// 点赞/书签是高频 D1 写入且完全公开可达，阈值放宽到 60/分钟/用户
+const writeLimit = rateLimitByUser('libwrite', 60, 60);
 
 export const libraryRoutes = new Hono()
   .get('/items', async (c) => {
@@ -21,22 +25,22 @@ export const libraryRoutes = new Hono()
     delete result.cacheHeaders;
     return c.json({ success: true, ...result });
   })
-  .post('/like', requireAuth, async (c) => {
+  .post('/like', requireAuth, writeLimit, async (c) => {
     const services = c.get('services');
     const { galleryId } = await c.req.json();
     return c.json({ success: true, ...await services.gallery.likeCard(c.get('user').id, galleryId) });
   })
-  .delete('/like', requireAuth, async (c) => {
+  .delete('/like', requireAuth, writeLimit, async (c) => {
     const services = c.get('services');
     const { galleryId } = await c.req.json();
     return c.json({ success: true, ...await services.gallery.unlikeCard(c.get('user').id, galleryId) });
   })
-  .post('/bookmark', requireAuth, async (c) => {
+  .post('/bookmark', requireAuth, writeLimit, async (c) => {
     const services = c.get('services');
     const { galleryId } = await c.req.json();
     return c.json({ success: true, ...await services.gallery.bookmarkCard(c.get('user').id, galleryId) });
   })
-  .delete('/bookmark', requireAuth, async (c) => {
+  .delete('/bookmark', requireAuth, writeLimit, async (c) => {
     const services = c.get('services');
     const { galleryId } = await c.req.json();
     return c.json({ success: true, ...await services.gallery.unbookmarkCard(c.get('user').id, galleryId) });

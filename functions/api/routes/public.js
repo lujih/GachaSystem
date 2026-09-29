@@ -25,8 +25,10 @@ export const publicRoutes = new Hono()
     }
   })
   .get('/announcement', async (c) => {
+    // 必须过滤 enabled：否则已下架的公告仍会被公开返回，
+    // 且与首页 SSR loader（_index.jsx）的 WHERE enabled = 1 结果不一致
     const row = await c.env.DB.prepare(
-      'SELECT title, content, enabled, updated_at FROM announcements ORDER BY updated_at DESC LIMIT 1'
+      'SELECT title, content, enabled, updated_at FROM announcements WHERE enabled = 1 ORDER BY updated_at DESC LIMIT 1'
     ).first();
     c.header('Cache-Control', CACHE_5M['Cache-Control']);
     return c.json({ success: true, announcement: row || null });

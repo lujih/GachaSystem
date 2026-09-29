@@ -118,8 +118,11 @@ export default function Index() {
     try {
       const res = await api.checkIn();
       await refreshUser();
-      const bonus = res?.bonus || '';
-      showToast(`签到成功！+${res?.checkIn?.coins ?? 150} 金币 +${res?.checkIn?.exp ?? 50} 经验${bonus}`, 'success');
+      // 后端返回 { checkIn: { coins, exp, streak, streakBonus } }，
+      // 此前误读 res.bonus 导致首页连续签到加成永远不显示
+      const streakBonus = res?.checkIn?.streakBonus ?? 0;
+      const bonus = streakBonus > 0 ? ` (连续签到+${streakBonus})` : '';
+      showToast(`签到成功！+${res?.checkIn?.coins ?? 0} 金币 +${res?.checkIn?.exp ?? 0} 经验${bonus}`, 'success');
     } catch (e) {
       showToast(e?.message || '签到失败', 'error');
     }

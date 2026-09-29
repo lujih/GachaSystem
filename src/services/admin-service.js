@@ -11,12 +11,15 @@ export class AdminService {
   }
 
   async listUsers(page = 1, limit = 100) {
-    const safeLimit = Math.min(parseInt(limit) || 100, 200);
-    const offset = (page - 1) * safeLimit;
+    // 下界必须夹取：SQLite 中 LIMIT 负值等价于「无上限」；page 也需归一，否则
+    // ?page=abc 会算出 OFFSET NaN 并直接 500
+    const safePage = Math.max(parseInt(page) || 1, 1);
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 100, 1), 200);
+    const offset = (safePage - 1) * safeLimit;
     const users = await this.env.DB.prepare(
-      'SELECT id, username, nickname, coins, level, exp, total_exp, created_at FROM users ORDER BY id DESC LIMIT ? OFFSET ?'
+      'SELECT id, username, nickname, coins, level, exp, total_exp, draw_count, created_at FROM users ORDER BY id DESC LIMIT ? OFFSET ?'
     ).bind(safeLimit, offset).all();
-    return { users: users.results || [] };
+    return { users: users.results || [], page: safePage, limit: safeLimit };
   }
 
   async updatePoints(targetId, amount) {

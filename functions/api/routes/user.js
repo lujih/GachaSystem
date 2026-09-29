@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth.js';
+import { rateLimit, rateLimitByUser } from '../middleware/rate-limit.js';
 
 export const userRoutes = new Hono()
   .get('/info', requireAuth, async (c) => {
@@ -19,7 +20,7 @@ export const userRoutes = new Hono()
     const services = c.get('services');
     return c.json({ success: true, ...await services.user.getInventory(c.get('user')) });
   })
-  .post('/check-in', requireAuth, async (c) => {
+  .post('/check-in', requireAuth, rateLimitByUser('checkin', 5, 60), async (c) => {
     const services = c.get('services');
     return c.json({ success: true, ...await services.user.checkIn(c.get('user')) });
   })
@@ -42,7 +43,7 @@ export const userRoutes = new Hono()
     const { targetLevel } = await c.req.json();
     return c.json({ success: true, ...await services.user.claimReward(c.get('user'), targetLevel) });
   })
-  .post('/upload', requireAuth, async (c) => {
+  .post('/upload', requireAuth, rateLimit('upload', 10, 600), async (c) => {
     const services = c.get('services');
     return c.json({ success: true, ...await services.upload.uploadImage(c.get('user'), c.req.raw) });
   })
