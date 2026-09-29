@@ -603,3 +603,43 @@ a:focus-visible {
     scroll-behavior: auto !important;
   }
 }
+
+/* ================= 抽卡结果弹窗（对齐 docs/superpowers/specs/2026-05-20-draw-dialog-carousel-design.md） ================= */
+
+/* 遮罩淡出：spec 要求「关闭 → 遮罩 fade out」 */
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.animate-fade-out { animation: fadeOut 0.2s ease-in forwards; }
+
+/* SSR 金色脉冲光效：spec「金色脉冲 box-shadow: 0 0 20px → 40px」 */
+@keyframes rarityGlowSSR {
+  0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.6); }
+  50% { box-shadow: 0 0 40px rgba(245, 158, 11, 0.95); }
+}
+.animate-glow-ssr { animation: rarityGlowSSR 1.8s ease-in-out infinite; }
+
+/* SR 淡紫光效（静态，spec 只要求 box-shadow，不要求脉冲） */
+.animate-glow-sr { box-shadow: 0 0 15px rgba(139, 92, 246, 0.4); }
+
+/* UR 彩虹旋转边框：spec「彩虹旋转边框（conic-gradient border）」 */
+@keyframes raritySpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-rainbow-ur {
+  background: conic-gradient(
+    from 0deg,
+    #ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444
+  );
+  animation: raritySpin 4s linear infinite;
+}
+
+/* 保底标记：spec「卡片右上角 🌟 旋转放大动画」 */
+@keyframes pityBadgePop {
+  0% { transform: rotate(-15deg) scale(0.6); }
+  55% { transform: rotate(8deg) scale(1.25); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+.animate-pity-badge { animation: pityBadgePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
