@@ -1,8 +1,22 @@
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData } from "@remix-run/react";
 import { AuthProvider } from "~/hooks/useAuth";
 import "~/styles/global.css";
 
+/**
+ * 把 CSP nonce 交给渲染层。
+ * nonce 由 functions/_middleware.js 在渲染前生成，经 context.data 传到这里
+ * （functions/[[path]].js 的 getLoadContext 负责把 data 透传给 loadContext）。
+ *
+ * ⚠️ 不要再改回「用正则给 HTML 里的 <script> 补 nonce」——那是 OWASP 点名的反模式，
+ * 会让被注入的 XSS 脚本同样拿到合法 nonce。
+ */
+export async function loader({ context }) {
+  return { nonce: context?.data?.nonce || '' };
+}
+
 export default function App() {
+  const { nonce } = useLoaderData();
+
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
@@ -32,8 +46,8 @@ export default function App() {
             <div className="sakura-petal" />
           </div>
         </div>
-        <ScrollRestoration />
-        <Scripts />
+        <ScrollRestoration nonce={nonce} />
+        <Scripts nonce={nonce} />
       </body>
     </html>
   );

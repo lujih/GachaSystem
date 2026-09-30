@@ -36,8 +36,8 @@ Browser → Cloudflare Pages
 - **服务层 8 模块**（`src/services/`）：auth-service / user-service / gacha-service / draw-engine（纯函数）/ image-pipeline / gallery-service / admin-service / upload-service。**实际实例化点是 `functions/api/middleware/services.js`**（`src/services/index.js` 是零引用的死文件）。
 - **配置注入**：`src/config/index.js` 的 `CONFIG` 在模块加载期以空 env 固化；`applyEnv(env)` 必须在每请求开始时调用（servicesMiddleware 已调），否则 `R2_DOMAIN` / `GITHUB_*` 的环境变量覆盖会**静默失效**并回落到 `technical.js` 的硬编码值。
 - **请求流约定**：服务返回数据对象或抛 `AppError`，路由层统一 `{ success: true, ...data }` 包装；错误由 onError 中间件统一 `{ success: false, error, code }`。服务层不直接返回 HTTP 响应。
-- **`functions/_middleware.js`**：CORS preflight、安全头（CSP `'strict-dynamic'` + 每请求 nonce 注入 `<script>`、XFO、nosniff 等；**未实现 HSTS**）。API 会话解析已在 Hono 层，根中间件不再处理 session。
-- **SSR loader 无会话上下文**：`functions/[[path]].js` 未接 `getLoadContext`，loader 拿不到用户身份（`context.data.currentUser` 恒 undefined）。用户维度数据（如「我的抽卡/书签」）必须走客户端 API，见 `/api/library/my-items`（`listMyItems` 强制以会话身份覆盖调用方传入的 `userId`，防越权）。
+- **`functions/_middleware.js`**：CORS preflight、安全头（XFO、nosniff、Referrer-Policy、Permissions-Policy 等；**未实现 HSTS**）、CSP。nonce 在渲染**前**生成，经 `context.data.nonce` → `[[path]].js` 的 `getLoadContext` 透传 → root loader → `<Scripts nonce>`。**不要改回「用正则给所有 `<script>` 补 nonce」**——那是 OWASP 点名的反模式，会让注入的 XSS 脚本也自动拿到合法 nonce。`script-src` 中的 `'unsafe-inline'` 已移除（存在 nonce 时按 CSP 规范本就被忽略）。API 会话解析已在 Hono 层，根中间件不再处理 session。
+- **SSR loader 拿不到用户身份**：`context.data` 里**只有** `_middleware.js` 写入的 `nonce`，没有 `currentUser`。会话 token 存在 localStorage，服务端 request 上没有该头，因此 loader 无法鉴权。用户维度数据（如「我的抽卡/书签」）必须走客户端 API，见 `/api/library/my-items`（`listMyItems` 强制以会话身份覆盖调用方传入的 `userId`，防越权）。
 - **Frontend**：8 routes under `app/routes/`. Path alias `~` → `app/`. Tailwind v4 (`@tailwindcss/vite` plugin, no `tailwind.config.js`). shadcn components in `app/components/ui/`. API client `app/lib/api.js` 自动附加 `X-Session-Token`。
 
 ## Database（D1 权威存储，15 表）
@@ -59,7 +59,7 @@ Browser → Cloudflare Pages
 
 ## Admin Auth（重要！）
 
-- `requireAdmin` 中间件（`functions/api/middleware/auth.js`）**消费 request body** 读取 `body.password` 与 `env.admin` 比对；不通过则 403 `认证失败`；内置限流 `rl:admin` 10次/10min/IP（429）
+- `requireAdmin` 中间件（`functions/api/middleware/auth.js`）**消费 request body** 读取 `body.password` 与 `env.admin` **常量时间**比对（`timingSafeEqual`，异或累积不提前返回）；不通过则 403 `认证失败`。`env.admin` 未配置时 fail-closed 直接拒绝。内置限流 `rl:admin:{ip}` 10次/10min/IP（429）——**只计失败尝试**：成功请求不写入计数，否则管理员本人操作 10 次就会被自己锁住 10 分钟。
 - **admin 路由 handler 从 `c.get('adminBody')` 读取字段**（requireAdmin 已解析 body 并存入 context，body 流已消费无法二次读取）：
 
 ```js

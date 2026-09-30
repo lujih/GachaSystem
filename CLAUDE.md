@@ -13,15 +13,13 @@
 2. **[docs/review-2026-09-29.md](./docs/review-2026-09-29.md)** — 全面代码审查报告
    （8 个专项子代理并行审查，140 条发现），含代码位置、复算过程与修复建议。
 
-   **已修复**：4 项 Critical，以及 H1–H6、H8、H11、H12、H14。
+   **已修复**：4 项 Critical，以及 H1–H6、H8、H10–H12、H14。
    **未处理（仍在代码里）**：
    - H7 SSR 不水合：`app/entry.client.jsx` 仍用 `createRoot` 而非 `hydrateRoot`，
      SSR 产出的 HTML 被整棵丢弃并在 `<div>` 内重建 `<html>` 文档壳
    - H9 冷缓存十连 subrequest 可能超限：`image-pipeline.js` 的图源首跳无超时
-   - H10 CSP nonce 正则注入是 OWASP 点名的反模式：`functions/_middleware.js` 仍用正则
-     给所有 `<script>` 补 nonce，注入的 XSS 会被自动"合法化"
-   - H13 管理员限流可被并发绕过、明文非常量时间比对、**成功请求也计数**
-     （`functions/api/middleware/auth.js` 原样未动）
+   - H13 限流的 KV 计数仍非原子（并发请求可短暂绕过）——已改为只计失败尝试，
+     但彻底解决需换成 D1 或 Durable Object
 
 ## 动手前必知的几条硬约束
 
