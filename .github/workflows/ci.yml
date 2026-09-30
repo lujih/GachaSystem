@@ -26,7 +26,8 @@ jobs:
 
       - name: Unit tests
         # 覆盖：draw-engine 概率/保底、image-pipeline buffer 锁、
-        # economy-invariants 经济不变式、gacha-service 资损回归、gallery/error 边界
+        # economy-invariants 经济不变式、gacha-service 资损回归、gallery/error 边界、
+        # security-middleware CSP nonce 注入与管理员鉴权
         run: npm test
 
       - name: Build
