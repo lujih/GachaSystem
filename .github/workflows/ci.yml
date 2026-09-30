@@ -54,6 +54,12 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      - name: Create local D1 schema
+        # 干净克隆里 wrangler pages dev 会自建一个**空** D1——没有表。
+        # 于是 /library 直接 500、admin/users 也不可用。必须先应用 schema.sql。
+        # （这正是本地开发掩盖、只有干净环境才暴露的问题。）
+        run: npx wrangler d1 execute chouka --local --file=./schema.sql
+
       - name: Boot workerd (wrangler pages dev)
         run: |
           # .dev.vars 不在版本库里，用 -b 注入管理员口令，
