@@ -15,7 +15,8 @@ npm run start        # wrangler pages dev ./build/client (SSR after build)
 npm run preview      # npm run build && wrangler pages dev ./build/client
 ```
 
-- D1 migration: `npx wrangler d1 execute chouka --remote --file=./schema.sql`
+- D1 migration: `npx wrangler d1 execute chouka --remote --file=./schema.sql`；本地/干净环境用 `--local`。**干净克隆必须先执行它**——`wrangler pages dev` 只自建空 D1（零张表），否则 `/library` 500、`/api/admin/users` 不可用。本地因 `.wrangler/state` 早已建表而掩盖了这点，CI 的 `runtime-smoke` job 负责兜住。
+- **CI 有两个 job**：`verify`（typecheck/vitest/build，Node 环境）与 `runtime-smoke`（`wrangler pages dev` 真起 workerd，跑 `.github/scripts/smoke.mjs`）。**Workers 运行时是 V8 isolate + nodejs_compat polyfill，不是 Node**，所以在 Node 上全绿的单元测试对运行时零证明力；`runtime-smoke` 是唯一能在部署前发现「Pages Functions 启动即挂 / 绑定没注入 / SSR 里 script 缺 nonce」这类问题的门禁。
 - `.npmrc`: `legacy-peer-deps=true` (shadcn compat)
 - `.dev.vars` (gitignored，模板见 `.dev.vars.example`): `admin`, `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`, `R2_DOMAIN`
 - `wrangler.jsonc`: `nodejs_compat` flag required；**Pages 项目用 `pages_build_output_dir`，不要用 `assets.directory`**——后者会让 `wrangler deploy` 产出不含 `functions/` 的 no-op Worker
@@ -55,6 +56,10 @@ Browser → Cloudflare Pages
 - **会话**：`sessions` 表权威，token 仅存 SHA-256 哈希（`sha256Hex`），KV 60s 缓存可丢；登出删 DB 行 + 缓存
 - **全局 buffer 并发**：`buffer_claims` 表 `INSERT ON CONFLICT DO NOTHING` 作原子分布式锁（按 URL hash），防止并发重复分发。**单抽（`consumeBuffer`）与十连快路径（`consumeSlot`）都必须走这把锁 + 黑名单 + refill**——历史上十连路径完全跳过，导致同一张图并发发给多人。refill 仅在 `selectedSlot.index >= 0` 时触发，避免 `sys:buffer:UR:-1` 脏 key。
 - **经济数值**：`CARD_VALUE`（`business.js`）是**分解返还**的单一数据源；抽卡即时金币 = `CARD_VALUE × DRAW_COIN_RATIO(0.3)`，前端经 `/api/rarities` 取权威值，不要在前端硬编码副本。**关键不变式：`E[CARD_VALUE] × (1 + DRAW_COIN_RATIO) < DRAW_COST`**（当前 78 < 100）——抽卡同时给金币和卡，只断言 `E[CARD_VALUE] < DRAW_COST` 会漏掉一半收入，历史上正是这样漏判导致刷币回路未闭合。骰子 `DICE.PAYOUT` 同理，`reward = bet * PAYOUT * 0.5 * mult`。均有不变式测试（`tests/economy-invariants.test.js`），**改数值前先跑**。
+- **经济不变式分两层守护，不要指望单层**：
+  - `tests/economy-invariants.test.js` 守**配置层**（期望值 < 成本）。改 `CARD_VALUE` / `DRAW_COIN_RATIO` 只有它能抓到。
+  - `.github/scripts/smoke.mjs` 守**运行时记账层**（发放金额是否忠实于配置、退款是否足额）。它按 API 下发的 ratio 核对，所以配置本身错了它不会红——这是刻意的分层，不是漏洞。
+  - **单轮「抽卡→分解」的盈亏符号随稀有度变化**：N/R/SR 为负，但 SSR 是 `−100+225×2 = +350`、UR 是 +2150。玩家无法指定稀有度，所以高稀有度单轮盈利是正常设计。**不要断言单轮必须为负**——那既是错的不变式，也会让 CI 抽到 SSR 时随机红。
 - **draw-engine** 为纯函数模块：抽卡概率/保底计算无副作用，可单测（`tests/draw-engine.test.js`）。注意软保底会把 SSR/UR 实际产出率显著抬高（实测 8.3%/2.2% vs 基础 4%/1%），**按基础概率做经济测算会算错**。
 
 ## Admin Auth（重要！）
