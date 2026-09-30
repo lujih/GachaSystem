@@ -9,18 +9,18 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install
         run: npm ci
 
       - name: Typecheck
-        # 此前 vite.config.ts 里的 serverBuildPath 死配置会让这一项恒为红，
+        # 此前 vite.config.ts 里的 serverBuildPath 死配置会让这一项恒红，
         # 而仓库没有 CI，所以长期无人察觉。门禁必须真的接进流水线。
         run: npm run typecheck
 
@@ -32,3 +32,57 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # 在真实 Cloudflare 运行时上冒烟。
+  #
+  # 项目的运行时是 Workers 的 V8 isolate + nodejs_compat polyfill，**不是 Node**。
+  # verify job 的单元测试全在 Node 下跑，对 Workers 运行时零证明力：
+  # CSP nonce 是否真的出现在 SSR HTML 里、Pages Functions 是否真的启动、
+  # D1/KV/R2 绑定是否真的注入——只有起一次 workerd 才知道。
+  # 本项目历史上真实出过问题的正是这一层（CSP nonce 靠正则兜底、管理员限流
+  # 把管理员自己锁住），而单元测试全部是绿的。
+  runtime-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Boot workerd (wrangler pages dev)
+        run: |
+          # .dev.vars 不在版本库里，用 -b 注入管理员口令，
+          # 以便验证「成功请求不计入限流」（管理员本人连点不会被自己锁住）
+          npx wrangler pages dev ./build/client \
+            --port 8787 --ip 127.0.0.1 \
+            -b admin=ci-smoke-admin-password \
+            > wrangler.log 2>&1 &
+          echo $! > wrangler.pid
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8787/api/health > /dev/null 2>&1; then
+              echo "workerd ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::wrangler did not become ready in 60s"
+          cat wrangler.log
+          exit 1
+
+      - name: Smoke checks against workerd
+        env:
+          SMOKE_ADMIN_PASSWORD: ci-smoke-admin-password
+        run: node .github/scripts/smoke.mjs
+
+      - name: Show wrangler log
+        if: failure()
+        run: cat wrangler.log
+
+      - name: Stop workerd
+        if: always()
+        run: kill "$(cat wrangler.pid)" 2>/dev/null || true
